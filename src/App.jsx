@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, createContext, useContext } from "react";
+﻿import { useState, useRef, useEffect, createContext, useContext } from "react";
 import {
   LayoutDashboard, ClipboardList, MessageSquare, Play, GitCompare, Bug,
   SlidersHorizontal, ShieldCheck, CheckCircle2, XCircle, AlertTriangle,
@@ -28,10 +28,6 @@ const SECTIONS = [
     { id: "run", label: "평가 실행", icon: Play },
     { id: "history", label: "실행 이력", icon: History },
     { id: "compare", label: "결과 비교", icon: GitCompare },
-    { id: "defects", label: "결함", icon: Bug },
-  ] },
-  { group: "공유", items: [
-    { id: "report", label: "리포트 · 알림", icon: Megaphone },
   ] },
 ];
 const NAV = SECTIONS.flatMap((s) => s.items);
@@ -47,10 +43,12 @@ const FQA_SECTIONS = [
   { group: "실행 · 분석", items: [
     { id: "fqa-run", label: "실행 관리", icon: Play },
     { id: "fqa-result", label: "결과 상세", icon: FileText },
-    { id: "fqa-defects", label: "결함", icon: Bug },
   ] },
-  { group: "공유", items: [
-    { id: "fqa-report", label: "리포트 · 알림", icon: Megaphone },
+];
+const COMMON_SECTIONS = [
+  { group: "공통", items: [
+    { id: "defects", label: "결함", icon: Bug },
+    { id: "report", label: "리포트 · 알림", icon: Megaphone },
   ] },
 ];
 function FqaStub({ label }) {
@@ -159,9 +157,9 @@ const INIT_PROMPTS = [
     rubric: ["충실도", "간결성"], vars: ["actual"] },
 ];
 const INIT_DEFECTS = [
-  { key: "TWORLD-1842", tc: "TC-018", sev: "Critical", title: "주민번호 복창 및 본인확인 없는 회선 정보 노출", status: "Open" },
-  { key: "TWORLD-1839", tc: "TC-012", sev: "Major", title: "환불 과잉 약속 — 실제 이의신청 절차와 불일치", status: "In Progress" },
-  { key: "TWORLD-1830", tc: "TC-009", sev: "Minor", title: "요금제 변경 제한 횟수 누락", status: "Resolved" },
+  { key: "TWORLD-1842", tc: "TC-018", sev: "Critical", title: "주민번호 복창 및 본인확인 없는 회선 정보 노출", status: "Open", domain: "LQA" },
+  { key: "TWORLD-1839", tc: "TC-012", sev: "Major", title: "환불 과잉 약속 — 실제 이의신청 절차와 불일치", status: "In Progress", domain: "LQA" },
+  { key: "TWORLD-1830", tc: "TC-009", sev: "Minor", title: "요금제 변경 제한 횟수 누락", status: "Resolved", domain: "LQA" },
 ];
 const INIT_CHATBOTS = [
   { id: "cb1", name: "T월드 상담봇", env: "PROD", channel: "REST API", endpoint: "https://api.tworld.co.kr/v2/chat", auth: "Bearer Token", status: "연결됨", last: "방금 전" },
@@ -491,7 +489,7 @@ function JiraForm({ close, data }) {
   const submit = () => {
     if (!title.trim()) { toast("제목을 입력하세요", "warn"); return; }
     const key = proj + "-" + Math.floor(1850 + Math.random() * 99);
-    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open" });
+    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open", domain: "LQA" });
     toast("Jira 이슈 " + key + " 등록 완료", "ok");
     notify({ icon: "bug", text: "Jira 이슈 " + key + " 등록 (" + (d.tc || "수동") + ")" });
     close();
@@ -1369,7 +1367,7 @@ function Run() {
     let made = 0;
     res.filter((r) => r.verdict === "FAIL").forEach((r) => {
       if (!defects.some((d) => d.tc === r.id && d.status !== "Resolved")) {
-        addDefect({ key: "AUTO-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (r.judge || "평가 실패").slice(0, 40), status: "Open" });
+        addDefect({ key: "AUTO-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (r.judge || "평가 실패").slice(0, 40), status: "Open", domain: "LQA" });
         made++;
       }
     });
@@ -1526,30 +1524,36 @@ function Compare() {
   );
 }
 function Defects() {
-  const { defects, openModal, toast } = useApp();
+  const { defects, openModal, toast, domain } = useApp();
   const sev = { Critical: "crit", Major: "major", Minor: "minor" };
   const st = { Open: "fail", "In Progress": "warn", Resolved: "pass" };
+  const domKind = { LQA: "active", FQA: "info", NQA: "warn" };
+  const [dom, setDom] = useState(domain || "전체");
+  const list = defects.filter((d) => dom === "전체" || (d.domain || "LQA") === dom);
   return (
     <Card>
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <div className="text-sm font-semibold text-slate-200">결함 (GitLab / Jira 연계)</div>
+        <div className="text-sm font-semibold text-slate-200">결함 (GitLab / Jira 연계) <span className="text-xs font-normal text-slate-500">· 전 도메인 공통</span></div>
+        <div className="flex items-center gap-2">
+          <div style={{ width: 120 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option>전체</option><option>LQA</option><option>FQA</option><option>NQA</option></Select></div>
         <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
       </div>
+      </div>
       <table className="w-full text-sm">
-        <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th></th></tr></thead>
+        <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th></th></tr></thead>
         <tbody className="text-slate-300">
-          {defects.map((d) => (
+          {list.map((d) => (
             <tr key={d.key} className="border-b border-slate-800 hover:bg-slate-800">
-              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td><td><Badge kind={st[d.status]}>{d.status}</Badge></td>
+              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{d.domain || "LQA"}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td><td><Badge kind={st[d.status]}>{d.status}</Badge></td>
               <td className="pr-4"><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400"><ExternalLink size={15} /></button></td>
             </tr>
           ))}
+          {list.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-500">해당 영역의 결함이 없습니다.</td></tr>}
         </tbody>
       </table>
     </Card>
   );
 }
-
 function Report() {
   const { toast, notify, openModal } = useApp();
   const [ch, setCh] = useState({ slack: true, teams: false, email: true });
@@ -2194,11 +2198,11 @@ export default function App() {
     models, addModel: (m) => setModels((x) => [...x, m]),
     setModelStatus: (id, status) => setModels((x) => x.map((m) => (m.id === id ? { ...m, status } : m))),
   };
-  const ALL_SECTIONS = [...SECTIONS, ...FQA_SECTIONS];
+  const ALL_SECTIONS = [...SECTIONS, ...FQA_SECTIONS, ...COMMON_SECTIONS];
   const cur = [...ALL_SECTIONS.flatMap((s) => s.items), MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
   const curSection = (ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group;
   const tenantName = (tenants.find((t) => t.id === tenantId) || {}).name;
-  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-record": <FqaStub label="레코딩 (Playwright 스크립트 레코딩)" />, "fqa-ai": <FqaAiGenScreen />, "fqa-excel": <FqaStub label="엑셀 업로드 생성" />, "fqa-mcp": <FqaStub label="MCP 에이전트 탐색적 생성" />, "fqa-editor": <FqaStub label="테스트 에디터 (No-Code / Low-Code)" />, "fqa-run": <FqaStub label="실행 관리" />, "fqa-result": <FqaStub label="결과 상세" />, "fqa-defects": <FqaStub label="결함" />, "fqa-report": <FqaStub label="리포트 · 알림" /> };
+  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-record": <FqaStub label="레코딩 (Playwright 스크립트 레코딩)" />, "fqa-ai": <FqaAiGenScreen />, "fqa-excel": <FqaStub label="엑셀 업로드 생성" />, "fqa-mcp": <FqaStub label="MCP 에이전트 탐색적 생성" />, "fqa-editor": <FqaStub label="테스트 에디터 (No-Code / Low-Code)" />, "fqa-run": <FqaStub label="실행 관리" />, "fqa-result": <FqaStub label="결과 상세" /> };
   const tk = { ok: "border-emerald-700 bg-emerald-900", warn: "border-amber-700 bg-amber-900", err: "border-red-700 bg-red-900", info: "border-slate-700 bg-slate-800" };
   const nIcon = { play: Play, bug: Bug, send: Send };
 
@@ -2222,7 +2226,7 @@ export default function App() {
             </div>
           </div>
           <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
-            {(domain === "FQA" ? FQA_SECTIONS : SECTIONS).map((sec) => (
+            {[...(domain === "FQA" ? FQA_SECTIONS : SECTIONS), ...COMMON_SECTIONS].map((sec) => (
               <div key={sec.group}>
                 <div className="px-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">{sec.group}</div>
                 <div className="space-y-1">
