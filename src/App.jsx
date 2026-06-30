@@ -5,8 +5,9 @@ import {
   ChevronRight, Plus, Search, Bell, Server, TrendingUp, TrendingDown,
   Sparkles, FileDown, Ghost, Lock, Send, X, Megaphone, Slack, Mail,
   FileText, Calendar, RefreshCw, Trash2, ExternalLink, Plug, Link2, Filter,
-  Building2, Users, Cpu, CreditCard, ScrollText, Shield, ArrowLeft, UserCog, Tag, Upload, History
+  Building2, Users, Cpu, CreditCard, ScrollText, Shield, ArrowLeft, UserCog, Tag, Upload, History, Brain, Code2, Video
 } from "lucide-react";
+import FqaAiGenScreen from "./FqaAiGen.jsx";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
@@ -35,6 +36,26 @@ const SECTIONS = [
 ];
 const NAV = SECTIONS.flatMap((s) => s.items);
 const MEMBERS_ITEM = { id: "members", label: "조직 관리", icon: UserCog };
+const FQA_SECTIONS = [
+  { group: "준비 · 설계", items: [
+    { id: "fqa-record", label: "레코딩", icon: Video },
+    { id: "fqa-ai", label: "AI 생성", icon: Brain },
+    { id: "fqa-excel", label: "엑셀 업로드", icon: Upload },
+    { id: "fqa-mcp", label: "MCP 탐색", icon: Cpu },
+    { id: "fqa-editor", label: "테스트 에디터", icon: Code2 },
+  ] },
+  { group: "실행 · 분석", items: [
+    { id: "fqa-run", label: "실행 관리", icon: Play },
+    { id: "fqa-result", label: "결과 상세", icon: FileText },
+    { id: "fqa-defects", label: "결함", icon: Bug },
+  ] },
+  { group: "공유", items: [
+    { id: "fqa-report", label: "리포트 · 알림", icon: Megaphone },
+  ] },
+];
+function FqaStub({ label }) {
+  return <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900 p-12 text-center"><div className="text-slate-300 font-semibold mb-1">FQA · {label}</div><div className="text-sm text-slate-500">시안 준비 중 — AI 생성 다음 단계로 작성 예정</div></div>;
+}
 
 const TREND = [
   { d: "6/04", score: 83.0, pass: 64 }, { d: "6/05", score: 84.1, pass: 67 },
@@ -153,7 +174,7 @@ const INIT_TENANTS = [
   { id: "t2", name: "T멤버십", plan: "Team", users: 5, status: "활성", admin: "박지영 (jiyoung.park@skt.com)", created: "2026-03-04" },
   { id: "t3", name: "데모 조직", plan: "Trial", users: 2, status: "정지", admin: "미지정", created: "2026-05-20" },
 ];
-const DOMAINS = [{ id: "LQA", ready: true }, { id: "FQA", ready: false }, { id: "NQA", ready: false }];
+const DOMAINS = [{ id: "LQA", ready: true }, { id: "FQA", ready: true }, { id: "NQA", ready: false }];
 const INIT_USERS = [
   { id: "u1", name: "김지훈", email: "jihoon.kim@skt.com", tenant: "t1", role: "조직관리자", status: "활성", last: "방금 전" },
   { id: "u2", name: "이민준", email: "minjun.lee@skt.com", tenant: "t1", role: "QA 엔지니어", status: "활성", last: "오늘 09:12" },
@@ -446,24 +467,94 @@ function NewCaseForm({ close }) {
 
 function JiraForm({ close, data }) {
   const { addDefect, toast, notify } = useApp();
-  const [sev, setSev] = useState(data?.sev || "Major");
-  const [title, setTitle] = useState(data?.title || "");
+  const d = data || {};
+  const prioMap = { Critical: "Highest", Major: "High", Minor: "Medium" };
+  const [proj, setProj] = useState("TWORLD");
+  const [itype, setItype] = useState("Bug");
+  const [sev, setSev] = useState(d.sev || "Major");
+  const [prio, setPrio] = useState(prioMap[d.sev] || "High");
+  const [assignee, setAssignee] = useState("QA Lead");
+  const [labels, setLabels] = useState("lqa, chatbot");
+  const [title, setTitle] = useState(d.title || (d.tc ? d.tc + " 평가 실패" : "LQA 평가 실패"));
+  const [desc, setDesc] = useState(d.judge ? "[요약] " + d.judge + "\n[점수] " + (d.score != null ? d.score + "점" : "-") + "\n[안전성] 환각 " + ((d.safety && d.safety.환각) || "-") + " · PII " + ((d.safety && d.safety.PII) || "-") : "");
+  const [steps, setSteps] = useState(d.q ? "1. 사전조건: " + (d.pre || "없음") + "\n2. 발화 입력: \"" + d.q + "\"\n3. 챗봇 응답 확인" : "");
+  const [expected, setExpected] = useState(d.golden || "");
+  const [actual, setActual] = useState(d.actual || "");
+  const [attach, setAttach] = useState({ conv: true, judge: true, safety: true });
+  const [files, setFiles] = useState([]);
+  const autoArtifacts = d.q ? [
+    { k: "conv", label: "대화 로그", file: "conversation.txt", size: "2 KB" },
+    { k: "judge", label: "평가 근거", file: "judge_result.json", size: "1 KB" },
+    { k: "safety", label: "안전성 결과", file: "safety_check.json", size: "1 KB" },
+  ] : [];
+  const onFile = (e) => { const fs = Array.from(e.target.files || []).map((x) => ({ name: x.name, size: x.size > 1024 ? Math.round(x.size / 1024) + " KB" : x.size + " B" })); if (fs.length) setFiles((p) => [...p, ...fs]); };
   const submit = () => {
-    const key = "TWORLD-" + Math.floor(1850 + Math.random() * 99);
-    addDefect({ key, tc: data?.tc || "TC-000", sev, title: title || "LQA 평가 실패", status: "Open" });
+    if (!title.trim()) { toast("제목을 입력하세요", "warn"); return; }
+    const key = proj + "-" + Math.floor(1850 + Math.random() * 99);
+    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open" });
     toast("Jira 이슈 " + key + " 등록 완료", "ok");
-    notify({ icon: "bug", text: "Jira 이슈 " + key + " 자동 등록 (" + (data?.tc || "") + ")" });
+    notify({ icon: "bug", text: "Jira 이슈 " + key + " 등록 (" + (d.tc || "수동") + ")" });
     close();
   };
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">대상 케이스 <span className="text-teal-400 font-mono">{data?.tc}</span> · 실패 근거·실제응답·안전성 결과가 증적으로 첨부됩니다.</div>
-      <Field label="프로젝트 / 유형"><div className="flex gap-2"><Select><option>TWORLD</option><option>AICC</option></Select><Select><option>Bug</option><option>Security</option></Select></div></Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="심각도"><Select value={sev} onChange={(e) => setSev(e.target.value)}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
-        <Field label="담당자"><Select><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
+    <div className="space-y-3.5">
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="프로젝트"><Select value={proj} onChange={(e) => setProj(e.target.value)}><option>TWORLD</option><option>AICC</option></Select></Field>
+        <Field label="이슈 유형"><Select value={itype} onChange={(e) => setItype(e.target.value)}><option>Bug</option><option>Security</option><option>Task</option></Select></Field>
+        <Field label="담당자"><Select value={assignee} onChange={(e) => setAssignee(e.target.value)}><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
       </div>
-      <Field label="제목"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="이슈 제목" /></Field>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="심각도"><Select value={sev} onChange={(e) => { setSev(e.target.value); setPrio(prioMap[e.target.value] || "High"); }}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
+        <Field label="우선순위"><Select value={prio} onChange={(e) => setPrio(e.target.value)}><option>Highest</option><option>High</option><option>Medium</option><option>Low</option></Select></Field>
+        <Field label="라벨"><Input value={labels} onChange={(e) => setLabels(e.target.value)} /></Field>
+      </div>
+      <Field label="제목 (Summary)"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="이슈 제목" /></Field>
+      <Field label="설명 (Description)"><textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="이슈 요약·맥락" /></Field>
+      <Field label="재현 절차 (Steps to Reproduce)"><textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="1. ...\n2. ...\n3. ..." /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="기대 결과 (Expected)"><textarea value={expected} onChange={(e) => setExpected(e.target.value)} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" /></Field>
+        <Field label="실제 결과 (Actual)"><textarea value={actual} onChange={(e) => setActual(e.target.value)} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" /></Field>
+      </div>
+      {d.env && <Field label="환경"><div className="rounded-lg bg-slate-800 p-2 text-xs text-slate-400">{d.env}{d.tc ? " · 대상 " + d.tc : ""}</div></Field>}
+      <Field label="증적 첨부">
+        {autoArtifacts.length > 0 && (
+          <div className="mb-2">
+            <div className="mb-1 text-xs text-slate-500">자동 캡처 (플랫폼 생성 · 포함 선택)</div>
+            <div className="space-y-1">
+              {autoArtifacts.map((a) => (
+                <label key={a.k} className="flex cursor-pointer items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm">
+                  <input type="checkbox" checked={!!attach[a.k]} onChange={() => setAttach({ ...attach, [a.k]: !attach[a.k] })} className="accent-teal-500" />
+                  <Badge kind="info">자동</Badge>
+                  <span className="flex-1 text-slate-200">{a.label}</span>
+                  <span className="font-mono text-xs text-slate-500">{a.file} · {a.size}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mb-1 text-xs text-slate-500">직접 첨부</div>
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 bg-slate-800 px-3 py-4 text-sm text-slate-400 hover:border-slate-600">
+          <Upload size={16} className="text-slate-500" />스크린샷·HAR·로그·메모 — 드래그 또는 클릭
+          <input type="file" multiple className="hidden" onChange={onFile} />
+        </label>
+        {files.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {files.map((fl, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm">
+                <Badge kind="teal">직접</Badge>
+                <span className="flex-1 text-slate-200">{fl.name}</span>
+                <span className="text-xs text-slate-500">{fl.size}</span>
+                <button onClick={() => setFiles(files.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-400"><X size={14} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        {autoArtifacts.length === 0 && files.length === 0 && (
+          <div className="mt-2 text-xs text-amber-300">연결된 케이스가 없어 자동 증적이 없습니다 — 직접 첨부를 권장합니다.</div>
+        )}
+        <div className="mt-1.5 text-xs text-slate-500">선택·업로드한 항목은 이슈 생성 후 Jira 첨부 API로 업로드됩니다.</div>
+      </Field>
+      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">실패 케이스 데이터(발화·기대/실제·근거·안전성)가 자동 채워졌습니다. 시크릿은 Secrets 보관, 등록은 audit_log에 기록됩니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Bug} onClick={submit}>이슈 등록</Btn></div>
     </div>
   );
@@ -1374,7 +1465,7 @@ function Run() {
                       <span className="text-xs text-slate-500 flex-1">HITL 검토 <span className="text-slate-600">(예외 케이스 중심)</span></span>
                       <button onClick={() => { setHitl(sel.id, "approved"); toast(sel.id + " 승인됨", "ok"); }} className={"inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm " + (sel.hitl === "approved" ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}><CheckCircle2 size={14} />승인</button>
                       <button onClick={() => { setHitl(sel.id, "rejected"); toast(sel.id + " 반려됨", "warn"); }} className={"inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm " + (sel.hitl === "rejected" ? "bg-red-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}><XCircle size={14} />반려</button>
-                      {sel.verdict === "FAIL" && <Btn kind="danger" icon={Bug} onClick={() => openModal("jira", { tc: sel.id, sev: "Critical", title: (sel.judge || "").slice(0, 40) })}>결함 등록</Btn>}
+                      {sel.verdict === "FAIL" && <Btn kind="danger" icon={Bug} onClick={() => openModal("jira", { tc: sel.id, sev: "Critical", title: sel.id + " 평가 실패", q: sel.q, pre: sel.pre, golden: sel.golden, actual: sel.actual, judge: sel.judge, score: sel.score, safety: sel.safety, env: activeRun ? (activeRun.snapshot.model + " / 프롬프트 " + activeRun.snapshot.promptVer + " / 케이스 " + activeRun.snapshot.caseVer) : "" })}>결함 등록</Btn>}
                     </div>
                   </div>
                 </>
@@ -2103,10 +2194,11 @@ export default function App() {
     models, addModel: (m) => setModels((x) => [...x, m]),
     setModelStatus: (id, status) => setModels((x) => x.map((m) => (m.id === id ? { ...m, status } : m))),
   };
-  const cur = [...NAV, MEMBERS_ITEM].find((n) => n.id === view);
-  const curSection = (SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group;
+  const ALL_SECTIONS = [...SECTIONS, ...FQA_SECTIONS];
+  const cur = [...ALL_SECTIONS.flatMap((s) => s.items), MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
+  const curSection = (ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group;
   const tenantName = (tenants.find((t) => t.id === tenantId) || {}).name;
-  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView /> };
+  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-record": <FqaStub label="레코딩 (Playwright 스크립트 레코딩)" />, "fqa-ai": <FqaAiGenScreen />, "fqa-excel": <FqaStub label="엑셀 업로드 생성" />, "fqa-mcp": <FqaStub label="MCP 에이전트 탐색적 생성" />, "fqa-editor": <FqaStub label="테스트 에디터 (No-Code / Low-Code)" />, "fqa-run": <FqaStub label="실행 관리" />, "fqa-result": <FqaStub label="결과 상세" />, "fqa-defects": <FqaStub label="결함" />, "fqa-report": <FqaStub label="리포트 · 알림" /> };
   const tk = { ok: "border-emerald-700 bg-emerald-900", warn: "border-amber-700 bg-amber-900", err: "border-red-700 bg-red-900", info: "border-slate-700 bg-slate-800" };
   const nIcon = { play: Play, bug: Bug, send: Send };
 
@@ -2117,20 +2209,20 @@ export default function App() {
       <aside className="w-60 shrink-0 border-r border-slate-800 bg-slate-900 flex flex-col">
           <div className="px-5 py-4 border-b border-slate-800">
             <div className="flex items-center gap-2"><div className="w-7 h-7 rounded-lg bg-teal-500 flex items-center justify-center text-slate-900 font-bold text-sm">Q</div><span className="font-bold text-slate-100">QA AutoPlatform</span></div>
-            <div className="mt-1 text-xs text-teal-400 font-semibold pl-9">LQA · LLM 챗봇 평가</div>
+            <div className="mt-1 text-xs text-teal-400 font-semibold pl-9">{domain === "FQA" ? "FQA · 기능 테스트 자동화" : "LQA · LLM 챗봇 평가"}</div>
           </div>
           <div className="px-3 pt-3">
             <div className="px-1 mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">검증 영역</div>
             <div className="grid grid-cols-3 gap-1.5">
               {DOMAINS.map((d) => (
-                <button key={d.id} onClick={() => (d.ready ? setDomain(d.id) : toast(d.id + "는 준비 중입니다 (확장 예정)", "info"))} className={"rounded-lg px-2 py-1.5 text-xs font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-800 text-slate-600")}>
+                <button key={d.id} onClick={() => { if (!d.ready) { toast(d.id + "는 준비 중입니다 (확장 예정)", "info"); return; } setDomain(d.id); setView(d.id === "FQA" ? "fqa-ai" : "dashboard"); }} className={"rounded-lg px-2 py-1.5 text-xs font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-800 text-slate-600")}>
                   {d.id}{!d.ready && <span className="block font-normal text-slate-600" style={{ fontSize: 9 }}>준비중</span>}
                 </button>
               ))}
             </div>
           </div>
           <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
-            {SECTIONS.map((sec) => (
+            {(domain === "FQA" ? FQA_SECTIONS : SECTIONS).map((sec) => (
               <div key={sec.group}>
                 <div className="px-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">{sec.group}</div>
                 <div className="space-y-1">
