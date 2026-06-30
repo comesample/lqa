@@ -788,7 +788,7 @@ export function FqaDashboardScreen({ nav }) {
   const [msg, flash] = useToast();
   return (
     <div className="space-y-4">
-      <div className="mb-1 flex items-center gap-2"><LayoutDashboard size={16} className="text-teal-400" /><span className="text-sm font-semibold text-slate-100">FQA 대시보드</span><Badge kind="teal">기능 QA</Badge><span className="text-xs text-slate-500">자동화 현황 · 스위트 건강도</span></div>
+      <div className="mb-1 flex items-center gap-2"><LayoutDashboard size={16} className="text-teal-400" /><span className="text-sm font-semibold text-slate-100">대시보드</span><Badge kind="teal">기능 검증</Badge><span className="text-xs text-slate-500">자동화 현황 · 스위트 건강도</span></div>
       <div className="grid grid-cols-5 gap-3">
         {FD_KPI.map((k) => (<Card key={k[0]} className="p-4"><div className="text-xs text-slate-400">{k[0]}</div><div className={"mt-1 text-3xl font-bold " + k[2]}>{k[1]}</div><div className="mt-1 text-xs text-slate-500">{k[3]}</div></Card>))}
       </div>

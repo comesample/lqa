@@ -55,7 +55,7 @@ const COMMON_SECTIONS = [
   ] },
 ];
 function FqaStub({ label }) {
-  return <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900 p-12 text-center"><div className="text-slate-300 font-semibold mb-1">FQA · {label}</div><div className="text-sm text-slate-500">시안 준비 중 — AI 생성 다음 단계로 작성 예정</div></div>;
+  return <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900 p-12 text-center"><div className="text-slate-300 font-semibold mb-1">기능 검증 · {label}</div><div className="text-sm text-slate-500">시안 준비 중 — AI 생성 다음 단계로 작성 예정</div></div>;
 }
 
 const TREND = [
@@ -175,7 +175,7 @@ const INIT_TENANTS = [
   { id: "t2", name: "T멤버십", plan: "Team", users: 5, status: "활성", admin: "박지영 (jiyoung.park@skt.com)", created: "2026-03-04" },
   { id: "t3", name: "데모 조직", plan: "Trial", users: 2, status: "정지", admin: "미지정", created: "2026-05-20" },
 ];
-const DOMAINS = [{ id: "LQA", ready: true }, { id: "FQA", ready: true }, { id: "NQA", ready: false }];
+const DOMAINS = [{ id: "LQA", label: "챗봇", ready: true }, { id: "FQA", label: "기능", ready: true }, { id: "NQA", label: "비기능", ready: false }];
 const INIT_USERS = [
   { id: "u1", name: "김지훈", email: "jihoon.kim@skt.com", tenant: "t1", role: "조직관리자", status: "활성", last: "방금 전" },
   { id: "u2", name: "이민준", email: "minjun.lee@skt.com", tenant: "t1", role: "QA 엔지니어", status: "활성", last: "오늘 09:12" },
@@ -1531,6 +1531,7 @@ function Defects() {
   const sev = { Critical: "crit", Major: "major", Minor: "minor" };
   const st = { Open: "fail", "In Progress": "warn", Resolved: "pass" };
   const domKind = { LQA: "active", FQA: "info", NQA: "warn" };
+  const domLabel = { LQA: "챗봇", FQA: "기능", NQA: "비기능" };
   const [dom, setDom] = useState(domain || "전체");
   const list = defects.filter((d) => dom === "전체" || (d.domain || "LQA") === dom);
   return (
@@ -1538,7 +1539,7 @@ function Defects() {
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
         <div className="text-sm font-semibold text-slate-200">결함 (GitLab / Jira 연계) <span className="text-xs font-normal text-slate-500">· 전 도메인 공통</span></div>
         <div className="flex items-center gap-2">
-          <div style={{ width: 120 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option>전체</option><option>LQA</option><option>FQA</option><option>NQA</option></Select></div>
+          <div style={{ width: 120 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">챗봇</option><option value="FQA">기능</option><option value="NQA">비기능</option></Select></div>
           <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
         </div>
       </div>
@@ -1547,7 +1548,7 @@ function Defects() {
         <tbody className="text-slate-300">
           {list.map((d) => (
             <tr key={d.key} className="border-b border-slate-800 hover:bg-slate-800">
-              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{d.domain || "LQA"}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td><td><Badge kind={st[d.status]}>{d.status}</Badge></td>
+              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td><td><Badge kind={st[d.status]}>{d.status}</Badge></td>
               <td className="pr-4"><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400"><ExternalLink size={15} /></button></td>
             </tr>
           ))}
@@ -2217,14 +2218,14 @@ export default function App() {
       <aside className="w-60 shrink-0 border-r border-slate-800 bg-slate-900 flex flex-col">
           <div className="px-5 py-4 border-b border-slate-800">
             <div className="flex items-center gap-2"><div className="w-7 h-7 rounded-lg bg-teal-500 flex items-center justify-center text-slate-900 font-bold text-sm">Q</div><span className="font-bold text-slate-100">QA AutoPlatform</span></div>
-            <div className="mt-1 text-xs text-teal-400 font-semibold pl-9">{domain === "FQA" ? "FQA · 기능 테스트 자동화" : "LQA · LLM 챗봇 평가"}</div>
+            <div className="mt-1 text-xs text-teal-400 font-semibold pl-9">{domain === "FQA" ? "기능 검증 및 테스트 자동화" : "챗봇 검증 및 평가"}</div>
           </div>
           <div className="px-3 pt-3">
             <div className="px-1 mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">검증 영역</div>
             <div className="grid grid-cols-3 gap-1.5">
               {DOMAINS.map((d) => (
-                <button key={d.id} onClick={() => { if (!d.ready) { toast(d.id + "는 준비 중입니다 (확장 예정)", "info"); return; } setDomain(d.id); setView(d.id === "FQA" ? "fqa-dashboard" : "dashboard"); }} className={"rounded-lg px-2 py-1.5 text-xs font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-800 text-slate-600")}>
-                  {d.id}{!d.ready && <span className="block font-normal text-slate-600" style={{ fontSize: 9 }}>준비중</span>}
+                <button key={d.id} onClick={() => { if (!d.ready) { toast(d.label + "는 준비 중입니다 (확장 예정)", "info"); return; } setDomain(d.id); setView(d.id === "FQA" ? "fqa-dashboard" : "dashboard"); }} className={"rounded-lg px-2 py-1.5 text-xs font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-800 text-slate-600")}>
+                  {d.label}{!d.ready && <span className="block font-normal text-slate-600" style={{ fontSize: 9 }}>준비중</span>}
                 </button>
               ))}
             </div>
