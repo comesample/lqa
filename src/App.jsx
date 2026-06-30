@@ -2146,6 +2146,7 @@ function ConsoleShell() {
 
 export default function App() {
   const [view, setView] = useState("dashboard");
+  const [fqaTab, setFqaTab] = useState("상세");
   const [env, setEnv] = useState("전체");
   const [toasts, setToasts] = useState([]);
   const [notifs, setNotifs] = useState([
@@ -2205,7 +2206,7 @@ export default function App() {
   const cur = [...ALL_SECTIONS.flatMap((s) => s.items), MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
   const curSection = (ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group;
   const tenantName = (tenants.find((t) => t.id === tenantId) || {}).name;
-  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen />, "fqa-run": <FqaRunScreen />, "fqa-result": <FqaResultScreen /> };
+  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen nav={(v, t) => { setFqaTab(t || "상세"); setView(v); }} />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen />, "fqa-run": <FqaRunScreen />, "fqa-result": <FqaResultScreen initTab={fqaTab} /> };
   const tk = { ok: "border-emerald-700 bg-emerald-900", warn: "border-amber-700 bg-amber-900", err: "border-red-700 bg-red-900", info: "border-slate-700 bg-slate-800" };
   const nIcon = { play: Play, bug: Bug, send: Send };
 
