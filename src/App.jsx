@@ -1,13 +1,14 @@
-﻿import { useState, useRef, useEffect, createContext, useContext } from "react";
+import { useState, useRef, useEffect, createContext, useContext } from "react";
 import {
   LayoutDashboard, ClipboardList, MessageSquare, Play, GitCompare, Bug,
   SlidersHorizontal, ShieldCheck, CheckCircle2, XCircle, AlertTriangle,
   ChevronRight, Plus, Search, Bell, Server, TrendingUp, TrendingDown,
   Sparkles, FileDown, Ghost, Lock, Send, X, Megaphone, Slack, Mail,
   FileText, Calendar, RefreshCw, Trash2, ExternalLink, Plug, Link2, Filter,
-  Building2, Users, Cpu, CreditCard, ScrollText, Shield, ArrowLeft, UserCog, Tag, Upload, History, Brain, Code2, Video
+  Building2, Users, Cpu, CreditCard, ScrollText, Shield, ArrowLeft, UserCog, Tag, Upload, History, Brain, Code2, Video, Layers
 } from "lucide-react";
 import FqaAiGenScreen from "./FqaAiGen.jsx";
+import { FqaRecordScreen, FqaExcelScreen, FqaMcpScreen, FqaEditorScreen, FqaSuiteScreen, FqaRunScreen, FqaResultScreen, FqaDashboardScreen, FqaCasesScreen, FqaTargetScreen, FqaPlanScreen } from "./FqaScreens.jsx";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
@@ -33,16 +34,18 @@ const SECTIONS = [
 const NAV = SECTIONS.flatMap((s) => s.items);
 const MEMBERS_ITEM = { id: "members", label: "조직 관리", icon: UserCog };
 const FQA_SECTIONS = [
+  { group: "모니터링", items: [
+    { id: "fqa-dashboard", label: "대시보드", icon: LayoutDashboard },
+  ] },
   { group: "준비 · 설계", items: [
-    { id: "fqa-record", label: "레코딩", icon: Video },
-    { id: "fqa-ai", label: "AI 생성", icon: Brain },
-    { id: "fqa-excel", label: "엑셀 업로드", icon: Upload },
-    { id: "fqa-mcp", label: "MCP 탐색", icon: Cpu },
-    { id: "fqa-editor", label: "테스트 에디터", icon: Code2 },
+    { id: "fqa-targets", label: "대상·환경", icon: Plug },
+    { id: "fqa-suites", label: "테스트 스위트", icon: Layers },
+    { id: "fqa-cases", label: "테스트케이스", icon: Code2 },
   ] },
   { group: "실행 · 분석", items: [
-    { id: "fqa-run", label: "실행 관리", icon: Play },
-    { id: "fqa-result", label: "결과 상세", icon: FileText },
+    { id: "fqa-plan", label: "실행 계획", icon: ClipboardList },
+    { id: "fqa-run", label: "실행", icon: Play },
+    { id: "fqa-result", label: "결과", icon: FileText },
   ] },
 ];
 const COMMON_SECTIONS = [
@@ -162,10 +165,10 @@ const INIT_DEFECTS = [
   { key: "TWORLD-1830", tc: "TC-009", sev: "Minor", title: "요금제 변경 제한 횟수 누락", status: "Resolved", domain: "LQA" },
 ];
 const INIT_CHATBOTS = [
-  { id: "cb1", name: "T월드 상담봇", env: "PROD", channel: "REST API", endpoint: "https://api.tworld.co.kr/v2/chat", auth: "Bearer Token", status: "연결됨", last: "방금 전" },
-  { id: "cb2", name: "T월드 상담봇", env: "STG", channel: "Web 대화", endpoint: "https://stg.tworld.co.kr/chat", auth: "세션 쿠키", status: "연결됨", last: "5분 전" },
-  { id: "cb3", name: "T전화 AI상담", env: "PROD", channel: "REST API", endpoint: "https://api.tphone.skt/assist", auth: "API Key", status: "미확인", last: "-" },
-  { id: "cb4", name: "고객센터 챗봇", env: "Beta", channel: "Mobile 앱", endpoint: "appium://com.skt.tworld/chat", auth: "OAuth 2.0", status: "오류", last: "1시간 전" },
+  { id: "cb1", name: "T월드 상담봇", env: "운영", channel: "REST API", endpoint: "https://api.tworld.co.kr/v2/chat", auth: "Bearer Token", status: "연결됨", last: "방금 전" },
+  { id: "cb2", name: "T월드 상담봇", env: "스테이징", channel: "Web 대화", endpoint: "https://stg.tworld.co.kr/chat", auth: "세션 쿠키", status: "연결됨", last: "5분 전" },
+  { id: "cb3", name: "T전화 AI상담", env: "운영", channel: "REST API", endpoint: "https://api.tphone.skt/assist", auth: "API Key", status: "미확인", last: "-" },
+  { id: "cb4", name: "고객센터 챗봇", env: "개발", channel: "Mobile 앱", endpoint: "appium://com.skt.tworld/chat", auth: "OAuth 2.0", status: "오류", last: "1시간 전" },
 ];
 const INIT_TENANTS = [
   { id: "t1", name: "SK텔레콤", plan: "Enterprise", users: 12, status: "활성", admin: "김지훈 (jihoon.kim@skt.com)", created: "2026-01-12" },
@@ -721,7 +724,7 @@ function JiraConfigForm({ close }) {
 function AddChatbotForm({ close }) {
   const { addChatbot, toast } = useApp();
   const [name, setName] = useState("");
-  const [env, setEnv] = useState("PROD");
+  const [env, setEnv] = useState("운영");
   const [channel, setChannel] = useState("REST API");
   const [method, setMethod] = useState("POST");
   const [endpoint, setEndpoint] = useState("");
@@ -789,7 +792,7 @@ function AddChatbotForm({ close }) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Field label="이름"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: T월드 상담봇" /></Field>
-        <Field label="환경"><Select value={env} onChange={(e) => setEnv(e.target.value)}><option>PROD</option><option>STG</option><option>Beta</option></Select></Field>
+        <Field label="환경"><Select value={env} onChange={(e) => setEnv(e.target.value)}><option>운영</option><option>스테이징</option><option>개발</option></Select></Field>
       </div>
       <Field label="채널 유형">
         <div className="grid grid-cols-3 gap-2">
@@ -1536,8 +1539,8 @@ function Defects() {
         <div className="text-sm font-semibold text-slate-200">결함 (GitLab / Jira 연계) <span className="text-xs font-normal text-slate-500">· 전 도메인 공통</span></div>
         <div className="flex items-center gap-2">
           <div style={{ width: 120 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option>전체</option><option>LQA</option><option>FQA</option><option>NQA</option></Select></div>
-        <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
-      </div>
+          <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
+        </div>
       </div>
       <table className="w-full text-sm">
         <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th></th></tr></thead>
@@ -2202,7 +2205,7 @@ export default function App() {
   const cur = [...ALL_SECTIONS.flatMap((s) => s.items), MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
   const curSection = (ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group;
   const tenantName = (tenants.find((t) => t.id === tenantId) || {}).name;
-  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-record": <FqaStub label="레코딩 (Playwright 스크립트 레코딩)" />, "fqa-ai": <FqaAiGenScreen />, "fqa-excel": <FqaStub label="엑셀 업로드 생성" />, "fqa-mcp": <FqaStub label="MCP 에이전트 탐색적 생성" />, "fqa-editor": <FqaStub label="테스트 에디터 (No-Code / Low-Code)" />, "fqa-run": <FqaStub label="실행 관리" />, "fqa-result": <FqaStub label="결과 상세" /> };
+  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen />, "fqa-run": <FqaRunScreen />, "fqa-result": <FqaResultScreen /> };
   const tk = { ok: "border-emerald-700 bg-emerald-900", warn: "border-amber-700 bg-amber-900", err: "border-red-700 bg-red-900", info: "border-slate-700 bg-slate-800" };
   const nIcon = { play: Play, bug: Bug, send: Send };
 
@@ -2219,7 +2222,7 @@ export default function App() {
             <div className="px-1 mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">검증 영역</div>
             <div className="grid grid-cols-3 gap-1.5">
               {DOMAINS.map((d) => (
-                <button key={d.id} onClick={() => { if (!d.ready) { toast(d.id + "는 준비 중입니다 (확장 예정)", "info"); return; } setDomain(d.id); setView(d.id === "FQA" ? "fqa-ai" : "dashboard"); }} className={"rounded-lg px-2 py-1.5 text-xs font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-800 text-slate-600")}>
+                <button key={d.id} onClick={() => { if (!d.ready) { toast(d.id + "는 준비 중입니다 (확장 예정)", "info"); return; } setDomain(d.id); setView(d.id === "FQA" ? "fqa-dashboard" : "dashboard"); }} className={"rounded-lg px-2 py-1.5 text-xs font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-800 text-slate-600")}>
                   {d.id}{!d.ready && <span className="block font-normal text-slate-600" style={{ fontSize: 9 }}>준비중</span>}
                 </button>
               ))}
@@ -2259,7 +2262,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-3 text-sm">
               <div className="flex items-center gap-1.5" title="테넌트(조직)"><Building2 size={13} className="text-slate-500" />{role === "admin" ? <select value={tenantId} onChange={(e) => { setTenantId(e.target.value); toast("테넌트 전환: " + ((tenants.find((t) => t.id === e.target.value) || {}).name), "info"); }} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-300 text-xs">{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select> : <span className="rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-slate-300 text-xs">{tenantName}</span>}</div>
-              <div className="flex items-center gap-1.5" title="보기 환경 필터"><Filter size={13} className="text-slate-500" /><select value={env} onChange={(e) => { setEnv(e.target.value); toast("환경 필터: " + e.target.value, "info"); }} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-300 text-xs"><option>전체</option><option>PROD</option><option>STG</option><option>Beta</option></select></div>
+              <div className="flex items-center gap-1.5" title="보기 환경 필터"><Filter size={13} className="text-slate-500" /><select value={env} onChange={(e) => { setEnv(e.target.value); toast("환경 필터: " + e.target.value, "info"); }} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-300 text-xs"><option>전체</option><option>운영</option><option>스테이징</option><option>개발</option></select></div>
               <div className="relative">
                 <button onClick={() => setBellOpen(!bellOpen)} className="relative text-slate-400 hover:text-slate-200"><Bell size={18} />{notifs.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center" style={{ fontSize: 9 }}>{notifs.length}</span>}</button>
                 {bellOpen && (

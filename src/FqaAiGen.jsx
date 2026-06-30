@@ -220,7 +220,7 @@ export default function FqaAiGenScreen() {
               </>
             )}
           </Card>
-          <div className="mt-2 text-xs text-slate-500">생성된 케이스는 <span className="text-amber-300">검토 대기</span> 상태로 등록되며, 검토·승인 후 실행 대상이 됩니다. (LQA 생성 라이프사이클과 동일)</div>
+          <div className="mt-2 text-xs text-slate-500">생성된 케이스는 <span className="text-amber-300">검토 대기</span> 상태(No-Code 관리)로 등록되며, 검토·승인 후 실행 대상이 됩니다.</div>
         </div>
       </div>
 
