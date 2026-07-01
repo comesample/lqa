@@ -759,7 +759,7 @@ function AddChatbotForm({ close }) {
       if (respMode === "비동기 폴링" && !pollUrl.trim()) return "폴링 URL을 입력하세요";
     } else {
       if (!webUrl.trim()) return "대상 URL을 입력하세요";
-      if (!sel.input.trim() || !sel.resp.trim()) return "입력창·응답 셀렉터는 필수입니다";
+      if (!sel.input.trim() || !sel.resp.trim()) return "입력창·응답 셀렉터는 필수입니다";ㅂ
     }
     return null;
   };
