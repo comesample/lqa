@@ -326,13 +326,7 @@ export function ConsoleShell() {
           <div className="text-sm text-slate-400">관리자 콘솔 · 전 테넌트 횡단</div>
         </header>
         <div className="flex-1 overflow-y-auto p-6">
-          {cv === "tenants" ? <TenantsConsole /> : cv === "cusers" ? <UsersConsole /> : cv === "models" ? <ModelsConsole /> : cv === "usage" ? <UsageConsole /> : cv === "audit" ? <AuditConsole /> : (
-            <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900 p-12 text-center">
-              <cur.icon size={28} className="text-slate-600 mx-auto mb-3" />
-              <div className="text-slate-300 font-semibold mb-1">{cur.label}</div>
-              <div className="text-sm text-slate-500">이 화면은 다음 단계에서 구현됩니다.</div>
-            </div>
-          )}
+          {cv === "tenants" ? <TenantsConsole /> : cv === "cusers" ? <UsersConsole /> : cv === "models" ? <ModelsConsole /> : cv === "usage" ? <UsageConsole /> : <AuditConsole />}
         </div>
       </main>
     </>

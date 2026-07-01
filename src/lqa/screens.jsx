@@ -250,6 +250,8 @@ export function JiraForm({ close, data }) {
         <Field label="라벨"><Input value={labels} onChange={(e) => setLabels(e.target.value)} /></Field>
       </div>
       <Field label="제목 (Summary)"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="이슈 제목" /></Field>
+      <div className="grid grid-cols-2 gap-4 items-start">
+      <div className="space-y-3.5">
       <Field label="설명 (Description)"><textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="이슈 요약·맥락" /></Field>
       <Field label="재현 절차 (Steps to Reproduce)"><textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="1. ...\n2. ...\n3. ..." /></Field>
       <div className="grid grid-cols-2 gap-3">
@@ -257,6 +259,8 @@ export function JiraForm({ close, data }) {
         <Field label="실제 결과 (Actual)"><textarea value={actual} onChange={(e) => setActual(e.target.value)} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" /></Field>
       </div>
       {d.env && <Field label="환경"><div className="rounded-lg bg-slate-800 p-2 text-xs text-slate-400">{d.env}{d.tc ? " · 대상 " + d.tc : ""}</div></Field>}
+      </div>
+      <div className="space-y-3.5">
       <Field label="증적 첨부">
         {autoArtifacts.length > 0 && (
           <div className="mb-2">
@@ -295,19 +299,22 @@ export function JiraForm({ close, data }) {
         )}
         <div className="mt-1.5 text-xs text-slate-500">선택·업로드한 항목은 이슈 생성 후 Jira 첨부 API로 업로드됩니다.</div>
       </Field>
+      </div>
+      </div>
       <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">실패 케이스 데이터(발화·기대/실제·근거·안전성)가 자동 채워졌습니다. 시크릿은 Secrets 보관, 등록은 audit_log에 기록됩니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Bug} onClick={submit}>이슈 등록</Btn></div>
     </div>
   );
 }
-export function AddPromptForm({ close }) {
-  const { addPrompt, toast } = useApp();
+export function AddPromptForm({ close, data }) {
+  const { addPrompt, updatePrompt, toast } = useApp();
+  const edit = !!data;
   const RUBRIC_CATALOG = ["관련성", "정확성", "안전성", "일관성", "완전성", "톤/공손", "환각", "PII 노출", "정책 위반"];
   const SAMPLE = { question: "5G를 LTE로 바꾸면 위약금 있나요?", expected: "약정 내 변경 시 할인반환금 발생 가능, 나의 T월드에서 확인", actual: "네, 위약금 없이 바로 바꿔드릴 수 있어요.", domain: "요금제", policy: "과잉 약속 금지·정확 안내", context: "로그인 상태" };
-  const [name, setName] = useState("");
-  const [system, setSystem] = useState("당신은 통신사 상담 챗봇의 응답 품질을 평가하는 전문 평가자입니다. 아래 지표별로 0~100점으로 채점하고 근거를 제시하세요.");
-  const [rubric, setRubric] = useState(["관련성", "정확성", "안전성", "일관성"]);
-  const [vars, setVars] = useState(["question", "expected", "actual"]);
+  const [name, setName] = useState(edit ? data.name : "");
+  const [system, setSystem] = useState(edit ? (data.system || "") : "당신은 통신사 상담 챗봇의 응답 품질을 평가하는 전문 평가자입니다. 아래 지표별로 0~100점으로 채점하고 근거를 제시하세요.");
+  const [rubric, setRubric] = useState(edit && data.rubric ? data.rubric : ["관련성", "정확성", "안전성", "일관성"]);
+  const [vars, setVars] = useState(edit && data.vars ? data.vars : ["question", "expected", "actual"]);
   const [preview, setPreview] = useState(false);
   const toggleR = (v) => setRubric(rubric.includes(v) ? rubric.filter((x) => x !== v) : [...rubric, v]);
   const toggleV = (v) => setVars(vars.includes(v) ? vars.filter((x) => x !== v) : [...vars, v]);
@@ -322,8 +329,9 @@ export function AddPromptForm({ close }) {
   const submit = () => {
     if (!name.trim()) { toast("템플릿 이름을 입력하세요", "warn"); return; }
     if (!rubric.length) { toast("채점 지표를 1개 이상 선택하세요", "warn"); return; }
-    addPrompt({ name: name.trim(), ver: 1, active: false, system, rubric, vars });
-    toast("Prompt 템플릿이 추가되었습니다 (검토 후 활성화)", "ok"); close();
+    if (edit) { updatePrompt(data.name, { name: name.trim(), ver: (data.ver || 1) + 1, system, rubric, vars }); toast("Prompt 템플릿이 저장되었습니다 (v" + ((data.ver || 1) + 1) + ")", "ok"); }
+    else { addPrompt({ name: name.trim(), ver: 1, active: false, system, rubric, vars }); toast("Prompt 템플릿이 추가되었습니다 (검토 후 활성화)", "ok"); }
+    close();
   };
   return (
     <div className="space-y-4">
@@ -360,7 +368,7 @@ export function AddPromptForm({ close }) {
         <div className="flex items-center justify-between"><span className="text-sm text-slate-200 font-semibold">샘플 미리보기</span><Toggle on={preview} onClick={() => setPreview(!preview)} /></div>
         {preview && <pre className="mt-2 rounded bg-slate-900 border border-slate-700 p-2 text-xs text-slate-300 whitespace-pre-wrap" style={{ fontFamily: "monospace" }}>{rendered()}</pre>}
       </div>
-      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>추가</Btn></div>
+      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "추가"}</Btn></div>
     </div>
   );
 }
@@ -394,6 +402,8 @@ export function JiraConfigForm({ close }) {
   };
   return (
     <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 items-start">
+      <div className="space-y-4">
       <Field label="배포 유형">
         <div className="grid grid-cols-2 gap-2">
           {["Cloud", "Server/DC"].map((d) => (
@@ -425,6 +435,8 @@ export function JiraConfigForm({ close }) {
           ))}
         </div>
       </Field>
+      </div>
+      <div className="space-y-4">
       <Field label="라벨 (쉼표 구분)"><Input value={labels} onChange={(e) => setLabels(e.target.value)} placeholder="lqa, chatbot" /></Field>
       <Field label="이슈 제목 템플릿">
         <Input value={titleTpl} onChange={(e) => setTitleTpl(e.target.value)} />
@@ -438,6 +450,8 @@ export function JiraConfigForm({ close }) {
         <div className="flex items-center justify-between"><span className="text-sm text-slate-200 font-semibold">연결 테스트</span><Btn icon={RefreshCw} onClick={runTest}>{test && test.s === "run" ? "테스트 중…" : "테스트"}</Btn></div>
         {test && test.s === "err" && <div className="mt-2 flex items-center gap-2 text-xs text-red-300"><XCircle size={14} />{test.m}</div>}
         {test && test.s === "ok" && <div className="mt-2 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />{test.m}</div>}
+      </div>
+      </div>
       </div>
       <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">중복 방지 ON 시 같은 TC의 Open 이슈가 있으면 새 이슈 대신 코멘트를 추가합니다. 토큰은 Secrets 저장소에 암호화 보관, 등록 호출은 audit_log에 기록됩니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>저장</Btn></div>
@@ -774,7 +788,7 @@ export function Dashboard() {
   );
 }
 export function Plans() {
-  const { plans, prompts, runs, openModal, toast, goto, chatbots, models, addRun, updateRun, updatePlan, setRunIntent } = useApp();
+  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, setRunIntent } = useApp();
   const [sel, setSel] = useState(plans[0]);
   const cur = plans.find((p) => p.id === sel.id) || plans[0];
   const defJudges = (p) => { const o = {}; (p.judgeList || ["Claude (sonnet-4-6)", "GPT-4o"]).forEach((n) => (o[n] = true)); return o; };
@@ -837,7 +851,7 @@ export function Plans() {
         <div className="grid grid-cols-2 gap-5">
           <div className="space-y-4">
             <Field label="대상 챗봇"><Select value={bot} onChange={(e) => setBot(e.target.value)}>{[...new Set(chatbots.map((c) => c.name))].map((n) => <option key={n}>{n}</option>)}</Select></Field>
-            <Field label="테스트케이스"><div className="flex items-center gap-2"><div className="flex-1 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-200">{cur.tc}건 포함</div><Btn onClick={() => toast("케이스 선택은 테스트케이스 화면에서 (데모)", "info")}>선택</Btn></div></Field>
+            <Field label="테스트케이스"><div className="flex items-center gap-2"><div className="flex-1 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-200">{cur.caseIds ? cur.caseIds.length : cur.tc}건 포함</div><Btn onClick={() => openModal("planCases", { planId: cur.id })}>선택</Btn></div></Field>
             <Field label="Judge 모델 (다중)">
               <div className="space-y-2">
                 {models.filter((m) => m.status === "활성").map((j) => (
@@ -866,19 +880,6 @@ export function Plans() {
               </div>
             ))}
           </div>
-        </div>
-        <div className="mt-5 pt-5 border-t border-slate-800">
-          <div className="text-sm font-semibold text-slate-200 mb-2">최근 실행</div>
-          {runs.filter((r) => r.planId === cur.id).slice(0, 4).map((r) => (
-            <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-800 px-3 py-2 mb-1.5 text-xs cursor-pointer hover:bg-slate-700" onClick={() => goto("history")}>
-              <span className="font-mono text-teal-400 w-16">{r.id}</span>
-              <span className="text-slate-400 flex-1">{r.startedAt}</span>
-              <Badge kind={{ "수동": "info", "스케줄": "active", "이벤트": "warn" }[r.trigger]}>{r.trigger}</Badge>
-              <Badge kind={{ "진행중": "warn", "완료": "pass", "실패": "fail" }[r.status]}>{r.status}</Badge>
-              <span className="font-semibold text-slate-100 w-10 text-right">{r.score != null ? r.score : "—"}</span>
-            </div>
-          ))}
-          {runs.filter((r) => r.planId === cur.id).length === 0 && <div className="text-xs text-slate-500 mb-2">아직 실행 이력이 없습니다.</div>}
         </div>
         <div className="mt-5 pt-5 border-t border-slate-800"><ScheduleConfig events={LQA_EVENTS} manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." onSave={(sum) => { if (cur) updatePlan(cur.id, { sched: sum }); }} toast={toast} /></div>
       </Card>
@@ -1050,6 +1051,55 @@ export function ImportCasesForm({ close }) {
     </div>
   );
 }
+export function PlanCasesForm({ close, data }) {
+  const { cases, plans, updatePlan, toast } = useApp();
+  const plan = plans.find((p) => p.id === data.planId) || {};
+  const [picked, setPicked] = useState(() => new Set(plan.caseIds ? plan.caseIds : cases.filter((c) => c.status === "승인").map((c) => c.id)));
+  const [q, setQ] = useState("");
+  const [onlyApproved, setOnlyApproved] = useState(false);
+  const priKind = KIND.priority; const stKind = KIND.caseStatus;
+  const toggle = (id) => setPicked((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const base = cases.filter((c) => (!onlyApproved || (c.status || "승인") === "승인"));
+  const filtered = base.filter((c) => (c.q + c.id + c.cat).toLowerCase().includes(q.toLowerCase()));
+  const allPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id));
+  const toggleAll = () => setPicked((prev) => { const n = new Set(prev); if (allPicked) filtered.forEach((c) => n.delete(c.id)); else filtered.forEach((c) => n.add(c.id)); return n; });
+  const approvedPicked = cases.filter((c) => picked.has(c.id) && (c.status || "승인") === "승인").length;
+  const save = () => { updatePlan(data.planId, { caseIds: [...picked], tc: picked.size }); toast(plan.name + " — 케이스 " + picked.size + "건 반영", "ok"); close(); };
+  return (
+    <div className="space-y-3">
+      <div className="text-sm text-slate-400">이 평가 계획에 포함할 테스트케이스를 선택합니다. <span className="text-slate-500">실행 시에는 이 중 <span className="text-slate-300">승인</span> 상태 케이스만 평가됩니다.</span></div>
+      <div className="flex items-center gap-2">
+        <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="발화·ID·카테고리 검색" className="flex-1" />
+        <label className="flex items-center gap-1.5 text-xs text-slate-400 whitespace-nowrap cursor-pointer"><input type="checkbox" checked={onlyApproved} onChange={() => setOnlyApproved(!onlyApproved)} className="accent-teal-500" />승인만</label>
+      </div>
+      <Card className="overflow-hidden">
+        <div className="max-h-80 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-slate-500 text-left border-b border-slate-800 whitespace-nowrap"><th className="py-2 pl-4 pr-2 font-medium"><input type="checkbox" checked={allPicked} onChange={toggleAll} className="accent-teal-500" /></th><th className="font-medium">ID</th><th className="font-medium w-full">발화</th><th className="font-medium">카테고리</th><th className="font-medium">우선</th><th className="font-medium pr-4">상태</th></tr></thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id} onClick={() => toggle(c.id)} className={"border-b border-slate-800 cursor-pointer hover:bg-slate-800 whitespace-nowrap " + (picked.has(c.id) ? "bg-slate-800" : "") + " text-slate-300"}>
+                  <td className="pl-4 pr-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(c.id)} onChange={() => toggle(c.id)} className="accent-teal-500" /></td>
+                  <td className="py-2.5 pr-3 font-mono text-teal-400">{c.id}</td>
+                  <td className="pr-3 text-slate-200"><div className="max-w-md truncate">{c.q}</div></td>
+                  <td className="pr-3">{c.cat}</td>
+                  <td className="pr-3"><Badge kind={priKind[c.pri]}>{c.pri}</Badge></td>
+                  <td className="pr-4"><Badge kind={stKind[c.status] || "active"}>{c.status || "승인"}</Badge></td>
+                </tr>
+              ))}
+              {filtered.length === 0 && <tr><td colSpan={6}><EmptyState icon={Search} title="검색 결과가 없습니다" /></td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <div className="flex items-center justify-between pt-1">
+        <div className="text-xs text-slate-400">선택 <span className="text-slate-100 font-semibold">{picked.size}</span>건 <span className="text-slate-600">·</span> 실행 대상(승인) <span className="text-teal-400 font-semibold">{approvedPicked}</span>건</div>
+        <div className="flex gap-2"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={CheckCircle2} onClick={save}>반영</Btn></div>
+      </div>
+    </div>
+  );
+}
+
 export function Cases() {
   const { cases, categories, openModal, toast, setCaseStatus } = useApp();
   const [open, setOpen] = useState(null);
@@ -1311,7 +1361,7 @@ export function Compare() {
   );
 }
 export function Defects() {
-  const { defects, openModal, toast, domain, goto } = useApp();
+  const { defects, openModal, toast, domain, goto, setDomain } = useApp();
   const sev = KIND.severity;
   const st = KIND.issueStatus;
   const domKind = KIND.domain;
@@ -1331,7 +1381,7 @@ export function Defects() {
           {list.map((d) => (
             <tr key={d.key} className="border-b border-slate-800 hover:bg-slate-800">
               <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td><td><Badge kind={st[d.status]}>{d.status}</Badge></td>
-              <td className="pr-4"><div className="flex items-center gap-2"><button onClick={() => { toast(d.tc + " 재검증 — 평가 실행으로 이동", "info"); goto("run"); }} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button></div></td>
+              <td className="pr-4"><div className="flex items-center gap-2"><button onClick={() => { const dm = d.domain || "LQA"; if (dm === "NQA") { toast("비기능 QA는 준비 중입니다 (확장 예정)", "info"); return; } const target = dm === "FQA" ? "fqa-run" : "run"; if (dm !== domain) setDomain(dm); toast(d.tc + " 재검증 — " + (dm === "FQA" ? "기능 실행" : "평가 실행") + "으로 이동", "info"); goto(target); }} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button></div></td>
             </tr>
           ))}
           {list.length === 0 && <tr><td colSpan={7}><EmptyState icon={Bug} title="해당 영역의 결함이 없습니다" hint="평가 실패 시 자동/수동으로 이슈를 등록하세요" /></td></tr>}
@@ -1394,10 +1444,11 @@ export function Report() {
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-4 items-start">
       <Card className="p-5">
-        <div className="text-sm font-semibold text-slate-200 mb-1">발송 조건</div>
+        <div className="text-sm font-semibold text-slate-200 mb-1">알림 발송 조건</div>
         <div className="text-xs text-slate-500 mb-3">위 채널(Slack · Teams · Email)에 어떤 경우 알림을 보낼지 정합니다.</div>
-        <div className="grid grid-cols-2 gap-5">
+        <div className="space-y-3">
           <Field label="알림 발송 시점">
             <div className="space-y-2 text-sm text-slate-300">
               {[["always", "항상 발송"], ["fail", "실패/경고가 있을 때만"], ["drop", "점수 하락(회귀) 시에만"]].map(([k, lab]) => (
@@ -1413,7 +1464,7 @@ export function Report() {
       </Card>
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Bug size={16} className="text-amber-400" />Jira 연동 <span className="text-xs font-normal text-slate-500">· 결함 자동 등록</span></div><Badge kind="active">연결됨</Badge></div>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-300">
+        <div className="grid grid-cols-1 gap-y-2 text-sm text-slate-300">
           <div className="flex justify-between"><span className="text-slate-500">배포 유형</span><span>Jira Cloud</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Base URL</span><span className="font-mono text-xs text-slate-400">skt.atlassian.net</span></div>
           <div className="flex justify-between"><span className="text-slate-500">프로젝트 / 이슈유형</span><span>TWORLD · Bug</span></div>
@@ -1421,6 +1472,7 @@ export function Report() {
         </div>
         <Btn icon={SlidersHorizontal} className="mt-3" onClick={() => openModal("jiraConfig")}>연동 설정</Btn>
       </Card>
+      </div>
 
       <Card>
         <div className="text-sm font-semibold text-slate-200 px-4 py-3 border-b border-slate-800">최근 발송 / 리포트 이력</div>
@@ -1470,7 +1522,7 @@ export function Settings() {
           {prompts.map((p) => (
             <div key={p.name} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2.5">
               <div><div className="text-sm text-slate-100">{p.name} <span className="text-xs text-slate-500">v{p.ver}</span> {p.active && <Badge kind="active">활성</Badge>}</div><div className="text-xs text-slate-500">지표: {(p.rubric || []).join(", ")}</div><div className="text-xs text-slate-500">변수: {(p.vars || []).map((v) => "{{" + v + "}}").join(" ")}</div></div>
-              <button onClick={() => toast(p.name + " 편집 (데모)", "info")} className="text-xs text-slate-400 hover:text-teal-400">편집</button>
+              <button onClick={() => openModal("addPrompt", { name: p.name, system: p.system, rubric: p.rubric, vars: p.vars, ver: p.ver })} className="text-xs text-slate-400 hover:text-teal-400">편집</button>
             </div>
           ))}
         </div>

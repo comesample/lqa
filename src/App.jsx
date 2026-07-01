@@ -21,7 +21,7 @@ import { ConsoleShell, NewTenantForm, AssignAdminForm, NewModelForm } from "./co
 import { SECTIONS, NAV, TREND, METRICS, INIT_CASES, APPROVED_INIT, mkResults, INIT_PLANS, INIT_RUNS, INIT_JUDGES, PROMPT_VARS, INIT_PROMPTS, INIT_DEFECTS, INIT_CHATBOTS } from "./lqa/data.js";
 import { DOMAINS, COMMON_SECTIONS, MEMBERS_ITEM, INIT_TENANTS, INIT_USERS, INIT_MODELS } from "./common/data.js";
 import { FQA_SECTIONS } from "./fqa/data.js";
-import { NewPlanForm, AiGenForm, NewCaseForm, JiraForm, AddPromptForm, JiraConfigForm, AddChatbotForm, Targets, Dashboard, Plans, RunHistory, CategoryManager, ImportCasesForm, Cases, Run, Compare, Defects, Report, Settings, InviteMemberForm, MembersView } from "./lqa/screens.jsx";
+import { NewPlanForm, AiGenForm, NewCaseForm, JiraForm, AddPromptForm, PlanCasesForm, JiraConfigForm, AddChatbotForm, Targets, Dashboard, Plans, RunHistory, CategoryManager, ImportCasesForm, Cases, Run, Compare, Defects, Report, Settings, InviteMemberForm, MembersView } from "./lqa/screens.jsx";
 
 /* ============================ context ============================ */
 
@@ -70,10 +70,10 @@ export default function App() {
     runIntent, setRunIntent,
     defects, addDefect: (d) => setDefects((x) => [d, ...x]),
     judges, toggleJudge: (name) => setJudges((x) => x.map((j) => (j.name === name ? { ...j, enabled: !j.enabled } : j))),
-    prompts, addPrompt: (p) => setPrompts((x) => [...x, p]),
+    prompts, addPrompt: (p) => setPrompts((x) => [...x, p]), updatePrompt: (name, patch) => setPrompts((x) => x.map((pp) => (pp.name === name ? { ...pp, ...patch } : pp))),
     chatbots, addChatbot: (c) => setChatbots((x) => [...x, c]),
     setChatbotStatus: (id, status) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, status } : c))),
-    role, setRole, space, setSpace, domain, tenants, tenantId, setTenantId,
+    role, setRole, space, setSpace, domain, setDomain, tenants, tenantId, setTenantId,
     addTenant: (t) => setTenants((x) => [...x, t]),
     setTenantStatus: (id, status) => setTenants((x) => x.map((t) => (t.id === id ? { ...t, status } : t))),
     setTenantAdmin: (id, admin) => setTenants((x) => x.map((t) => (t.id === id ? { ...t, admin } : t))),
@@ -179,10 +179,11 @@ export default function App() {
             newCase: ["테스트케이스 등록", <NewCaseForm close={close} />],
             catMgr: ["카테고리 관리", <CategoryManager close={close} />],
             importCases: ["Excel 일괄 업로드", <ImportCasesForm close={close} />],
-            jira: ["결함 등록 (Jira)", <JiraForm close={close} data={modal.data} />],
-            addPrompt: ["Prompt 템플릿 추가", <AddPromptForm close={close} />],
+            jira: ["결함 등록 (Jira)", <JiraForm close={close} data={modal.data} />, true],
+            addPrompt: ["Prompt 템플릿 " + (modal.data ? "편집" : "추가"), <AddPromptForm close={close} data={modal.data} />],
+            planCases: ["평가 계획 케이스 선택", <PlanCasesForm close={close} data={modal.data} />, true],
             addChatbot: ["챗봇 연결 추가", <AddChatbotForm close={close} />, true],
-            jiraConfig: ["Jira 연동 설정", <JiraConfigForm close={close} />],
+            jiraConfig: ["Jira 연동 설정", <JiraConfigForm close={close} />, true],
             newTenant: ["조직(테넌트) 추가", <NewTenantForm close={close} />],
             assignAdmin: ["조직 관리자 지정", <AssignAdminForm close={close} data={modal.data} />],
             inviteMember: ["멤버 초대", <InviteMemberForm close={close} />],

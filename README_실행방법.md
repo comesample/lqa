@@ -12,7 +12,7 @@
 ## 2. 의존성 설치 + 실행
 PowerShell 또는 Windows Terminal에서 이 폴더로 이동 후:
 ```powershell
-cd "C:\Users\beaut\OneDrive\창경\02.회사자료\07.COMES\02. 업무\09. AI기반 테스트 자동화 구축\lqa-demo"
+cd "C:\Users\beaut\OneDrive\창경\02.회사자료\07.COMES\02. 업무\09. AI기반 테스트 자동화 구축\autoqa-demo"
 npm install
 npm run dev
 ```
@@ -32,5 +32,5 @@ npm run preview    # 빌드 결과 미리보기
 
 ## 참고
 - OneDrive 동기화 폴더라 node_modules가 동기화될 수 있습니다.
-  거슬리면 프로젝트를 OneDrive 밖(예: C:\dev\lqa-demo)으로 옮겨도 됩니다.
+  거슬리면 프로젝트를 OneDrive 밖(예: C:\dev\autoqa-demo)으로 옮겨도 됩니다.
 - Node는 18 이상 권장(20 LTS 권장).
