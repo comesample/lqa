@@ -7,8 +7,8 @@ import { useState } from "react";
 import { ArrowLeft, Building2, Cpu, CreditCard, Plus, ScrollText, Search, Shield, UserCog, Users } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { useApp } from "./context.js";
-import { C } from "./theme.js";
-import { Badge, Card, Btn, Field, Input, Select } from "./ui.jsx";
+import { C, KIND } from "./theme.js";
+import { Badge, Card, Btn, Field, Input, Select, PageToolbar, EmptyState, SearchInput } from "./ui.jsx";
 
 const INIT_USAGE = [
   { tenant: "t1", evals: 142, calls: 18400, tokensM: 12.4, cost: 1840000 },
@@ -30,11 +30,11 @@ const INIT_AUDIT = [
 function UsersConsole() {
   const { users, tenants, setUserStatus, removeUser, toast } = useApp();
   const tName = (id) => (tenants.find((t) => t.id === id) || {}).name || "-";
-  const stK = { "활성": "pass", "대기": "warn", "차단": "fail" };
+  const stK = KIND.userStatus;
   const stat = [["전체", users.length, "text-slate-100"], ["활성", users.filter((u) => u.status === "활성").length, "text-emerald-400"], ["승인 대기", users.filter((u) => u.status === "대기").length, "text-amber-400"], ["차단", users.filter((u) => u.status === "차단").length, "text-red-400"]];
   return (
     <div className="space-y-4">
-      <div className="text-sm text-slate-400">전 테넌트의 사용자를 횡단 관리합니다. 서비스 사용 승인 · 거부 · 차단을 처리합니다.</div>
+      <PageToolbar desc="전 테넌트 사용자 횡단 관리 · 승인 · 거부 · 차단" />
       <div className="grid grid-cols-4 gap-3">
         {stat.map((x) => (<Card key={x[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + x[2]}>{x[1]}</div><div className="text-xs text-slate-500 mt-0.5">{x[0]}</div></Card>))}
       </div>
@@ -79,10 +79,9 @@ function UsageConsole() {
   const stat = [["평가 수행", total.evals.toLocaleString(), "text-slate-100"], ["LLM 호출", total.calls.toLocaleString(), "text-slate-100"], ["토큰", total.tokensM.toFixed(1) + "M", "text-slate-100"], ["총 비용", won(total.cost), "text-teal-400"]];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-400">테넌트별 AI 모델 사용량과 과금액을 집계합니다. (월별)</div>
+      <PageToolbar desc="테넌트별 AI 모델 사용량·과금액 집계 (월별)">
         <select className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-300 text-xs"><option>2026-06</option><option>2026-05</option><option>2026-04</option></select>
-      </div>
+      </PageToolbar>
       <div className="grid grid-cols-4 gap-3">{stat.map((x) => (<Card key={x[0]} className="p-4"><div className="text-xs text-slate-400">{x[0]}</div><div className={"mt-1 text-2xl font-bold " + x[2]}>{x[1]}</div></Card>))}</div>
       <Card className="p-4">
         <div className="text-sm font-semibold text-slate-200 mb-3">테넌트별 비용 (만원)</div>
@@ -121,10 +120,9 @@ function AuditConsole() {
   const aK = (act) => (act.includes("정지") || act.includes("차단") ? "fail" : act.includes("등록") || act.includes("생성") || act.includes("초대") ? "info" : act.includes("권한") || act.includes("변경") ? "warn" : "active");
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-400">전 테넌트의 주요 행위 이력입니다. (생성 · 변경 · 권한 · 차단 · 실행)</div>
-        <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5"><Search size={14} className="text-slate-500" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="행위 · 대상 검색" className="bg-transparent text-sm text-slate-200 outline-none" /></div>
-      </div>
+      <PageToolbar desc="전 테넌트 주요 행위 이력 (생성 · 변경 · 권한 · 차단 · 실행)">
+        <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="행위 · 대상 검색" className="w-64" />
+      </PageToolbar>
       <Card>
         <table className="w-full text-sm">
           <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">시각</th><th className="font-medium">행위자</th><th className="font-medium">테넌트</th><th className="font-medium">행위</th><th className="font-medium">대상</th></tr></thead>
@@ -138,7 +136,7 @@ function AuditConsole() {
                 <td className="text-slate-300">{a.target}</td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-slate-500">검색 결과가 없습니다.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={5}><EmptyState icon={ScrollText} title="검색 결과가 없습니다" /></td></tr>}
           </tbody>
         </table>
       </Card>
@@ -180,10 +178,9 @@ function ModelsConsole() {
   const stat = [["전체 모델", models.length, "text-slate-100"], ["활성", models.filter((m) => m.status === "활성").length, "text-emerald-400"], ["비활성", models.filter((m) => m.status === "비활성").length, "text-slate-400"]];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-400">플랫폼 전역 AI 모델 카탈로그입니다. 여기 등록된 모델만 각 조직의 Judge로 사용할 수 있습니다.</div>
+      <PageToolbar desc="플랫폼 전역 AI 모델 카탈로그 · 등록 모델만 조직 Judge로 사용 가능">
         <Btn kind="primary" icon={Plus} onClick={() => openModal("newModel")}>모델 등록</Btn>
-      </div>
+      </PageToolbar>
       <div className="grid grid-cols-3 gap-3">{stat.map((x) => (<Card key={x[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + x[2]}>{x[1]}</div><div className="text-xs text-slate-500 mt-0.5">{x[0]}</div></Card>))}</div>
       <Card>
         <table className="w-full text-sm">
@@ -196,7 +193,7 @@ function ModelsConsole() {
                 <td className="font-mono text-xs text-slate-400">{m.model}</td>
                 <td>{m.price}</td>
                 <td className="text-slate-500 text-xs">{m.created}</td>
-                <td><Badge kind={m.status === "활성" ? "pass" : "draft"}>{m.status}</Badge></td>
+                <td><Badge kind={KIND.modelStatus[m.status]}>{m.status}</Badge></td>
                 <td className="pr-4"><button onClick={() => { const ns = m.status === "활성" ? "비활성" : "활성"; setModelStatus(m.id, ns); toast(m.name + " " + ns, "info"); }} className="text-xs rounded-lg px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">{m.status === "활성" ? "비활성화" : "활성화"}</button></td>
               </tr>
             ))}
@@ -211,17 +208,23 @@ export function NewTenantForm({ close }) {
   const { addTenant, toast } = useApp();
   const [name, setName] = useState("");
   const [plan, setPlan] = useState("Team");
-  const [admin, setAdmin] = useState("");
+  const [adminName, setAdminName] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
   const submit = () => {
     if (!name.trim()) { toast("조직명을 입력하세요", "warn"); return; }
-    addTenant({ id: "t" + Date.now(), name, plan, users: admin ? 1 : 0, status: "활성", admin: admin || "미지정", created: new Date().toISOString().slice(0, 10) });
+    if (adminEmail && !adminEmail.includes("@")) { toast("올바른 이메일 형식이 아닙니다", "warn"); return; }
+    const admin = adminName.trim() ? adminName.trim() + (adminEmail.trim() ? " (" + adminEmail.trim() + ")" : "") : "미지정";
+    addTenant({ id: "t" + Date.now(), name, plan, users: adminName.trim() ? 1 : 0, status: "활성", admin, created: new Date().toISOString().slice(0, 10) });
     toast("조직 '" + name + "' 추가됨", "ok"); close();
   };
   return (
     <div className="space-y-4">
       <Field label="조직명"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: KT" /></Field>
       <Field label="플랜"><Select value={plan} onChange={(e) => setPlan(e.target.value)}><option>Trial</option><option>Team</option><option>Enterprise</option></Select></Field>
-      <Field label="조직 관리자 (이름 · 이메일)"><Input value={admin} onChange={(e) => setAdmin(e.target.value)} placeholder="예: 홍길동 (gildong@kt.com)" /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="조직 관리자 이름"><Input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="예: 홍길동" /></Field>
+        <Field label="관리자 이메일"><Input value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="예: gildong@kt.com" /></Field>
+      </div>
       <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">조직 관리자에게 초대 메일이 발송되며, 관리자가 멤버를 초대·권한을 부여합니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>추가</Btn></div>
     </div>
@@ -230,15 +233,23 @@ export function NewTenantForm({ close }) {
 
 export function AssignAdminForm({ close, data }) {
   const { setTenantAdmin, toast } = useApp();
-  const [admin, setAdmin] = useState(data && data.admin !== "미지정" ? data.admin : "");
+  const init = (data && data.admin && data.admin !== "미지정") ? data.admin : "";
+  const parsed = init.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  const [adminName, setAdminName] = useState(parsed ? parsed[1] : init);
+  const [adminEmail, setAdminEmail] = useState(parsed ? parsed[2] : "");
   const submit = () => {
-    if (!admin.trim()) { toast("관리자 정보를 입력하세요", "warn"); return; }
+    if (!adminName.trim()) { toast("관리자 이름을 입력하세요", "warn"); return; }
+    if (adminEmail && !adminEmail.includes("@")) { toast("올바른 이메일 형식이 아닙니다", "warn"); return; }
+    const admin = adminName.trim() + (adminEmail.trim() ? " (" + adminEmail.trim() + ")" : "");
     setTenantAdmin(data.id, admin); toast(data.name + " 조직 관리자 지정됨", "ok"); close();
   };
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-slate-800 p-3 text-sm text-slate-300">대상 조직 <span className="text-teal-400 font-medium">{data && data.name}</span></div>
-      <Field label="조직 관리자 (이름 · 이메일)"><Input value={admin} onChange={(e) => setAdmin(e.target.value)} placeholder="예: 홍길동 (gildong@company.com)" /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="조직 관리자 이름"><Input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="예: 홍길동" /></Field>
+        <Field label="관리자 이메일"><Input value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="예: gildong@company.com" /></Field>
+      </div>
       <div className="text-xs text-slate-500">지정된 관리자는 해당 조직 내에서 사용자 초대 · 메뉴별 권한 부여 권한을 갖습니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={UserCog} onClick={submit}>지정</Btn></div>
     </div>
@@ -250,10 +261,9 @@ function TenantsConsole() {
   const stat = [["전체 조직", tenants.length, "text-slate-100"], ["활성", tenants.filter((t) => t.status === "활성").length, "text-emerald-400"], ["정지", tenants.filter((t) => t.status === "정지").length, "text-red-400"]];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-400">서비스에 등록된 조직(테넌트)을 추가·관리하고 조직 관리자를 지정합니다.</div>
+      <PageToolbar desc="서비스 조직(테넌트) 추가·관리 및 조직 관리자 지정">
         <Btn kind="primary" icon={Plus} onClick={() => openModal("newTenant")}>조직 추가</Btn>
-      </div>
+      </PageToolbar>
       <div className="grid grid-cols-3 gap-3">
         {stat.map((x) => (<Card key={x[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + x[2]}>{x[1]}</div><div className="text-xs text-slate-500 mt-0.5">{x[0]}</div></Card>))}
       </div>
@@ -264,11 +274,11 @@ function TenantsConsole() {
             {tenants.map((t) => (
               <tr key={t.id} className="border-b border-slate-800 hover:bg-slate-800">
                 <td className="py-3 px-4 font-medium text-slate-100">{t.name}</td>
-                <td><Badge kind={t.plan === "Enterprise" ? "active" : t.plan === "Team" ? "info" : "draft"}>{t.plan}</Badge></td>
+                <td><Badge kind={KIND.plan[t.plan]}>{t.plan}</Badge></td>
                 <td>{t.users}</td>
                 <td className="text-slate-300">{t.admin}</td>
                 <td className="text-slate-500 text-xs">{t.created}</td>
-                <td><Badge kind={t.status === "활성" ? "pass" : "fail"}>{t.status}</Badge></td>
+                <td><Badge kind={KIND.tenantStatus[t.status]}>{t.status}</Badge></td>
                 <td className="pr-4"><div className="flex items-center gap-2">
                   <button onClick={() => openModal("assignAdmin", { id: t.id, name: t.name, admin: t.admin })} className="text-slate-400 hover:text-teal-400" title="조직 관리자 지정"><UserCog size={15} /></button>
                   <button onClick={() => { const ns = t.status === "활성" ? "정지" : "활성"; setTenantStatus(t.id, ns); toast(t.name + " " + ns + " 처리", ns === "활성" ? "ok" : "warn"); }} className="text-xs rounded-lg px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">{t.status === "활성" ? "정지" : "활성화"}</button>

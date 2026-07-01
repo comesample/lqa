@@ -2,7 +2,7 @@
 // LQA 시드 데이터 · 네비게이션/지표 설정 (단일 출처)
 // App.jsx에서 분리(2026-07-01). App·LQA 화면이 import.
 // ============================================================
-import { Bug, ClipboardList, Code2, FileText, GitCompare, History, Layers, LayoutDashboard, Megaphone, MessageSquare, Play, Plug, SlidersHorizontal, UserCog } from "lucide-react";
+import { ClipboardList, GitCompare, History, LayoutDashboard, MessageSquare, Play, Plug, SlidersHorizontal } from "lucide-react";
 
 export const SECTIONS = [
   { group: "모니터링", items: [
@@ -21,28 +21,6 @@ export const SECTIONS = [
   ] },
 ];
 export const NAV = SECTIONS.flatMap((s) => s.items);
-export const MEMBERS_ITEM = { id: "members", label: "조직 관리", icon: UserCog };
-export const FQA_SECTIONS = [
-  { group: "모니터링", items: [
-    { id: "fqa-dashboard", label: "대시보드", icon: LayoutDashboard },
-  ] },
-  { group: "준비 · 설계", items: [
-    { id: "fqa-targets", label: "대상·환경", icon: Plug },
-    { id: "fqa-suites", label: "테스트 스위트", icon: Layers },
-    { id: "fqa-cases", label: "테스트케이스", icon: Code2 },
-  ] },
-  { group: "실행 · 분석", items: [
-    { id: "fqa-plan", label: "실행 계획", icon: ClipboardList },
-    { id: "fqa-run", label: "실행", icon: Play },
-    { id: "fqa-result", label: "결과", icon: FileText },
-  ] },
-];
-export const COMMON_SECTIONS = [
-  { group: "공통", items: [
-    { id: "defects", label: "결함", icon: Bug },
-    { id: "report", label: "리포트 · 알림", icon: Megaphone },
-  ] },
-];
 
 export const TREND = [
   { d: "6/04", score: 83.0, pass: 64 }, { d: "6/05", score: 84.1, pass: 67 },
@@ -155,24 +133,4 @@ export const INIT_CHATBOTS = [
   { id: "cb2", name: "T월드 상담봇", env: "스테이징", channel: "Web 대화", endpoint: "https://stg.tworld.co.kr/chat", auth: "세션 쿠키", status: "연결됨", last: "5분 전" },
   { id: "cb3", name: "T전화 AI상담", env: "운영", channel: "REST API", endpoint: "https://api.tphone.skt/assist", auth: "API Key", status: "미확인", last: "-" },
   { id: "cb4", name: "고객센터 챗봇", env: "개발", channel: "Mobile 앱", endpoint: "appium://com.skt.tworld/chat", auth: "OAuth 2.0", status: "오류", last: "1시간 전" },
-];
-export const INIT_TENANTS = [
-  { id: "t1", name: "SK텔레콤", plan: "Enterprise", users: 12, status: "활성", admin: "김지훈 (jihoon.kim@skt.com)", created: "2026-01-12" },
-  { id: "t2", name: "T멤버십", plan: "Team", users: 5, status: "활성", admin: "박지영 (jiyoung.park@skt.com)", created: "2026-03-04" },
-  { id: "t3", name: "데모 조직", plan: "Trial", users: 2, status: "정지", admin: "미지정", created: "2026-05-20" },
-];
-export const DOMAINS = [{ id: "LQA", label: "챗봇", ready: true }, { id: "FQA", label: "기능", ready: true }, { id: "NQA", label: "비기능", ready: false }];
-export const INIT_USERS = [
-  { id: "u1", name: "김지훈", email: "jihoon.kim@skt.com", tenant: "t1", role: "조직관리자", status: "활성", last: "방금 전" },
-  { id: "u2", name: "이민준", email: "minjun.lee@skt.com", tenant: "t1", role: "QA 엔지니어", status: "활성", last: "오늘 09:12" },
-  { id: "u3", name: "최서연", email: "seoyeon.choi@skt.com", tenant: "t1", role: "QA 엔지니어", status: "활성", last: "어제 17:44" },
-  { id: "u4", name: "박지영", email: "jiyoung.park@skt.com", tenant: "t2", role: "조직관리자", status: "활성", last: "2시간 전" },
-  { id: "u5", name: "윤수빈", email: "subin.yoon@partner.com", tenant: "t1", role: "Viewer", status: "대기", last: "미로그인" },
-  { id: "u6", name: "오현태", email: "hyuntae.oh@demo.com", tenant: "t3", role: "QA 엔지니어", status: "차단", last: "2026-05-12" },
-];
-export const INIT_MODELS = [
-  { id: "m1", name: "Claude (sonnet-4-6)", provider: "Anthropic", model: "claude-sonnet-4-6", price: "$3 / 1M", status: "활성", created: "2026-01-10" },
-  { id: "m2", name: "GPT-4o", provider: "OpenAI", model: "gpt-4o-2024-11", price: "$5 / 1M", status: "활성", created: "2026-01-10" },
-  { id: "m3", name: "Gemini 2.0 Flash", provider: "Google", model: "gemini-2.0-flash", price: "$0.3 / 1M", status: "비활성", created: "2026-02-15" },
-  { id: "m4", name: "사내 LLM (에이닷)", provider: "Internal", model: "adot-v2", price: "사내", status: "활성", created: "2026-04-01" },
 ];
