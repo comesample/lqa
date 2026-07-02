@@ -17,7 +17,7 @@ export const SECTIONS = [
   { group: "실행 · 분석", items: [
     { id: "run", label: "평가 실행", icon: Play },
     { id: "history", label: "실행 이력", icon: History },
-    { id: "compare", label: "결과 비교", icon: GitCompare },
+    { id: "compare", label: "회귀 비교", icon: GitCompare },
   ] },
 ];
 export const NAV = SECTIONS.flatMap((s) => s.items);

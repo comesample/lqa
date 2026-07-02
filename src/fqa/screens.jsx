@@ -1720,8 +1720,8 @@ export function FqaAiGenScreen({ onDone }) {
                   ))}
                 </div>
                 <div className="flex items-center justify-end gap-2 border-t border-slate-800 px-4 py-3">
-                  <Btn icon={Download} onClick={() => commit("건 내보내기 완료")}>내보내기</Btn>
-                  <Btn kind="primary" icon={Plus} onClick={() => commit("건 검토중으로 등록")}>검토중으로 등록</Btn>
+                  <Btn icon={Download} disabled={!picked.size} onClick={() => commit("건 내보내기 완료")}>내보내기</Btn>
+                  <Btn kind="primary" icon={Plus} disabled={!picked.size} onClick={() => commit("건 검토중으로 등록")}>검토중으로 등록</Btn>
                 </div>
               </>
             )}

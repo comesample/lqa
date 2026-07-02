@@ -832,7 +832,6 @@ export function Plans() {
     updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert }, judgeList, judges: judgeList.length });
     toast(cur.name + " 설정이 저장되었습니다", "ok");
   };
-  const runNow = () => { setRunIntent({ type: "start", planId: cur.id }); goto("run"); };
   return (
     <div className="space-y-4">
       <PageToolbar desc="평가 계획 구성 — Judge·가중치·프롬프트·스케줄" />
@@ -856,7 +855,7 @@ export function Plans() {
       <Card className="col-span-2 p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="text-base font-semibold text-slate-100">상세 설정 — {cur.name}</div>
-          <div className="flex gap-2"><Btn icon={RefreshCw} onClick={saveCfg}>설정 저장</Btn><Btn kind="primary" icon={Play} onClick={runNow}>평가 실행</Btn></div>
+          <div className="flex gap-2"><Btn kind="primary" icon={RefreshCw} onClick={saveCfg}>설정 저장</Btn></div>
         </div>
         <div className="grid grid-cols-2 gap-5">
           <div className="space-y-4">
@@ -909,9 +908,7 @@ export function RunHistory() {
   const list = runs.filter((r) => (planF === "전체" || r.planName === planF) && (trigF === "전체" || r.trigger === trigF) && (stF === "전체" || r.status === stF));
   return (
     <div className="space-y-4">
-      <PageToolbar desc="평가 실행 이력 · 계획별 결과와 회귀 추적">
-        <Btn kind="primary" icon={Play} onClick={() => goto("plans")}>평가 실행</Btn>
-      </PageToolbar>
+      <PageToolbar desc="평가 실행 이력 · 계획별 결과와 회귀 추적 · 행에서 상세 결과 열람" />
       <div className="flex items-center gap-2">
         <div style={{ width: 210 }}><Select value={planF} onChange={(e) => setPlanF(e.target.value)}><option>전체</option>{[...new Set(runs.map((r) => r.planName))].map((n) => <option key={n}>{n}</option>)}</Select></div>
         <div style={{ width: 128 }}><Select value={trigF} onChange={(e) => setTrigF(e.target.value)}><option>전체</option><option>수동</option><option>스케줄</option><option>이벤트</option></Select></div>
@@ -1183,6 +1180,7 @@ export function Cases() {
 }
 export function Run() {
   const { cases, plans, runs, defects, addDefect, addRun, updateRun, updatePlan, toast, notify, openModal, runIntent, setRunIntent, goto } = useApp();
+  const runningRuns = runs.filter((r) => r.status === "진행중");
   const approved = cases.filter((c) => c.status === "승인");
   const [planId, setPlanId] = useState(plans[0] && plans[0].id);
   const [mode, setMode] = useState("idle");
@@ -1265,6 +1263,23 @@ export function Run() {
         )}
         {activeRun && <div className="mt-2 text-xs text-slate-500">실행 <span className="font-mono text-teal-400">{activeRun.id}</span> · 트리거 {activeRun.trigger} · {activeRun.startedAt} · 스냅샷 {activeRun.snapshot.model} / 프롬프트 {activeRun.snapshot.promptVer}</div>}
       </Card>
+
+      {runningRuns.length > 0 && (
+        <Card className="p-3">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-300"><span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />진행 중 {runningRuns.length}건 <span className="font-normal text-slate-500">· 스케줄·이벤트 포함 무인 실행</span></span>
+            <button onClick={() => goto("history")} className="text-xs text-teal-400">실행 이력에서 보기</button>
+          </div>
+          <div className="mt-2 space-y-1.5">
+            {runningRuns.map((r) => (
+              <div key={r.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2 text-xs">
+                <div><span className="font-mono text-teal-400">{r.id}</span> <span className="text-slate-200">{r.planName}</span></div>
+                <div className="flex items-center gap-2 text-slate-400"><Badge kind="info">{r.trigger}</Badge><span>{r.startedAt}</span></div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {!activeRun && mode !== "running" && (
         <Card className="p-10"><EmptyState icon={Play} title="평가를 실행하면 결과가 여기에 표시됩니다" hint="계획을 선택하고 “평가 실행”을 누르세요 · 실행 이력에 자동 적재" /></Card>
@@ -1663,7 +1678,7 @@ export function MembersView() {
   const members = users.filter((u) => u.tenant === tenantId);
   const tName = (tenants.find((t) => t.id === tenantId) || {}).name;
   const MENU_GROUPS = [
-    { id: "LQA", label: "챗봇 평가", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge·Prompt", "평가 계획", "평가 실행", "실행 이력", "결과 비교"] },
+    { id: "LQA", label: "챗봇 평가", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge·Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
     { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "결과"] },
     { id: "COM", label: "공통", menus: ["결함", "리포트·알림"] },
   ];
