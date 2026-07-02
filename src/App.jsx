@@ -7,7 +7,7 @@ import {
   FileText, Calendar, RefreshCw, Trash2, ExternalLink, Plug, Link2, Filter,
   Building2, Users, Cpu, CreditCard, ScrollText, Shield, ArrowLeft, UserCog, Tag, Upload, History, Brain, Code2, Video, Layers
 } from "lucide-react";
-import { FqaRecordScreen, FqaExcelScreen, FqaMcpScreen, FqaEditorScreen, FqaSuiteScreen, FqaRunScreen, FqaResultScreen, FqaDashboardScreen, FqaCasesScreen, FqaTargetScreen, FqaPlanScreen } from "./fqa/screens.jsx";
+import { FqaRecordScreen, FqaExcelScreen, FqaMcpScreen, FqaEditorScreen, FqaSuiteScreen, FqaRunScreen, FqaHistoryScreen, FqaResultScreen, FqaDashboardScreen, FqaCasesScreen, FqaTargetScreen, FqaPlanScreen } from "./fqa/screens.jsx";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
@@ -20,7 +20,7 @@ import { ConsoleShell, NewTenantForm, AssignAdminForm, NewModelForm } from "./co
 /* ============================ static data ============================ */
 import { SECTIONS, NAV, TREND, METRICS, INIT_CASES, APPROVED_INIT, mkResults, INIT_PLANS, INIT_RUNS, INIT_JUDGES, PROMPT_VARS, INIT_PROMPTS, INIT_DEFECTS, INIT_CHATBOTS } from "./lqa/data.js";
 import { DOMAINS, COMMON_SECTIONS, MEMBERS_ITEM, INIT_TENANTS, INIT_USERS, INIT_MODELS } from "./common/data.js";
-import { FQA_SECTIONS } from "./fqa/data.js";
+import { FQA_SECTIONS, INIT_FQA_CASES, INIT_FQA_SUITES, INIT_FQA_SYSTEMS, INIT_FQA_RUNS, INIT_FQA_PLANS, FQA_HIDDEN } from "./fqa/data.js";
 import { NewPlanForm, AiGenForm, NewCaseForm, JiraForm, AddPromptForm, PlanCasesForm, JiraConfigForm, AddChatbotForm, Targets, Dashboard, Plans, RunHistory, CategoryManager, ImportCasesForm, Cases, Run, Compare, Defects, Report, Settings, InviteMemberForm, MembersView } from "./lqa/screens.jsx";
 
 /* ============================ context ============================ */
@@ -42,6 +42,15 @@ export default function App() {
   const [runs, setRuns] = useState(INIT_RUNS);
   const [runIntent, setRunIntent] = useState(null);
   const [defects, setDefects] = useState(INIT_DEFECTS);
+  const [fqaCases, setFqaCases] = useState(INIT_FQA_CASES);
+  const [fqaSuites, setFqaSuites] = useState(INIT_FQA_SUITES);
+  const [fqaSystems, setFqaSystems] = useState(INIT_FQA_SYSTEMS);
+  const [fqaRuns, setFqaRuns] = useState(INIT_FQA_RUNS);
+  const [fqaPlans, setFqaPlans] = useState(INIT_FQA_PLANS);
+  const [fqaResultRun, setFqaResultRun] = useState("FRUN-502");
+  const [runnerConnected, setRunnerConnected] = useState(true);
+  const [fqaEditTc, setFqaEditTc] = useState(null);
+  const [fqaResultFrom, setFqaResultFrom] = useState("fqa-history");
   const [judges, setJudges] = useState(INIT_JUDGES);
   const [prompts, setPrompts] = useState(INIT_PROMPTS);
   const [chatbots, setChatbots] = useState(INIT_CHATBOTS);
@@ -65,13 +74,21 @@ export default function App() {
     cases, addCases: (arr) => setCases((c) => [...arr, ...c]),
     setCaseStatus: (id, status) => setCases((c) => c.map((x) => (x.id === id ? { ...x, status } : x))),
     categories, addCategory: (n) => setCategories((x) => (x.includes(n) ? x : [...x, n])), removeCategory: (n) => setCategories((x) => x.filter((c) => c !== n)),
-    plans, addPlan: (p) => setPlans((x) => [...x, p]), updatePlan: (id, patch) => setPlans((x) => x.map((p) => (p.id === id ? { ...p, ...patch } : p))),
+    plans, addPlan: (p) => setPlans((x) => [...x, p]), updatePlan: (id, patch) => setPlans((x) => x.map((p) => (p.id === id ? { ...p, ...patch } : p))), removePlan: (id) => setPlans((x) => x.filter((p) => p.id !== id)),
     runs, addRun: (r) => setRuns((x) => [r, ...x]), updateRun: (id, patch) => setRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
     runIntent, setRunIntent,
-    defects, addDefect: (d) => setDefects((x) => [d, ...x]),
+    defects, addDefect: (d) => setDefects((x) => [d, ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, status } : d))),
+    fqaCases, addFqaCase: (c) => setFqaCases((x) => [c, ...x]), updateFqaCase: (id, patch) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...patch } : c))), setFqaCaseStatus: (id, status) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, status } : c))), removeFqaCase: (id) => setFqaCases((x) => x.filter((c) => c.id !== id)),
+    fqaSuites, addFqaSuite: (su) => setFqaSuites((x) => [...x, su]), updateFqaSuite: (id, patch) => setFqaSuites((x) => x.map((su) => (su.id === id ? { ...su, ...patch } : su))), removeFqaSuite: (id) => setFqaSuites((x) => x.filter((su) => su.id !== id)),
+    fqaSystems, addFqaSystem: (sy) => setFqaSystems((x) => [...x, sy]), updateFqaSystem: (id, patch) => setFqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...patch } : sy))), removeFqaSystem: (id) => setFqaSystems((x) => x.filter((sy) => sy.id !== id)),
+    fqaRuns, addFqaRun: (r) => setFqaRuns((x) => [r, ...x]), updateFqaRun: (id, patch) => setFqaRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
+    fqaPlans, addFqaPlan: (pl) => setFqaPlans((x) => [pl, ...x]), updateFqaPlan: (id, patch) => setFqaPlans((x) => x.map((pl) => (pl.id === id ? { ...pl, ...patch } : pl))), removeFqaPlan: (id) => setFqaPlans((x) => x.filter((pl) => pl.id !== id)),
+    fqaResultRun, setFqaResultRun,
+    runnerConnected, setRunnerConnected,
+    fqaEditTc, setFqaEditTc,
     judges, toggleJudge: (name) => setJudges((x) => x.map((j) => (j.name === name ? { ...j, enabled: !j.enabled } : j))),
-    prompts, addPrompt: (p) => setPrompts((x) => [...x, p]), updatePrompt: (name, patch) => setPrompts((x) => x.map((pp) => (pp.name === name ? { ...pp, ...patch } : pp))),
-    chatbots, addChatbot: (c) => setChatbots((x) => [...x, c]),
+    prompts, addPrompt: (p) => setPrompts((x) => [...x, p]), updatePrompt: (name, patch) => setPrompts((x) => x.map((pp) => (pp.name === name ? { ...pp, ...patch } : pp))), removePrompt: (name) => setPrompts((x) => x.filter((pp) => pp.name !== name)),
+    chatbots, addChatbot: (c) => setChatbots((x) => [...x, c]), updateChatbot: (id, patch) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...patch } : c))), removeChatbot: (id) => setChatbots((x) => x.filter((c) => c.id !== id)),
     setChatbotStatus: (id, status) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, status } : c))),
     role, setRole, space, setSpace, domain, setDomain, tenants, tenantId, setTenantId,
     addTenant: (t) => setTenants((x) => [...x, t]),
@@ -84,10 +101,10 @@ export default function App() {
     setModelStatus: (id, status) => setModels((x) => x.map((m) => (m.id === id ? { ...m, status } : m))),
   };
   const ALL_SECTIONS = [...SECTIONS, ...FQA_SECTIONS, ...COMMON_SECTIONS];
-  const cur = [...ALL_SECTIONS.flatMap((s) => s.items), MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
-  const curSection = (ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group;
+  const cur = [...ALL_SECTIONS.flatMap((s) => s.items), ...FQA_HIDDEN, MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
+  const curSection = ((ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group) || (FQA_HIDDEN.find((i) => i.id === view) || {}).group;
   const tenantName = (tenants.find((t) => t.id === tenantId) || {}).name;
-  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen nav={(v, t) => { setFqaTab(t || "상세"); setView(v); }} />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen />, "fqa-run": <FqaRunScreen />, "fqa-result": <FqaResultScreen initTab={fqaTab} /> };
+  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen nav={(v, arg) => { if (v === "fqa-result-detail" && arg) { setFqaResultRun(arg); setFqaResultFrom("fqa-dashboard"); } setView(v); }} />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen nav={(v, rid) => { if (rid) setFqaResultRun(rid); setView(v); }} />, "fqa-run": <FqaRunScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-run"); setView("fqa-result-detail"); }} />, "fqa-history": <FqaHistoryScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-history"); setView("fqa-result-detail"); }} />, "fqa-regression": <FqaResultScreen mode="회귀" />, "fqa-flaky": <FqaResultScreen mode="불안정" nav={(v, tc) => { if (tc) setFqaEditTc(tc); setView(v); }} />, "fqa-result-detail": <FqaResultScreen mode="상세" runId={fqaResultRun} back={() => setView(fqaResultFrom || "fqa-history")} backLabel={{ "fqa-run": "실행", "fqa-history": "실행 이력", "fqa-dashboard": "대시보드" }[fqaResultFrom] || "뒤로"} /> };
   const tk = { ok: "border-emerald-700 bg-emerald-900", warn: "border-amber-700 bg-amber-900", err: "border-red-700 bg-red-900", info: "border-slate-700 bg-slate-800" };
   const nIcon = { play: Play, bug: Bug, send: Send };
 
@@ -179,10 +196,10 @@ export default function App() {
             newCase: ["테스트케이스 등록", <NewCaseForm close={close} />],
             catMgr: ["카테고리 관리", <CategoryManager close={close} />],
             importCases: ["Excel 일괄 업로드", <ImportCasesForm close={close} />],
-            jira: ["결함 등록 (Jira)", <JiraForm close={close} data={modal.data} />, true],
+            jira: ["결함 등록", <JiraForm close={close} data={modal.data} />, true],
             addPrompt: ["Prompt 템플릿 " + (modal.data ? "편집" : "추가"), <AddPromptForm close={close} data={modal.data} />],
             planCases: ["평가 계획 케이스 선택", <PlanCasesForm close={close} data={modal.data} />, true],
-            addChatbot: ["챗봇 연결 추가", <AddChatbotForm close={close} />, true],
+            addChatbot: ["챗봇 " + (modal.data ? "편집" : "연결 추가"), <AddChatbotForm close={close} data={modal.data} />, true],
             jiraConfig: ["Jira 연동 설정", <JiraConfigForm close={close} />, true],
             newTenant: ["조직(테넌트) 추가", <NewTenantForm close={close} />],
             assignAdmin: ["조직 관리자 지정", <AssignAdminForm close={close} data={modal.data} />],

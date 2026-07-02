@@ -207,9 +207,10 @@ export function NewCaseForm({ close }) {
 }
 
 export function JiraForm({ close, data }) {
-  const { addDefect, toast, notify } = useApp();
+  const { addDefect, toast, notify, domain } = useApp();
   const d = data || {};
   const prioMap = { Critical: "Highest", Major: "High", Minor: "Medium" };
+  const [dom, setDom] = useState(d.domain || domain || "LQA");
   const [proj, setProj] = useState("TWORLD");
   const [itype, setItype] = useState("Bug");
   const [sev, setSev] = useState(d.sev || "Major");
@@ -223,6 +224,7 @@ export function JiraForm({ close, data }) {
   const [actual, setActual] = useState(d.actual || "");
   const [attach, setAttach] = useState({ conv: true, judge: true, safety: true });
   const [files, setFiles] = useState([]);
+  const [jira, setJira] = useState(true);
   const autoArtifacts = d.q ? [
     { k: "conv", label: "대화 로그", file: "conversation.txt", size: "2 KB" },
     { k: "judge", label: "평가 근거", file: "judge_result.json", size: "1 KB" },
@@ -231,36 +233,37 @@ export function JiraForm({ close, data }) {
   const onFile = (e) => { const fs = Array.from(e.target.files || []).map((x) => ({ name: x.name, size: x.size > 1024 ? Math.round(x.size / 1024) + " KB" : x.size + " B" })); if (fs.length) setFiles((p) => [...p, ...fs]); };
   const submit = () => {
     if (!title.trim()) { toast("제목을 입력하세요", "warn"); return; }
-    const key = proj + "-" + Math.floor(1850 + Math.random() * 99);
-    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open", domain: "LQA" });
-    toast("Jira 이슈 " + key + " 등록 완료", "ok");
-    notify({ icon: "bug", text: "Jira 이슈 " + key + " 등록 (" + (d.tc || "수동") + ")" });
+    const key = jira ? (proj + "-" + Math.floor(1850 + Math.random() * 99)) : ("DEF-" + Math.floor(1000 + Math.random() * 9000));
+    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open", domain: dom });
+    if (jira) { toast("결함 등록 · Jira 이슈 " + key + " 생성", "ok"); notify({ icon: "bug", text: "Jira 이슈 " + key + " 생성 (" + (d.tc || "수동") + ")" }); }
+    else { toast("결함 " + key + " 등록 완료", "ok"); notify({ icon: "bug", text: "결함 " + key + " 등록 (" + (d.tc || "수동") + ")" }); }
     close();
   };
   return (
     <div className="space-y-3.5">
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="프로젝트"><Select value={proj} onChange={(e) => setProj(e.target.value)}><option>TWORLD</option><option>AICC</option></Select></Field>
-        <Field label="이슈 유형"><Select value={itype} onChange={(e) => setItype(e.target.value)}><option>Bug</option><option>Security</option><option>Task</option></Select></Field>
-        <Field label="담당자"><Select value={assignee} onChange={(e) => setAssignee(e.target.value)}><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="심각도"><Select value={sev} onChange={(e) => { setSev(e.target.value); setPrio(prioMap[e.target.value] || "High"); }}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
-        <Field label="우선순위"><Select value={prio} onChange={(e) => setPrio(e.target.value)}><option>Highest</option><option>High</option><option>Medium</option><option>Low</option></Select></Field>
-        <Field label="라벨"><Input value={labels} onChange={(e) => setLabels(e.target.value)} /></Field>
-      </div>
-      <Field label="제목 (Summary)"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="이슈 제목" /></Field>
       <div className="grid grid-cols-2 gap-4 items-start">
-      <div className="space-y-3.5">
-      <Field label="설명 (Description)"><textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="이슈 요약·맥락" /></Field>
-      <Field label="재현 절차 (Steps to Reproduce)"><textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="1. ...\n2. ...\n3. ..." /></Field>
+        <div className="space-y-3.5">
+      <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800 p-3">
+        <div><div className="text-sm font-semibold text-slate-200">Jira 이슈 생성</div><div className="text-xs text-slate-500">{jira ? "결함을 등록하면서 Jira 티켓도 함께 생성합니다." : "결함만 내부에 기록하고 Jira 티켓은 생성하지 않습니다."}</div></div>
+        <Toggle on={jira} onClick={() => setJira(!jira)} />
+      </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="기대 결과 (Expected)"><textarea value={expected} onChange={(e) => setExpected(e.target.value)} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" /></Field>
-        <Field label="실제 결과 (Actual)"><textarea value={actual} onChange={(e) => setActual(e.target.value)} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" /></Field>
+        <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">챗봇 평가</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></Field>
+        <Field label="심각도"><Select value={sev} onChange={(e) => { setSev(e.target.value); setPrio(prioMap[e.target.value] || "High"); }}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
       </div>
-      {d.env && <Field label="환경"><div className="rounded-lg bg-slate-800 p-2 text-xs text-slate-400">{d.env}{d.tc ? " · 대상 " + d.tc : ""}</div></Field>}
-      </div>
-      <div className="space-y-3.5">
+      {jira && (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="프로젝트"><Select value={proj} onChange={(e) => setProj(e.target.value)}><option>TWORLD</option><option>AICC</option></Select></Field>
+            <Field label="이슈 유형"><Select value={itype} onChange={(e) => setItype(e.target.value)}><option>Bug</option><option>Security</option><option>Task</option></Select></Field>
+            <Field label="담당자"><Select value={assignee} onChange={(e) => setAssignee(e.target.value)}><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="우선순위"><Select value={prio} onChange={(e) => setPrio(e.target.value)}><option>Highest</option><option>High</option><option>Medium</option><option>Low</option></Select></Field>
+            <Field label="라벨"><Input value={labels} onChange={(e) => setLabels(e.target.value)} /></Field>
+          </div>
+        </>
+      )}
       <Field label="증적 첨부">
         {autoArtifacts.length > 0 && (
           <div className="mb-2">
@@ -297,12 +300,22 @@ export function JiraForm({ close, data }) {
         {autoArtifacts.length === 0 && files.length === 0 && (
           <div className="mt-2 text-xs text-amber-300">연결된 케이스가 없어 자동 증적이 없습니다 — 직접 첨부를 권장합니다.</div>
         )}
-        <div className="mt-1.5 text-xs text-slate-500">선택·업로드한 항목은 이슈 생성 후 Jira 첨부 API로 업로드됩니다.</div>
+        <div className="mt-1.5 text-xs text-slate-500">선택·업로드한 항목은 결함에 첨부되며, Jira 이슈 생성 시 함께 업로드됩니다.</div>
       </Field>
+        </div>
+        <div className="space-y-3.5">
+      <Field label="제목 (Summary)"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" /></Field>
+      <Field label="설명 (Description)"><textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="이슈 요약·맥락" /></Field>
+      <Field label="재현 절차 (Steps to Reproduce)"><textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" placeholder="1. ...\n2. ...\n3. ..." /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="기대 결과 (Expected)"><textarea value={expected} onChange={(e) => setExpected(e.target.value)} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" /></Field>
+        <Field label="실제 결과 (Actual)"><textarea value={actual} onChange={(e) => setActual(e.target.value)} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" /></Field>
       </div>
+      {d.env && <Field label="환경"><div className="rounded-lg bg-slate-800 p-2 text-xs text-slate-400">{d.env}{d.tc ? " · 대상 " + d.tc : ""}</div></Field>}
+        </div>
       </div>
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">실패 케이스 데이터(발화·기대/실제·근거·안전성)가 자동 채워졌습니다. 시크릿은 Secrets 보관, 등록은 audit_log에 기록됩니다.</div>
-      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Bug} onClick={submit}>이슈 등록</Btn></div>
+      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">{d.q ? "실패 케이스 데이터가 자동으로 채워졌습니다. " : ""}시크릿은 Secrets 저장소에 보관되며, 등록은 audit_log에 기록됩니다.</div>
+      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Bug} onClick={submit}>결함 등록</Btn></div>
     </div>
   );
 }
@@ -458,13 +471,14 @@ export function JiraConfigForm({ close }) {
     </div>
   );
 }
-export function AddChatbotForm({ close }) {
-  const { addChatbot, toast } = useApp();
-  const [name, setName] = useState("");
-  const [env, setEnv] = useState("운영");
-  const [channel, setChannel] = useState("REST API");
+export function AddChatbotForm({ close, data }) {
+  const { addChatbot, updateChatbot, toast } = useApp();
+  const edit = !!data;
+  const [name, setName] = useState((data && data.name) || "");
+  const [env, setEnv] = useState((data && data.env) || "운영");
+  const [channel, setChannel] = useState((data && data.channel) || "REST API");
   const [method, setMethod] = useState("POST");
-  const [endpoint, setEndpoint] = useState("");
+  const [endpoint, setEndpoint] = useState((data && data.channel === "REST API" && data.endpoint) || "");
   const [headers, setHeaders] = useState([{ k: "Content-Type", v: "application/json" }]);
   const [authType, setAuthType] = useState("Bearer Token");
   const [tokenVal, setTokenVal] = useState("");
@@ -480,7 +494,7 @@ export function AddChatbotForm({ close }) {
   const [pollUrl, setPollUrl] = useState("");
   const [doneField, setDoneField] = useState("$.status");
   const [timeoutS, setTimeoutS] = useState(30);
-  const [webUrl, setWebUrl] = useState("");
+  const [webUrl, setWebUrl] = useState((data && data.channel !== "REST API" && data.endpoint) || "");
   const [needLogin, setNeedLogin] = useState(false);
   const [sel, setSel] = useState({ input: "", send: "", resp: "", done: "" });
   const [iframe, setIframe] = useState(false);
@@ -517,13 +531,9 @@ export function AddChatbotForm({ close }) {
   const submit = () => {
     const err = validate();
     if (err) { toast(err, "warn"); return; }
-    addChatbot({
-      id: "cb" + Date.now(), name, env, channel,
-      endpoint: channel === "REST API" ? endpoint : webUrl,
-      auth: channel === "Web 대화" ? (needLogin ? "로그인 세션" : "없음") : authType,
-      status: test && test.state === "ok" ? "연결됨" : "미확인", last: "-",
-    });
-    toast("챗봇 연결이 추가되었습니다" + (test && test.state === "ok" ? " (연결 테스트 통과)" : " — 연결 테스트 권장"), "ok");
+    const rec = { name, env, channel, endpoint: channel === "REST API" ? endpoint : webUrl, auth: channel === "Web 대화" ? (needLogin ? "로그인 세션" : "없음") : authType, status: test && test.state === "ok" ? "연결됨" : (edit ? data.status : "미확인"), last: edit ? data.last : "-" };
+    if (edit) { updateChatbot(data.id, rec); toast(name + " 연결이 수정되었습니다", "ok"); }
+    else { addChatbot({ id: "cb" + Date.now(), ...rec }); toast("챗봇 연결이 추가되었습니다" + (test && test.state === "ok" ? " (연결 테스트 통과)" : " — 연결 테스트 권장"), "ok"); }
     close();
   };
   const chTabs = [["REST API", true], ["Web 대화", true], ["Mobile 앱", false]];
@@ -655,14 +665,14 @@ export function AddChatbotForm({ close }) {
       {/* 전폭 푸터 */}
       <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800">
         <div className="text-xs text-slate-500 flex-1">인증 시크릿은 Secrets 저장소에 암호화 보관되며, 수집 대화는 Judge 호출 전 PII 마스킹됩니다.</div>
-        <div className="flex gap-2 shrink-0"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>추가</Btn></div>
+        <div className="flex gap-2 shrink-0"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "추가"}</Btn></div>
       </div>
     </div>
   );
 }
 
 export function Targets() {
-  const { chatbots, openModal, toast, setChatbotStatus, env } = useApp();
+  const { chatbots, openModal, toast, setChatbotStatus, removeChatbot, env } = useApp();
   const list = env === "전체" ? chatbots : chatbots.filter((c) => c.env === env);
   const stK = KIND.targetStatus;
   const chK = KIND.channel;
@@ -690,7 +700,7 @@ export function Targets() {
                 <td className="text-slate-500 text-xs">{c.last}</td>
                 <td className="pr-4"><div className="flex items-center gap-2">
                   <button onClick={() => { setChatbotStatus(c.id, "연결됨"); toast(c.name + " (" + c.env + ") 연결 정상", "ok"); }} className="text-slate-400 hover:text-teal-400" title="연결 테스트"><Link2 size={15} /></button>
-                  <button onClick={() => toast(c.name + " 편집 (데모)", "info")} className="text-slate-400 hover:text-slate-200" title="편집"><SlidersHorizontal size={15} /></button>
+                  <button onClick={() => openModal("addChatbot", c)} className="text-slate-400 hover:text-slate-200" title="편집"><SlidersHorizontal size={15} /></button><button onClick={() => { if (window.confirm(c.name + " (" + c.env + ") 연결을 삭제할까요?")) { removeChatbot(c.id); toast(c.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={15} /></button>
                 </div></td>
               </tr>
             ))}
@@ -788,7 +798,7 @@ export function Dashboard() {
   );
 }
 export function Plans() {
-  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, setRunIntent } = useApp();
+  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent } = useApp();
   const [sel, setSel] = useState(plans[0]);
   const cur = plans.find((p) => p.id === sel.id) || plans[0];
   const defJudges = (p) => { const o = {}; (p.judgeList || ["Claude (sonnet-4-6)", "GPT-4o"]).forEach((n) => (o[n] = true)); return o; };
@@ -832,7 +842,7 @@ export function Plans() {
         {plans.map((p) => (
           <Card key={p.id} className={"p-4 cursor-pointer " + (cur.id === p.id ? "border-teal-500" : "hover:border-slate-700")}>
             <div onClick={() => setSel(p)}>
-              <div className="flex items-center justify-between"><div className="font-semibold text-slate-100">{p.name}</div><Badge kind={p.status === "활성" ? "active" : "draft"}>{p.status}</Badge></div>
+              <div className="flex items-center justify-between"><div className="font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "active" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); if (plans.length <= 1) { toast("최소 1개 계획은 유지해야 합니다", "warn"); return; } if (window.confirm(p.name + " 계획을 삭제할까요?")) { removePlan(p.id); if (sel.id === p.id) setSel(plans.find((x) => x.id !== p.id)); toast(p.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                 <div><div className="text-lg font-bold text-slate-100">{p.tc}</div><div className="text-xs text-slate-500">TC</div></div>
                 <div><div className="text-lg font-bold text-slate-100">{p.judges}</div><div className="text-xs text-slate-500">Judge</div></div>
@@ -1318,25 +1328,68 @@ export function Block({ label, children, tone }) {
 }
 
 export function Compare() {
-  const { runs, toast } = useApp();
-  const done = runs.filter((r) => r.status === "완료" && r.results && r.results.length);
+  const { runs, plans, toast, defects, addDefect } = useApp();
+  const [aiOpen, setAiOpen] = useState(false);
+  const doneOf = (pid) => runs.filter((r) => r.planId === pid && r.status === "완료" && r.results && r.results.length);
+  const firstPid = (runs.find((r) => r.status === "완료" && r.results && r.results.length) || {}).planId;
+  const [regPlan, setRegPlan] = useState(firstPid != null ? firstPid : (plans[0] || {}).id);
+  const done = doneOf(regPlan);
   const [aId, setAId] = useState((done[1] || done[0] || {}).id);
   const [bId, setBId] = useState((done[0] || {}).id);
+  useEffect(() => { const d = doneOf(regPlan); setBId((d[0] || {}).id); setAId((d[1] || d[0] || {}).id); }, [regPlan]);
   const A = done.find((r) => r.id === aId) || {};
   const B = done.find((r) => r.id === bId) || {};
   const delta = (A.score != null && B.score != null) ? +(B.score - A.score).toFixed(1) : null;
-  const label = (r) => r.id + " · " + r.planName + " · " + (r.startedAt || "").slice(0, 10) + " · " + (r.score != null ? r.score : "—");
+  const label = (r) => r.id + " · " + (r.startedAt || "").slice(0, 10) + " · " + (r.score != null ? r.score : "—");
   const rank = { FAIL: 0, WARN: 1, PASS: 2 };
   const cls = (a, b) => (a === b ? { k: "유지", c: "text-slate-500" } : rank[b] > rank[a] ? { k: "개선", c: "text-emerald-400" } : { k: "퇴행", c: "text-red-400" });
-  const reg = (A.results || []).map((ra) => { const rb = (B.results || []).find((x) => x.id === ra.id) || {}; return { id: ra.id, q: ra.q, aV: ra.verdict, bV: rb.verdict || ra.verdict }; });
+  const reg = (A.results || []).map((ra) => { const rb = (B.results || []).find((x) => x.id === ra.id) || {}; return { id: ra.id, q: ra.q, cat: ra.cat, aV: ra.verdict, bV: rb.verdict || ra.verdict }; });
   const summ = reg.reduce((acc, r) => { const k = cls(r.aV, r.bV).k; acc[k] = (acc[k] || 0) + 1; return acc; }, {});
-  if (done.length < 1) return <Card className="p-10"><EmptyState icon={FileText} title="비교할 완료된 실행이 없습니다" hint="평가를 실행하면 이력이 쌓입니다" /></Card>;
+  const DIMS = ["관련성", "정확성", "안전성", "일관성"];
+  const avgDim = (rs, d) => { const xs = (rs || []).map((r) => r.scores && r.scores[d]).filter((v) => v != null); return xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null; };
+  const dimDelta = DIMS.map((d) => { const a = avgDim(A.results, d), b = avgDim(B.results, d); return { d, a, b, delta: (a != null && b != null) ? Math.round((b - a) * 10) / 10 : null }; });
+  const NOISE = 5;
+  const scoreOf = (run, id) => { const x = (run.results || []).find((r) => r.id === id); return x ? x.score : null; };
+  const reg2 = reg.map((r) => { const aS = scoreOf(A, r.id), bS = scoreOf(B, r.id); const rc = (rank[r.bV] == null ? 2 : rank[r.bV]) - (rank[r.aV] == null ? 2 : rank[r.aV]); const sd = (aS != null && bS != null) ? Math.round((bS - aS) * 10) / 10 : null; const klass = rc < 0 ? "회귀" : rc > 0 ? "개선" : (sd != null && sd <= -NOISE ? "점수하락" : "유지"); return Object.assign({}, r, { aS: aS, bS: bS, sd: sd, klass: klass }); });
+  const sig = { "회귀": reg2.filter((r) => r.klass === "회귀"), "개선": reg2.filter((r) => r.klass === "개선"), "점수하락": reg2.filter((r) => r.klass === "점수하락"), "유지": reg2.filter((r) => r.klass === "유지") };
+  const regressed = sig["회귀"];
+  const improved = sig["개선"];
+  const regCat = {}; regressed.forEach((r) => { regCat[r.cat || "기타"] = (regCat[r.cat || "기타"] || 0) + 1; });
+  const topCat = Object.entries(regCat).sort((x, y) => y[1] - x[1])[0];
+  const snapRows = (A.snapshot && B.snapshot) ? [["평가 모델", A.snapshot.model, B.snapshot.model], ["프롬프트", A.snapshot.promptVer, B.snapshot.promptVer], ["케이스셋", A.snapshot.caseVer, B.snapshot.caseVer]] : [];
+  const snapDiff = snapRows.filter((r) => r[1] !== r[2]);
+  const causes = [];
+  if (regressed.length) {
+    if (topCat && topCat[1] > 1) causes.push("유의미 회귀 " + regressed.length + "건 중 " + topCat[1] + "건이 '" + topCat[0] + "' 카테고리에 집중 — 해당 영역 집중 점검");
+    snapDiff.forEach((r) => {
+      if (r[0] === "프롬프트") causes.push("프롬프트 " + r[1] + " → " + r[2] + " 변경이 회귀와 연관 가능 — 루브릭 변경분 확인");
+      if (r[0] === "평가 모델") causes.push("평가 모델 " + r[1] + " → " + r[2] + " 교체 — 채점 기준 차이 가능");
+      if (r[0] === "케이스셋") causes.push("케이스셋 " + r[1] + " → " + r[2] + " 변경 — 골든(기대) 답변 갱신 영향 가능");
+    });
+    const worst = dimDelta.filter((x) => x.delta != null).sort((x, y) => x.delta - y.delta)[0];
+    if (worst && worst.delta < 0) causes.push("'" + worst.d + "' 지표가 평균 " + worst.delta + "점으로 가장 크게 하락");
+  }
+  if (sig["점수하락"].length) causes.push("판정은 유지되나 점수가 " + NOISE + "점 이상 하락한 관찰 대상 " + sig["점수하락"].length + "건 — 추세 모니터링 권장");
+  if (!causes.length) causes.push("유의미한 회귀 신호가 없습니다 — 품질 유지/개선 상태");
+  const recs = [];
+  if (regressed.length) recs.push("유의미 회귀 " + regressed.length + "건을 결함으로 등록하고 담당자 배정");
+  if (snapDiff.some((r) => r[0] === "프롬프트")) recs.push("프롬프트 변경분 롤백 또는 부분 수정 검토");
+  if (snapDiff.some((r) => r[0] === "케이스셋")) recs.push("변경된 케이스의 골든(기대) 답변 재검토");
+  if (sig["점수하락"].length) recs.push("점수 하락 관찰 " + sig["점수하락"].length + "건은 다음 실행에서 재현 여부 확인");
+  recs.push("경계 판정(WARN) 케이스는 사람 검토(HITL) 우선 배정");
+  const hasDef = (id) => defects.some((d) => d.tc === id && (d.domain || "LQA") === "LQA");
+  const regAllLQA = () => { const tgt = regressed.filter((r) => !hasDef(r.id)); if (!tgt.length) { toast("등록할 신규 회귀 결함이 없습니다", "info"); return; } tgt.forEach((r, i) => addDefect({ key: "TWORLD-" + (1950 + defects.length + i), tc: r.id, sev: "Major", title: "회귀: " + (r.q || r.id), status: "Open", domain: "LQA" })); toast("유의미 회귀 " + tgt.length + "건 결함 등록", "ok"); };
   return (
     <div className="space-y-4">
-      <PageToolbar desc="두 평가 실행 결과 비교 · 케이스 회귀 분석" />
+      <PageToolbar desc="같은 평가 계획의 두 실행 비교 · 케이스 회귀 분석" />
+      <Card className="p-3"><Field label="평가 계획 (비교 맥락)"><Select value={regPlan} onChange={(e) => setRegPlan(+e.target.value)}>{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field></Card>
+      {done.length < 2 ? (
+        <Card className="p-10"><EmptyState icon={FileText} title="비교할 완료된 실행이 2건 이상 필요합니다" hint={"이 평가 계획의 완료 실행: 현재 " + done.length + "건"} /></Card>
+      ) : (
+      <>
       <div className="grid grid-cols-2 gap-4">
-        <Card className="p-4"><div className="text-xs text-slate-500 mb-1">A — 기준</div><Select value={aId} onChange={(e) => setAId(e.target.value)}>{done.map((r) => <option key={r.id} value={r.id}>{label(r)}</option>)}</Select><div className="mt-3 text-4xl font-bold text-slate-300">{A.score != null ? A.score : "—"}</div></Card>
-        <Card className="p-4 border-teal-700"><div className="text-xs text-slate-500 mb-1">B — 비교</div><Select value={bId} onChange={(e) => setBId(e.target.value)}>{done.map((r) => <option key={r.id} value={r.id}>{label(r)}</option>)}</Select><div className="mt-3 flex items-end gap-2"><span className="text-4xl font-bold text-teal-400">{B.score != null ? B.score : "—"}</span>{delta != null && <span className={"text-sm mb-1 flex items-center " + (delta >= 0 ? "text-emerald-400" : "text-red-400")}>{delta >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}{delta >= 0 ? "+" + delta : delta}</span>}</div></Card>
+        <Card className="p-4"><div className="text-xs text-slate-500 mb-1">A — 기준(baseline)</div><Select value={aId} onChange={(e) => setAId(e.target.value)}>{done.map((r) => <option key={r.id} value={r.id}>{label(r)}</option>)}</Select><div className="mt-3 text-4xl font-bold text-slate-300">{A.score != null ? A.score : "—"}</div></Card>
+        <Card className="p-4 border-teal-700"><div className="text-xs text-slate-500 mb-1">B — 비교(target)</div><Select value={bId} onChange={(e) => setBId(e.target.value)}>{done.map((r) => <option key={r.id} value={r.id}>{label(r)}</option>)}</Select><div className="mt-3 flex items-end gap-2"><span className="text-4xl font-bold text-teal-400">{B.score != null ? B.score : "—"}</span>{delta != null && <span className={"text-sm mb-1 flex items-center " + (delta >= 0 ? "text-emerald-400" : "text-red-400")}>{delta >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}{delta >= 0 ? "+" + delta : delta}</span>}</div></Card>
       </div>
       <div className="grid grid-cols-3 gap-4">
         <Card className="p-4 text-center"><div className="text-2xl font-bold text-emerald-400">{summ["개선"] || 0}</div><div className="text-xs text-slate-500 mt-0.5">개선</div></Card>
@@ -1344,7 +1397,7 @@ export function Compare() {
         <Card className="p-4 text-center"><div className="text-2xl font-bold text-slate-300">{summ["유지"] || 0}</div><div className="text-xs text-slate-500 mt-0.5">유지</div></Card>
       </div>
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800"><span className="text-sm font-semibold text-slate-200">케이스 회귀 분석</span><div className="flex gap-2"><Btn icon={FileDown} onClick={() => toast("Excel 내보내기 완료", "ok")}>Excel</Btn><Btn kind="primary" icon={Sparkles} onClick={() => toast("AI 분석 리포트 생성 — 퇴행 원인 후보 제시", "ok")}>AI 분석</Btn></div></div>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800"><span className="text-sm font-semibold text-slate-200">케이스 회귀 분석</span><div className="flex gap-2"><Btn icon={FileDown} onClick={() => toast("Excel 내보내기 완료", "ok")}>Excel</Btn><Btn kind="primary" icon={Sparkles} onClick={() => setAiOpen(true)}>AI 분석</Btn></div></div>
         <table className="w-full text-sm">
           <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">ID</th><th className="font-medium">질문</th><th className="font-medium">A</th><th className="font-medium"></th><th className="font-medium">B</th><th className="font-medium">변화</th></tr></thead>
           <tbody>
@@ -1357,34 +1410,86 @@ export function Compare() {
           </tbody>
         </table>
       </Card>
+      {aiOpen && (
+        <div className="fixed inset-0 z-40 flex justify-end bg-black bg-opacity-50" onClick={() => setAiOpen(false)}>
+          <div className="h-full w-full max-w-md overflow-y-auto border-l border-slate-800 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between"><span className="flex items-center gap-2 font-semibold text-slate-100"><Sparkles size={16} className="text-teal-400" />AI 회귀 분석</span><button onClick={() => setAiOpen(false)} className="text-slate-500 hover:text-slate-300"><X size={20} /></button></div>
+            <div className="space-y-4 text-sm">
+              <div className="flex items-center gap-2"><Badge kind="info">계산</Badge><span className="text-xs text-slate-400">결정적 분석 — 저장된 실행 결과 산술</span></div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                <div className="text-xs text-slate-500">판정 요약 · {aId} → {bId}</div>
+                <div className="mt-1 text-slate-200">점수 {delta != null ? (delta >= 0 ? "+" + delta : "" + delta) : "—"} · 유의미 회귀 <span className="font-semibold text-red-300">{sig["회귀"].length}</span>건 · 점수 하락 관찰 <span className="font-semibold text-amber-300">{sig["점수하락"].length}</span>건 · 개선 <span className="font-semibold text-emerald-300">{sig["개선"].length}</span>건</div>
+                <div className="mt-1 text-xs text-slate-600">±{NOISE}점 미만 변동은 평가자(LLM) 채점 노이즈로 간주해 회귀에서 제외 · 판정 임계 교차만 회귀로 집계</div>
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs font-semibold text-slate-400">무엇이 바뀌었나 (스냅샷)</div>
+                {snapDiff.length === 0 ? <div className="text-xs text-slate-500">모델·프롬프트·케이스셋 변경 없음 (동일 조건 재실행)</div> : (
+                  <div className="space-y-1">{snapRows.map((r) => (<div key={r[0]} className={"flex items-center justify-between rounded px-2 py-1 text-xs " + (r[1] !== r[2] ? "bg-slate-800" : "")}><span className="text-slate-400">{r[0]}</span><span className={r[1] !== r[2] ? "text-amber-300" : "text-slate-500"}>{r[1]} → {r[2]}</span></div>))}</div>
+                )}
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs font-semibold text-slate-400">지표별 점수 변화</div>
+                <div className="space-y-1">{dimDelta.map((x) => (<div key={x.d} className="flex items-center justify-between text-xs"><span className="text-slate-400">{x.d}</span><span className="flex items-center gap-2 text-slate-300">{x.a != null ? x.a : "—"} → {x.b != null ? x.b : "—"}{x.delta != null && <span className={"flex items-center " + (x.delta >= 0 ? "text-emerald-400" : "text-red-400")}>{x.delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{x.delta >= 0 ? "+" + x.delta : x.delta}</span>}</span></div>))}</div>
+              </div>
+              <div className="flex items-center gap-2 border-t border-slate-800 pt-3"><Badge kind="teal">AI 추정</Badge><span className="text-xs text-slate-400">온프렘 LLM(에이닷) 경유 · 원문 마스킹 · 검증 필요</span></div>
+              <div>
+                <div className="mb-1.5 text-xs font-semibold text-slate-400">회귀 원인 후보</div>
+                <ul className="space-y-1.5">{causes.map((c, i) => (<li key={i} className="flex gap-2 text-xs text-slate-300"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-teal-400" />{c}</li>))}</ul>
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs font-semibold text-slate-400">권고 조치</div>
+                <ul className="space-y-1.5">{recs.map((c, i) => (<li key={i} className="flex gap-2 text-xs text-slate-300"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-emerald-400" />{c}</li>))}</ul>
+              </div>
+              {regressed.length > 0 && <Btn kind="primary" icon={Bug} onClick={regAllLQA}>유의미 회귀 {regressed.length}건 결함 등록</Btn>}
+              <div className="text-xs text-slate-600">＊ 결정적 분석은 저장된 결과의 계산이며, AI 추정 항목은 참고용(원인·권고)입니다.</div>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
+      )}
     </div>
   );
 }
 export function Defects() {
-  const { defects, openModal, toast, domain, goto, setDomain } = useApp();
+  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setFqaEditTc } = useApp();
   const sev = KIND.severity;
   const st = KIND.issueStatus;
   const domKind = KIND.domain;
-  const domLabel = { LQA: "챗봇", FQA: "기능", NQA: "비기능" };
+  const domLabel = { LQA: "챗봇 평가", FQA: "기능 QA", NQA: "비기능 QA" };
   const [dom, setDom] = useState(domain || "전체");
-  const list = defects.filter((d) => dom === "전체" || (d.domain || "LQA") === dom);
+  const [stf, setStf] = useState("전체");
+  const TRANS = { "Open": [["진행", "In Progress"], ["해결", "Resolved"]], "In Progress": [["해결", "Resolved"], ["보류", "Open"]], "Resolved": [["Reopen", "Open"]] };
+  const list = defects.filter((d) => (dom === "전체" || (d.domain || "LQA") === dom) && (stf === "전체" || (d.status || "Open") === stf));
+  const openN = list.filter((d) => d.status !== "Resolved").length;
+  const resN = list.filter((d) => d.status === "Resolved").length;
+  const reverify = (d) => {
+    const dm = d.domain || "LQA";
+    if (dm === "NQA") { toast("비기능 QA는 준비 중입니다 (확장 예정)", "info"); return; }
+    if (dm !== domain) setDomain(dm);
+    if (dm === "FQA") { if (setFqaEditTc) setFqaEditTc(d.tc); toast(d.tc + " 재검증 — 테스트케이스 편집으로 이동", "info"); goto("fqa-cases"); }
+    else { toast(d.tc + " 재검증 — 평가 실행으로 이동", "info"); goto("run"); }
+  };
   return (
     <div className="space-y-4">
       <PageToolbar desc="GitLab / Jira 연계 · 전 도메인 공통">
-        <div style={{ width: 120 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">챗봇</option><option value="FQA">기능</option><option value="NQA">비기능</option></Select></div>
+        <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">챗봇 평가</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></div>
+        <div style={{ width: 130 }}><Select value={stf} onChange={(e) => setStf(e.target.value)}><option value="전체">전체 상태</option><option value="Open">Open</option><option value="In Progress">In Progress</option><option value="Resolved">Resolved</option></Select></div>
         <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
       </PageToolbar>
+      <div className="flex items-center gap-3 text-sm text-slate-400"><span>미해결 <span className="font-semibold text-red-300">{openN}</span></span><span className="text-slate-600">·</span><span>해결 <span className="font-semibold text-emerald-300">{resN}</span></span><span className="text-slate-600">·</span><span className="text-slate-500">총 {list.length}건</span></div>
       <Card>
       <table className="w-full text-sm">
         <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th></th></tr></thead>
         <tbody className="text-slate-300">
           {list.map((d) => (
-            <tr key={d.key} className="border-b border-slate-800 hover:bg-slate-800">
-              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td><td><Badge kind={st[d.status]}>{d.status}</Badge></td>
-              <td className="pr-4"><div className="flex items-center gap-2"><button onClick={() => { const dm = d.domain || "LQA"; if (dm === "NQA") { toast("비기능 QA는 준비 중입니다 (확장 예정)", "info"); return; } const target = dm === "FQA" ? "fqa-run" : "run"; if (dm !== domain) setDomain(dm); toast(d.tc + " 재검증 — " + (dm === "FQA" ? "기능 실행" : "평가 실행") + "으로 이동", "info"); goto(target); }} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button></div></td>
+            <tr key={d.key} className={"border-b border-slate-800 hover:bg-slate-800 " + (d.status === "Resolved" ? "opacity-60" : "")}>
+              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td>
+              <td><div className="flex items-center gap-2"><Badge kind={st[d.status] || "info"}>{d.status || "Open"}</Badge><div className="flex gap-1.5">{(TRANS[d.status || "Open"] || []).map(([label, next]) => <button key={label} onClick={() => setDefectStatus(d.key, next)} className="rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-teal-300">{label}</button>)}</div></div></td>
+              <td className="pr-4"><div className="flex items-center gap-2"><button onClick={() => reverify(d)} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button></div></td>
             </tr>
           ))}
-          {list.length === 0 && <tr><td colSpan={7}><EmptyState icon={Bug} title="해당 영역의 결함이 없습니다" hint="평가 실패 시 자동/수동으로 이슈를 등록하세요" /></td></tr>}
+          {list.length === 0 && <tr><td colSpan={7}><EmptyState icon={Bug} title="해당 조건의 결함이 없습니다" hint="평가/실행 실패 시 자동·수동으로 이슈를 등록하세요" /></td></tr>}
         </tbody>
       </table>
       </Card>
@@ -1494,7 +1599,7 @@ export function SegBtn({ on, onClick, children }) {
 
 
 export function Settings() {
-  const { models, prompts, openModal, toast } = useApp();
+  const { models, prompts, openModal, toast, removePrompt } = useApp();
   const [use, setUse] = useState(() => { const mm = {}; models.forEach((x) => (mm[x.id] = x.status === "활성")); return mm; });
   return (
     <div className="space-y-4">
@@ -1522,7 +1627,7 @@ export function Settings() {
           {prompts.map((p) => (
             <div key={p.name} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2.5">
               <div><div className="text-sm text-slate-100">{p.name} <span className="text-xs text-slate-500">v{p.ver}</span> {p.active && <Badge kind="active">활성</Badge>}</div><div className="text-xs text-slate-500">지표: {(p.rubric || []).join(", ")}</div><div className="text-xs text-slate-500">변수: {(p.vars || []).map((v) => "{{" + v + "}}").join(" ")}</div></div>
-              <button onClick={() => openModal("addPrompt", { name: p.name, system: p.system, rubric: p.rubric, vars: p.vars, ver: p.ver })} className="text-xs text-slate-400 hover:text-teal-400">편집</button>
+              <div className="flex items-center gap-3"><button onClick={() => openModal("addPrompt", { name: p.name, system: p.system, rubric: p.rubric, vars: p.vars, ver: p.ver })} className="text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => { if (p.active) { toast("활성 템플릿은 삭제할 수 없습니다 — 먼저 비활성화하세요", "warn"); return; } if (window.confirm(p.name + " 템플릿을 삭제할까요?")) { removePrompt(p.name); toast(p.name + " 삭제됨", "ok"); } }} className="text-xs text-slate-500 hover:text-red-400">삭제</button></div>
             </div>
           ))}
         </div>
