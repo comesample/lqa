@@ -5,7 +5,7 @@
 // ============================================================
 import { Bug, Megaphone, UserCog } from "lucide-react";
 
-export const DOMAINS = [{ id: "LQA", label: "AI 품질", ready: true }, { id: "FQA", label: "기능 QA", ready: true }, { id: "NQA", label: "비기능 QA", ready: false }];
+export const DOMAINS = [{ id: "LQA", label: "AI 품질", ready: true }, { id: "FQA", label: "기능 QA", ready: true }, { id: "NQA", label: "비기능 QA", ready: true }];
 export const COMMON_SECTIONS = [
   { group: "공통", items: [
     { id: "defects", label: "결함", icon: Bug },

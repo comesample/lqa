@@ -1378,31 +1378,37 @@ export function FqaTargetScreen() {
   const [tf, setTf] = useState({ name: "", platform: "Web", env: "스테이징", url: "" });
   const [ef, setEf] = useState({ env: "스테이징", url: "" });
   const [af, setAf] = useState({ role: "일반", acct: "", secretRef: "" });
+  const [draft, setDraft] = useState({});
+  const [scmDraft, setScmDraft] = useState({});
   const stK = { "연결됨": "pass", "미확인": "warn", "오류": "fail" };
   const sys = systems[sel] || systems[0];
   const env = sys.envs[envIdx] || sys.envs[0];
   const isApi = sys.platform === "API";
   const CFG_DEF = { auth: "storageState 재사용", tfa: "TOTP 시드", apiAuth: "Bearer 토큰", writeBlock: true, synth: true, approval: true, vpn: true, basic: false, tls: true, seedBefore: true, cleanAfter: true, dataset: "기본 시드셋", seedMethod: isApi ? "API 호출" : "SQL 스크립트", seedSource: "", loginAcct: "", ci: { provider: "GitLab CI" }, deploy: { signal: "CD 배포 완료 웹훅" } };
-  const cfg = { ...CFG_DEF, ...env };
-  const setEnvCfg = (patch) => updateFqaSystem(sys.id, { envs: sys.envs.map((e, i) => (i === envIdx ? { ...e, ...patch } : e)) });
+  const cfg = { ...CFG_DEF, ...env, ...draft };
+  const setEnvCfg = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const SCM_DEF = isApi ? { provider: "GitLab", testRepo: "gitlab.skt/tworld/api-tests", appRepo: "gitlab.skt/tworld/api", branch: "main" } : { provider: "GitLab", testRepo: "gitlab.skt/tworld/web-tests", appRepo: "gitlab.skt/tworld/web", branch: "main" };
-  const scm = { ...SCM_DEF, ...(sys.scm || {}) };
-  const setSysScm = (patch) => updateFqaSystem(sys.id, { scm: { ...scm, ...patch } });
+  const scm = { ...SCM_DEF, ...(sys.scm || {}), ...scmDraft };
+  const setSysScm = (patch) => setScmDraft((d) => ({ ...d, ...patch }));
+  const dirty = Object.keys(draft).length > 0 || Object.keys(scmDraft).length > 0;
+  const saveCfg = () => { updateFqaSystem(sys.id, { envs: sys.envs.map((e, i) => (i === envIdx ? { ...e, ...draft } : e)), scm: { ...(sys.scm || {}), ...scmDraft } }); setDraft({}); setScmDraft({}); flash("설정 저장됨"); };
+  const guardSwitch = (fn) => { if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setDraft({}); setScmDraft({}); fn(); };
+  useEffect(() => { setDraft({}); setScmDraft({}); }, [sys.id]);
   const envSlug = { "스테이징": "stg", "운영": "prod", "개발": "dev" }[env.env] || "env";
   const hookUrl = "https://xq.skt/api/hooks/t" + sys.id + "-" + envSlug + "-3f9a2c";
-  const choose = (i) => { setSel(i); setEnvIdx(0); setTest(null); };
-  const delTarget = (i, sy) => { if (systems.length <= 1) { flash("최소 1개 대상은 유지해야 합니다"); return; } if (!window.confirm(sy.name + " 대상을 삭제할까요?")) return; removeFqaSystem(sy.id); setSel(0); setEnvIdx(0); setTest(null); flash(sy.name + " 삭제됨"); };
-  const delEnv = () => { if (sys.envs.length <= 1) { flash("최소 1개 환경은 유지해야 합니다"); return; } if (!window.confirm(env.env + " 환경을 삭제할까요?")) return; updateFqaSystem(sys.id, { envs: sys.envs.filter((_, i) => i !== envIdx) }); setEnvIdx(0); flash(env.env + " 환경 삭제됨"); };
+  const choose = (i) => guardSwitch(() => { setSel(i); setEnvIdx(0); setTest(null); });
+  const delTarget = (i, sy) => { if (systems.length <= 1) { flash("최소 1개 대상은 유지해야 합니다"); return; } if (!window.confirm(sy.name + " 대상을 삭제할까요?")) return; guardSwitch(() => { removeFqaSystem(sy.id); setSel(0); setEnvIdx(0); setTest(null); flash(sy.name + " 삭제됨"); }); };
+  const delEnv = () => { if (sys.envs.length <= 1) { flash("최소 1개 환경은 유지해야 합니다"); return; } if (!window.confirm(env.env + " 환경을 삭제할까요?")) return; guardSwitch(() => { updateFqaSystem(sys.id, { envs: sys.envs.filter((_, i) => i !== envIdx) }); setEnvIdx(0); flash(env.env + " 환경 삭제됨"); }); };
   const delAcct = (idx) => { setEnvCfg({ accts: (cfg.accts || []).filter((_, j) => j !== idx) }); flash("계정 삭제됨"); };
   const runTest = () => { setTest({ s: "run" }); setTimeout(() => setTest({ s: "ok", m: "연결 성공 · 200 OK · " + (env.ver !== "-" ? (isApi ? "버전 " : "빌드 ") + env.ver : "미배포") + (isApi ? " · 인증 토큰 유효" : " · 로그인 가능") }), 800); };
   const addTarget = () => {
     if (!tf.name.trim() || !tf.url.trim()) { flash("이름과 Base URL을 입력하세요"); return; }
     const ns = { id: Date.now(), name: tf.name, platform: tf.platform, envs: [{ env: tf.env, url: tf.url, status: "미확인", ver: "-", prod: tf.env === "운영" }] };
-    addFqaSystem(ns); setSel(systems.length); setEnvIdx(0); setModal(null); flash("대상이 추가되었습니다");
+    guardSwitch(() => { addFqaSystem(ns); setSel(systems.length); setEnvIdx(0); setModal(null); flash("대상이 추가되었습니다"); });
   };
   const addEnv = () => {
     if (!ef.url.trim()) { flash("Base URL을 입력하세요"); return; }
-    updateFqaSystem(sys.id, { envs: [...sys.envs, { env: ef.env, url: ef.url, status: "미확인", ver: "-", prod: ef.env === "운영" }] }); setEnvIdx(sys.envs.length); setModal(null); flash("환경이 추가되었습니다");
+    guardSwitch(() => { updateFqaSystem(sys.id, { envs: [...sys.envs, { env: ef.env, url: ef.url, status: "미확인", ver: "-", prod: ef.env === "운영" }] }); setEnvIdx(sys.envs.length); setModal(null); flash("환경이 추가되었습니다"); });
   };
   const addAcct = () => {
     if (!af.acct.trim()) { flash("계정 ID를 입력하세요"); return; }
@@ -1426,13 +1432,13 @@ export function FqaTargetScreen() {
         <div className="col-span-9 space-y-3">
           <Card className="flex items-center justify-between p-3">
             <div className="flex items-center gap-2"><span className="text-base font-semibold text-slate-100">{sys.name}</span><Badge kind="info">{sys.platform}</Badge></div>
-            <div className="flex items-center gap-1.5">{sys.envs.map((e, i) => (<button key={e.env} onClick={() => { setEnvIdx(i); setTest(null); }} className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (envIdx === i ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{e.env}{e.prod ? " ●" : ""}</button>))}<button onClick={() => { setEf({ env: "개발", url: "" }); setModal("env"); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800">+ 환경</button>{sys.envs.length > 1 && <button onClick={delEnv} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-500 hover:text-red-400" title="현재 환경 삭제">− 환경</button>}</div>
+            <div className="flex items-center gap-1.5">{sys.envs.map((e, i) => (<button key={e.env} onClick={() => guardSwitch(() => { setEnvIdx(i); setTest(null); })} className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (envIdx === i ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{e.env}{e.prod ? " ●" : ""}</button>))}<button onClick={() => { setEf({ env: "개발", url: "" }); setModal("env"); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800">+ 환경</button>{sys.envs.length > 1 && <button onClick={delEnv} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-500 hover:text-red-400" title="현재 환경 삭제">− 환경</button>}</div>
           </Card>
 
           <Card className="p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-3 text-sm"><span className="font-mono text-slate-300">{env.url}</span><Badge kind={stK[env.status]}>{env.status}</Badge><span className="text-xs text-slate-500">빌드 {env.ver}</span></div>
-              <Btn icon={RefreshCw} onClick={runTest}>{test && test.s === "run" ? "테스트 중…" : "연결 테스트"}</Btn>
+              <div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={RefreshCw} onClick={runTest}>{test && test.s === "run" ? "테스트 중…" : "연결 테스트"}</Btn><Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
             </div>
             {test && test.s === "ok" && <div className="mt-2 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />{test.m}</div>}
           </Card>
@@ -1640,6 +1646,8 @@ export function FqaPlanScreen({ nav }) {
   const toggleB = (b) => setBrow(brow.includes(b) ? brow.filter((x) => x !== b) : [...brow, b]);
   const pick = (p) => { setSelId(p.id); setTarget(p.target); setSuites(p.suites); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setHeadless(p.headless !== false); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setApiTimeout(p.timeout != null ? p.timeout : 30); setGate(p.gate != null ? p.gate : 95); setPlanStatus(p.status || "초안"); };
   const saveCfg = () => { updateFqaPlan(sel.id, { target, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus }); flash(sel.name + " 설정 저장됨"); };
+  const dirty = JSON.stringify({ target, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus }) !== JSON.stringify({ target: sel.target, suites: sel.suites, tags: sel.tags, brow: sel.brow || ["Chrome"], res: sel.res || "1920×1080", headless: sel.headless !== false, workers: sel.workers || "4", retry: sel.retry != null ? sel.retry : 1, onfail: sel.onfail || "계속 진행", video: sel.video || "실패 시만", timeout: sel.timeout != null ? sel.timeout : 30, gate: sel.gate != null ? sel.gate : 95, status: sel.status || "초안" });
+  const choosePlan = (p) => { if (p.id === sel.id) return; if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; pick(p); };
   const createPlan = () => { const nm = nf.name.trim(); if (!nm) { flash("계획 이름을 입력하세요"); return; } const id = Math.max(0, ...fqaPlans.map((x) => x.id)) + 1; const np = { id, name: nm, target: nf.target, suites: nf.suites, tags: nf.tags, sched: "예약 없음", status: "초안", brow: ["Chrome"], res: "1920×1080", headless: true, workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", timeout: 30, gate: 95 }; addFqaPlan(np); pick(np); setAddOpen(false); setNf({ name: "", target: "T월드 웹 · 스테이징", suites: "전체", tags: "" }); flash(nm + " 계획 생성 (초안)"); };
   const delPlan = (pl) => { if (!window.confirm(pl.name + " 계획을 삭제할까요?")) return; removeFqaPlan(pl.id); if (selId === pl.id) { const rest = fqaPlans.filter((x) => x.id !== pl.id); setSelId(rest[0] ? rest[0].id : null); } flash(pl.name + " 삭제됨"); };
   return (
@@ -1650,7 +1658,7 @@ export function FqaPlanScreen({ nav }) {
           <Btn kind="primary" icon={Plus} className="w-full" onClick={() => setAddOpen(true)}>새 실행 계획</Btn>
           {fqaPlans.map((p) => (
             <Card key={p.id} className={"cursor-pointer p-3 " + (sel.id === p.id ? "border-teal-500" : "hover:border-slate-700")} >
-              <div onClick={() => pick(p)}>
+              <div onClick={() => choosePlan(p)}>
                 <div className="flex items-center justify-between"><div className="text-sm font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={PLAT_K[platOf(p.target)] || "info"}>{platOf(p.target)}</Badge><Badge kind={p.status === "활성" ? "pass" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); delPlan(p); }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
                 <div className="mt-1 text-xs text-slate-500">{p.target}</div>
                 <div className="mt-1 text-xs text-slate-500">{p.suites} · {p.sched}</div>
@@ -1661,7 +1669,7 @@ export function FqaPlanScreen({ nav }) {
         <Card className="col-span-9 p-5">
           <div className="mb-4 flex items-center justify-between">
             <div className="text-base font-semibold text-slate-100">상세 설정 — {sel.name}</div>
-            <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><TG on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div><Btn kind="primary" icon={RefreshCw} onClick={saveCfg}>설정 저장</Btn></div>
+            <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><TG on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
           </div>
           <div className="grid grid-cols-2 gap-5">
             <div className="space-y-3.5">

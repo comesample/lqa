@@ -477,10 +477,52 @@ export function AddChatbotForm({ close, data }) {
   const [name, setName] = useState((data && data.name) || "");
   const [env, setEnv] = useState((data && data.env) || "운영");
   const [channel, setChannel] = useState((data && data.channel) || "REST API");
+  const [endpoint, setEndpoint] = useState((data && data.endpoint) || "");
+  const [authType, setAuthType] = useState((data && data.auth) || "Bearer Token");
+  const chTabs = [["REST API", true], ["Web 대화", true], ["Mobile 앱", false]];
+  const submit = () => {
+    if (!name.trim()) { toast("이름을 입력하세요", "warn"); return; }
+    if (!endpoint.trim()) { toast(channel === "REST API" ? "엔드포인트 URL을 입력하세요" : "대상 URL을 입력하세요", "warn"); return; }
+    const rec = { name, env, channel, endpoint, auth: channel === "Web 대화" ? "로그인 세션" : authType, status: edit ? data.status : "미확인", last: edit ? data.last : "-" };
+    if (edit) { updateChatbot(data.id, rec); toast(name + " 연결이 수정되었습니다", "ok"); }
+    else { addChatbot({ id: "cb" + Date.now(), ...rec }); toast("챗봇 연결이 추가되었습니다 — 상세 설정은 오른쪽 패널에서 이어서 진행하세요", "ok"); }
+    close();
+  };
+  return (
+    <div className="space-y-3.5">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="이름"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: T월드 상담봇" /></Field>
+        <Field label="환경"><Select value={env} onChange={(e) => setEnv(e.target.value)}><option>운영</option><option>스테이징</option><option>개발</option></Select></Field>
+      </div>
+      <Field label="채널 유형">
+        <div className="grid grid-cols-3 gap-2">
+          {chTabs.map(([ch, ok]) => (
+            <button key={ch} disabled={!ok} onClick={() => ok && setChannel(ch)} className={"rounded-lg border px-2 py-2 text-sm " + (channel === ch ? "border-teal-500 bg-teal-900 text-teal-200" : ok ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-800 bg-slate-900 text-slate-600 cursor-not-allowed")}>
+              {ch}{!ok && <span className="block font-normal" style={{ fontSize: 9 }}>Stage 3</span>}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label={channel === "REST API" ? "엔드포인트" : "대상 URL"}><Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={channel === "REST API" ? "https://api.tworld.co.kr/v2/chat" : "https://www.tworld.co.kr (챗 위젯 페이지)"} /></Field>
+      {channel === "REST API" && <Field label="인증 방식"><Select value={authType} onChange={(e) => setAuthType(e.target.value)}><option>None</option><option>API Key</option><option>Bearer Token</option><option>OAuth 2.0</option></Select></Field>}
+      <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">헤더·요청 본문·응답 추출·연결 테스트 등 상세 설정은 추가 후 <span className="text-slate-300">오른쪽 상세 패널</span>에서 진행합니다.</div>
+      <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800">
+        <div className="text-xs text-slate-500 flex-1">인증 시크릿은 Secrets 저장소에 암호화 보관됩니다.</div>
+        <div className="flex gap-2 shrink-0"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "추가"}</Btn></div>
+      </div>
+    </div>
+  );
+}
+
+/* 챗봇 상세 설정 — 마스터-디테일 오른쪽 패널 (심층 설정은 목업 로컬) */
+function ChatbotDetail({ cb, onDirty }) {
+  const { updateChatbot, setChatbotStatus, removeChatbot, toast } = useApp();
+  const stK = KIND.targetStatus; const chK = KIND.channel;
+  const isRest = cb.channel === "REST API";
+  const [endpoint, setEndpoint] = useState(cb.endpoint || "");
+  const [authType, setAuthType] = useState(cb.auth || "Bearer Token");
   const [method, setMethod] = useState("POST");
-  const [endpoint, setEndpoint] = useState((data && data.channel === "REST API" && data.endpoint) || "");
   const [headers, setHeaders] = useState([{ k: "Content-Type", v: "application/json" }]);
-  const [authType, setAuthType] = useState("Bearer Token");
   const [tokenVal, setTokenVal] = useState("");
   const [apiKeyName, setApiKeyName] = useState("X-API-Key");
   const [oauth, setOauth] = useState({ url: "", id: "", secret: "", scope: "" });
@@ -491,222 +533,135 @@ export function AddChatbotForm({ close, data }) {
   const [answerPath, setAnswerPath] = useState("$.data.answer");
   const [sessionPath, setSessionPath] = useState("$.data.sessionId");
   const [respMode, setRespMode] = useState("동기");
-  const [pollUrl, setPollUrl] = useState("");
-  const [doneField, setDoneField] = useState("$.status");
+  const [pollUrl, setPollUrl] = useState(""); const [doneField, setDoneField] = useState("$.status");
   const [timeoutS, setTimeoutS] = useState(30);
-  const [webUrl, setWebUrl] = useState((data && data.channel !== "REST API" && data.endpoint) || "");
-  const [needLogin, setNeedLogin] = useState(false);
-  const [sel, setSel] = useState({ input: "", send: "", resp: "", done: "" });
+  const [needLogin, setNeedLogin] = useState(cb.auth === "로그인 세션");
+  const [sel2, setSel2] = useState({ input: "", send: "", resp: "", done: "" });
   const [iframe, setIframe] = useState(false);
-  const [test, setTest] = useState(null);
   const [modelSrc, setModelSrc] = useState("API 버전 필드 폴링");
   const [verPath, setVerPath] = useState("$.model.version");
-  const deployHook = "https://xq.skt/api/hooks/model-" + (name.trim() ? name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "chatbot") + "-9c1e";
-
+  const [test, setTest] = useState(null);
+  const deployHook = "https://xq.skt/api/hooks/model-" + (cb.name.trim() ? cb.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "chatbot") + "-9c1e";
   const setH = (i, key, val) => setHeaders(headers.map((h, j) => (j === i ? { ...h, [key]: val } : h)));
-  const validate = () => {
-    if (!name.trim()) return "이름을 입력하세요";
-    if (channel === "REST API") {
-      if (!endpoint.trim()) return "엔드포인트 URL을 입력하세요";
-      if (!body.includes("{{utterance}}")) return "요청 본문에 {{utterance}} 변수가 있어야 합니다";
-      if (!answerPath.trim()) return "응답 추출 경로(JSON Path)를 입력하세요";
-      if (respMode === "비동기 폴링" && !pollUrl.trim()) return "폴링 URL을 입력하세요";
-    } else {
-      if (!webUrl.trim()) return "대상 URL을 입력하세요";
-      if (!sel.input.trim() || !sel.resp.trim()) return "입력창·응답 셀렉터는 필수입니다";
-    }
-    return null;
-  };
+  useEffect(() => { setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setTest(null); }, [cb.id]);
+  const baseAuth = isRest ? (cb.auth || "Bearer Token") : (cb.auth === "로그인 세션" ? "로그인 세션" : "없음");
+  const effAuth = isRest ? authType : (needLogin ? "로그인 세션" : "없음");
+  const dirty = endpoint !== (cb.endpoint || "") || effAuth !== baseAuth;
+  useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
+  const save = () => { updateChatbot(cb.id, { endpoint, auth: effAuth }); toast(cb.name + " 설정 저장됨", "ok"); };
   const runTest = () => {
-    const err = validate();
-    if (err) { setTest({ state: "err", msg: err }); return; }
     setTest({ state: "running" });
-    setTimeout(() => {
-      setTest({ state: "ok", latency: 700 + Math.floor(Math.random() * 700),
-        answer: channel === "REST API"
-          ? "나의 T월드 → 요금제 변경 탭에서 LTE 요금제를 선택해 신청하시면 됩니다. (당월 1회 제한)"
-          : "(웹 챗 위젯 응답 캡처) 나의 T월드에서 요금제를 변경할 수 있습니다." });
-    }, 950);
+    setTimeout(() => { setTest({ state: "ok", latency: 700 + Math.floor(Math.random() * 700), answer: isRest ? "나의 T월드 → 요금제 변경 탭에서 LTE 요금제를 선택해 신청하시면 됩니다. (당월 1회 제한)" : "(웹 챗 위젯 응답 캡처) 나의 T월드에서 요금제를 변경할 수 있습니다." }); setChatbotStatus(cb.id, "연결됨"); }, 950);
   };
-  const submit = () => {
-    const err = validate();
-    if (err) { toast(err, "warn"); return; }
-    const rec = { name, env, channel, endpoint: channel === "REST API" ? endpoint : webUrl, auth: channel === "Web 대화" ? (needLogin ? "로그인 세션" : "없음") : authType, status: test && test.state === "ok" ? "연결됨" : (edit ? data.status : "미확인"), last: edit ? data.last : "-" };
-    if (edit) { updateChatbot(data.id, rec); toast(name + " 연결이 수정되었습니다", "ok"); }
-    else { addChatbot({ id: "cb" + Date.now(), ...rec }); toast("챗봇 연결이 추가되었습니다" + (test && test.state === "ok" ? " (연결 테스트 통과)" : " — 연결 테스트 권장"), "ok"); }
-    close();
-  };
-  const chTabs = [["REST API", true], ["Web 대화", true], ["Mobile 앱", false]];
-
   return (
     <div className="space-y-3">
-      {/* 공통 헤더 (전폭, 2단) */}
+      <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
+        <div className="flex items-center gap-2"><span className="text-base font-semibold text-slate-100">{cb.name}</span><Badge kind="info">{cb.env}</Badge><Badge kind={chK[cb.channel]}>{cb.channel}</Badge><Badge kind={stK[cb.status]}>{cb.status}</Badge></div>
+        <div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={Link2} onClick={runTest}>{test && test.state === "running" ? "테스트 중…" : "연결 테스트"}</Btn><Btn kind="primary" icon={RefreshCw} onClick={save} disabled={!dirty}>설정 저장</Btn><button onClick={() => { if (window.confirm(cb.name + " (" + cb.env + ") 연결을 삭제할까요?")) { removeChatbot(cb.id); toast(cb.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={16} /></button></div>
+      </Card>
+
       <div className="grid grid-cols-2 gap-4 items-start">
-        <div className="flex gap-3">
-          <div className="flex-1"><Field label="이름"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: T월드 상담봇" /></Field></div>
-          <div style={{ width: 130 }}><Field label="환경"><Select value={env} onChange={(e) => setEnv(e.target.value)}><option>운영</option><option>스테이징</option><option>개발</option></Select></Field></div>
-        </div>
-        <Field label="채널 유형">
-          <div className="grid grid-cols-3 gap-2">
-            {chTabs.map(([ch, ok]) => (
-              <button key={ch} disabled={!ok} onClick={() => { if (ok) { setChannel(ch); setTest(null); } }} className={"rounded-lg border px-2 py-2 text-sm " + (channel === ch ? "border-teal-500 bg-teal-900 text-teal-200" : ok ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-800 bg-slate-900 text-slate-600 cursor-not-allowed")}>
-                {ch}{!ok && <span className="block font-normal" style={{ fontSize: 9 }}>Stage 3</span>}
-              </button>
-            ))}
-          </div>
-        </Field>
-      </div>
-
-      {/* 2단 본문 */}
-      <div className="grid grid-cols-2 gap-5 items-start pt-1">
-        {/* 좌: 요청·연결 */}
         <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-800 pb-1.5">요청 · 연결</div>
-          {channel === "REST API" && (
-            <>
-              <div className="flex gap-2">
-                <div style={{ width: 92 }}><Field label="메서드"><Select value={method} onChange={(e) => setMethod(e.target.value)}><option>POST</option><option>GET</option><option>PUT</option></Select></Field></div>
-                <div className="flex-1"><Field label="엔드포인트"><Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.tworld.co.kr/v2/chat" /></Field></div>
-              </div>
-              <Field label="인증">
-                <Select value={authType} onChange={(e) => setAuthType(e.target.value)}><option>None</option><option>API Key</option><option>Bearer Token</option><option>OAuth 2.0</option></Select>
-                {authType === "API Key" && <div className="grid grid-cols-2 gap-2 mt-2"><Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="헤더명 (X-API-Key)" /><Input value={tokenVal} onChange={(e) => setTokenVal(e.target.value)} placeholder="키 값 (Secrets 보관)" type="password" /></div>}
-                {authType === "Bearer Token" && <Input value={tokenVal} onChange={(e) => setTokenVal(e.target.value)} placeholder="토큰 (Secrets 보관)" type="password" className="mt-2" />}
-                {authType === "OAuth 2.0" && <div className="grid grid-cols-2 gap-2 mt-2"><Input value={oauth.url} onChange={(e) => setOauth({ ...oauth, url: e.target.value })} placeholder="토큰 URL" /><Input value={oauth.scope} onChange={(e) => setOauth({ ...oauth, scope: e.target.value })} placeholder="scope" /><Input value={oauth.id} onChange={(e) => setOauth({ ...oauth, id: e.target.value })} placeholder="client id" /><Input value={oauth.secret} onChange={(e) => setOauth({ ...oauth, secret: e.target.value })} placeholder="client secret" type="password" /></div>}
-              </Field>
-              <Field label="요청 헤더">
-                {headers.map((h, i) => (
-                  <div key={i} className="flex gap-2 mb-1.5">
-                    <Input value={h.k} onChange={(e) => setH(i, "k", e.target.value)} placeholder="Header" />
-                    <Input value={h.v} onChange={(e) => setH(i, "v", e.target.value)} placeholder="Value" />
-                    <button onClick={() => setHeaders(headers.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-400 px-1"><X size={14} /></button>
-                  </div>
-                ))}
-                <button onClick={() => setHeaders([...headers, { k: "", v: "" }])} className="text-xs text-teal-400">+ 헤더 추가</button>
-              </Field>
-              <Field label="요청 본문 템플릿">
-                <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-teal-500" style={{ fontFamily: "monospace" }} />
-                <div className="text-xs text-slate-500 mt-1">변수: <span className="font-mono text-teal-400">{"{{utterance}}"}</span> (발화) · <span className="font-mono text-teal-400">{"{{sessionId}}"}</span> (멀티턴)</div>
-              </Field>
-            </>
-          )}
-          {channel === "Web 대화" && (
-            <>
-              <Field label="대상 URL"><Input value={webUrl} onChange={(e) => setWebUrl(e.target.value)} placeholder="https://www.tworld.co.kr (챗 위젯 페이지)" /></Field>
-              <div className="flex items-center justify-between text-sm text-slate-300"><span>로그인 필요</span><Toggle on={needLogin} onClick={() => setNeedLogin(!needLogin)} /></div>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="입력창 셀렉터"><Input value={sel.input} onChange={(e) => setSel({ ...sel, input: e.target.value })} placeholder="#chat-input" /></Field>
-                <Field label="전송 버튼 셀렉터"><Input value={sel.send} onChange={(e) => setSel({ ...sel, send: e.target.value })} placeholder="button.send" /></Field>
-                <Field label="응답 셀렉터"><Input value={sel.resp} onChange={(e) => setSel({ ...sel, resp: e.target.value })} placeholder=".msg.bot:last-child" /></Field>
-                <Field label="완료 판정 (선택)"><Input value={sel.done} onChange={(e) => setSel({ ...sel, done: e.target.value })} placeholder=".typing 사라지면 완료" /></Field>
-              </div>
-              <div className="flex items-center justify-between text-sm text-slate-300"><span>위젯이 iframe 안에 있음</span><Toggle on={iframe} onClick={() => setIframe(!iframe)} /></div>
-              <div className="rounded-lg bg-amber-950 border border-amber-900 p-3 text-xs text-amber-200">Web 수집은 UI 변경에 취약합니다(Self-Healing 권장). 가능하면 REST API 연결을 우선하세요.</div>
-            </>
-          )}
+          <Card className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-200">요청 · 연결</div>
+            <Field label={isRest ? "엔드포인트" : "대상 URL"}>
+              {isRest ? <div className="flex gap-2"><div style={{ width: 92 }}><Select value={method} onChange={(e) => setMethod(e.target.value)}><option>POST</option><option>GET</option><option>PUT</option></Select></div><Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.tworld.co.kr/v2/chat" /></div> : <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://www.tworld.co.kr (챗 위젯 페이지)" />}
+            </Field>
+            {isRest ? (
+              <>
+                <Field label="인증">
+                  <Select value={authType} onChange={(e) => setAuthType(e.target.value)}><option>None</option><option>API Key</option><option>Bearer Token</option><option>OAuth 2.0</option></Select>
+                  {authType === "API Key" && <div className="mt-2 grid grid-cols-2 gap-2"><Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="헤더명 (X-API-Key)" /><Input value={tokenVal} onChange={(e) => setTokenVal(e.target.value)} placeholder="키 값 (Secrets 보관)" type="password" /></div>}
+                  {authType === "Bearer Token" && <Input value={tokenVal} onChange={(e) => setTokenVal(e.target.value)} placeholder="토큰 (Secrets 보관)" type="password" className="mt-2" />}
+                  {authType === "OAuth 2.0" && <div className="mt-2 grid grid-cols-2 gap-2"><Input value={oauth.url} onChange={(e) => setOauth({ ...oauth, url: e.target.value })} placeholder="토큰 URL" /><Input value={oauth.scope} onChange={(e) => setOauth({ ...oauth, scope: e.target.value })} placeholder="scope" /><Input value={oauth.id} onChange={(e) => setOauth({ ...oauth, id: e.target.value })} placeholder="client id" /><Input value={oauth.secret} onChange={(e) => setOauth({ ...oauth, secret: e.target.value })} placeholder="client secret" type="password" /></div>}
+                </Field>
+                <Field label="요청 헤더">
+                  {headers.map((h, i) => (<div key={i} className="mb-1.5 flex gap-2"><Input value={h.k} onChange={(e) => setH(i, "k", e.target.value)} placeholder="Header" /><Input value={h.v} onChange={(e) => setH(i, "v", e.target.value)} placeholder="Value" /><button onClick={() => setHeaders(headers.filter((_, j) => j !== i))} className="px-1 text-slate-500 hover:text-red-400"><X size={14} /></button></div>))}
+                  <button onClick={() => setHeaders([...headers, { k: "", v: "" }])} className="text-xs text-teal-400">+ 헤더 추가</button>
+                </Field>
+                <Field label="요청 본문 템플릿">
+                  <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200 outline-none focus:border-teal-500" style={{ fontFamily: "monospace" }} />
+                  <div className="mt-1 text-xs text-slate-500">변수: <span className="font-mono text-teal-400">{"{{utterance}}"}</span> (발화) · <span className="font-mono text-teal-400">{"{{sessionId}}"}</span> (멀티턴)</div>
+                </Field>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-sm text-slate-300"><span>로그인 필요</span><Toggle on={needLogin} onClick={() => setNeedLogin(!needLogin)} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="입력창 셀렉터"><Input value={sel2.input} onChange={(e) => setSel2({ ...sel2, input: e.target.value })} placeholder="#chat-input" /></Field>
+                  <Field label="전송 버튼 셀렉터"><Input value={sel2.send} onChange={(e) => setSel2({ ...sel2, send: e.target.value })} placeholder="button.send" /></Field>
+                  <Field label="응답 셀렉터"><Input value={sel2.resp} onChange={(e) => setSel2({ ...sel2, resp: e.target.value })} placeholder=".msg.bot:last-child" /></Field>
+                  <Field label="완료 판정 (선택)"><Input value={sel2.done} onChange={(e) => setSel2({ ...sel2, done: e.target.value })} placeholder=".typing 사라지면 완료" /></Field>
+                </div>
+                <div className="flex items-center justify-between text-sm text-slate-300"><span>위젯이 iframe 안에 있음</span><Toggle on={iframe} onClick={() => setIframe(!iframe)} /></div>
+                <div className="rounded-lg border border-amber-900 bg-amber-950 p-3 text-xs text-amber-200">Web 수집은 UI 변경에 취약합니다. 가능하면 REST API 연결을 우선하세요.</div>
+              </>
+            )}
+          </Card>
         </div>
 
-        {/* 우: 응답 처리·소스·테스트 */}
         <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-800 pb-1.5">응답 처리 · 소스</div>
-          {channel === "REST API" && (
-            <>
+          {isRest && (
+            <Card className="p-4 space-y-3">
+              <div className="text-sm font-semibold text-slate-200">응답 처리</div>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="응답 추출 (JSON Path)"><Input value={answerPath} onChange={(e) => setAnswerPath(e.target.value)} placeholder="$.data.answer" /></Field>
                 <Field label="세션 추출 (선택)"><Input value={sessionPath} onChange={(e) => setSessionPath(e.target.value)} placeholder="$.data.sessionId" /></Field>
               </div>
-              <div className="flex gap-2 items-start">
-                <div className="flex-1">
-                  <Field label="응답 방식">
-                    <Select value={respMode} onChange={(e) => setRespMode(e.target.value)}><option>동기</option><option>SSE 스트리밍</option><option>비동기 폴링</option></Select>
-                    {respMode === "비동기 폴링" && <div className="grid grid-cols-2 gap-2 mt-2"><Input value={pollUrl} onChange={(e) => setPollUrl(e.target.value)} placeholder="폴링 URL" /><Input value={doneField} onChange={(e) => setDoneField(e.target.value)} placeholder="완료 필드 ($.status)" /></div>}
-                    {respMode === "SSE 스트리밍" && <div className="text-xs text-slate-500 mt-1">청크를 누적해 [DONE] 신호까지 조립합니다.</div>}
-                  </Field>
-                </div>
+              <div className="flex items-start gap-2">
+                <div className="flex-1"><Field label="응답 방식"><Select value={respMode} onChange={(e) => setRespMode(e.target.value)}><option>동기</option><option>SSE 스트리밍</option><option>비동기 폴링</option></Select>{respMode === "비동기 폴링" && <div className="mt-2 grid grid-cols-2 gap-2"><Input value={pollUrl} onChange={(e) => setPollUrl(e.target.value)} placeholder="폴링 URL" /><Input value={doneField} onChange={(e) => setDoneField(e.target.value)} placeholder="완료 필드 ($.status)" /></div>}{respMode === "SSE 스트리밍" && <div className="mt-1 text-xs text-slate-500">청크를 누적해 [DONE] 신호까지 조립합니다.</div>}</Field></div>
                 <div style={{ width: 110 }}><Field label="타임아웃(초)"><Input type="number" value={timeoutS} onChange={(e) => setTimeoutS(e.target.value)} /></Field></div>
               </div>
-            </>
+            </Card>
           )}
-
-          <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 space-y-2.5">
-            <div className="flex items-center gap-2 text-sm text-slate-200 font-semibold"><Wrench size={14} className="text-teal-400" />모델·배포 소스</div>
-            <div className="text-xs text-slate-500"><span className="text-slate-300">평가 계획 › 이벤트 트리거</span>의 “챗봇 모델 업데이트 시”가 여기서 정의한 소스를 상속합니다.</div>
-            <Field label="모델 버전 감지 방식" hint={modelSrc === "API 버전 필드 폴링" ? "응답의 버전 필드를 주기적으로 조회해 변경을 감지합니다." : modelSrc === "배포 웹훅 알림" ? "배포 파이프라인이 아래 URL로 알림을 보내면 감지합니다." : "자동 감지 없음 — 수동 실행만 가능합니다."}>
-              <Select value={modelSrc} onChange={(e) => setModelSrc(e.target.value)}><option>API 버전 필드 폴링</option><option>배포 웹훅 알림</option><option>수동</option></Select>
-            </Field>
+          <Card className="p-4 space-y-2.5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Wrench size={14} className="text-teal-400" />모델·배포 소스</div>
+            <div className="text-xs text-slate-500"><span className="text-slate-300">평가 계획 › 이벤트 트리거</span>의 "챗봇 모델 업데이트 시"가 여기서 정의한 소스를 상속합니다.</div>
+            <Field label="모델 버전 감지 방식"><Select value={modelSrc} onChange={(e) => setModelSrc(e.target.value)}><option>API 버전 필드 폴링</option><option>배포 웹훅 알림</option><option>수동</option></Select></Field>
             {modelSrc === "API 버전 필드 폴링" && <Field label="버전 필드 (JSON Path)"><Input value={verPath} onChange={(e) => setVerPath(e.target.value)} placeholder="$.model.version" /></Field>}
-            {modelSrc === "배포 웹훅 알림" && (
-              <Field label="배포 알림 수신 웹훅 URL" hint="배포 완료 시 이 URL로 POST하면 재평가가 트리거됩니다.">
-                <div className="flex items-center gap-2">
-                  <Input value={deployHook} readOnly className="font-mono text-xs" />
-                  <Btn icon={Copy} onClick={() => { try { navigator.clipboard.writeText(deployHook); } catch (e) {} toast("웹훅 URL을 복사했습니다", "ok"); }}>복사</Btn>
-                </div>
-              </Field>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-slate-700 bg-slate-800 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm text-slate-200 font-semibold">연결 테스트</div>
-              <Btn icon={Link2} onClick={runTest}>{test && test.state === "running" ? "테스트 중…" : "샘플 발화로 테스트"}</Btn>
-            </div>
+            {modelSrc === "배포 웹훅 알림" && <Field label="배포 알림 수신 웹훅 URL"><div className="flex items-center gap-2"><Input value={deployHook} readOnly className="font-mono text-xs" /><Btn icon={Copy} onClick={() => { try { navigator.clipboard.writeText(deployHook); } catch (e) {} toast("웹훅 URL을 복사했습니다", "ok"); }}>복사</Btn></div></Field>}
+          </Card>
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-2"><div className="text-sm font-semibold text-slate-200">연결 테스트</div><Btn icon={Link2} onClick={runTest}>{test && test.state === "running" ? "테스트 중…" : "샘플 발화로 테스트"}</Btn></div>
             {test && test.state === "running" && <div className="mt-2 text-xs text-slate-400">샘플 발화 전송 중…</div>}
-            {test && test.state === "err" && <div className="mt-2 flex items-center gap-2 text-xs text-red-300"><XCircle size={14} />{test.msg}</div>}
-            {test && test.state === "ok" && (
-              <div className="mt-2 space-y-1">
-                <div className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />연결 성공 · 응답 {test.latency}ms</div>
-                <div className="rounded bg-slate-900 border border-slate-700 p-2 text-xs text-slate-300">응답 미리보기: {test.answer}</div>
-              </div>
-            )}
-          </div>
+            {test && test.state === "ok" && (<div className="mt-2 space-y-1"><div className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />연결 성공 · 응답 {test.latency}ms</div><div className="rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">응답 미리보기: {test.answer}</div></div>)}
+          </Card>
         </div>
       </div>
-
-      {/* 전폭 푸터 */}
-      <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800">
-        <div className="text-xs text-slate-500 flex-1">인증 시크릿은 Secrets 저장소에 암호화 보관되며, 수집 대화는 Judge 호출 전 PII 마스킹됩니다.</div>
-        <div className="flex gap-2 shrink-0"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "추가"}</Btn></div>
-      </div>
+      <div className="text-xs text-slate-500">인증 시크릿은 Secrets 저장소에 암호화 보관되며, 수집 대화는 Judge 호출 전 PII 마스킹됩니다.</div>
     </div>
   );
 }
 
 export function Targets() {
-  const { chatbots, openModal, toast, setChatbotStatus, removeChatbot, env } = useApp();
+  const { chatbots, openModal, env } = useApp();
+  const [sel, setSel] = useState(0);
+  const [cbDirty, setCbDirty] = useState(false);
+  const chooseCb = (i) => { if (i === sel) return; if (cbDirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setCbDirty(false); setSel(i); };
+  const stK = KIND.targetStatus; const chK = KIND.channel;
   const list = env === "전체" ? chatbots : chatbots.filter((c) => c.env === env);
-  const stK = KIND.targetStatus;
-  const chK = KIND.channel;
+  const cur = list[sel] || list[0];
+  useEffect(() => { if (sel >= list.length) setSel(0); }, [list.length]);
   return (
     <div className="space-y-4">
-      <PageToolbar desc={<>평가 대상 챗봇(응답 수집 대상) 등록·관리 <span className="text-slate-500">· 환경 필터: {env}</span></>}>
-        <Btn kind="primary" icon={Plus} onClick={() => openModal("addChatbot")}>챗봇 추가</Btn>
-      </PageToolbar>
-      <div className="grid grid-cols-3 gap-3">
-        {[["연결됨", list.filter((c) => c.status === "연결됨").length, "text-emerald-400"], ["미확인", list.filter((c) => c.status === "미확인").length, "text-amber-400"], ["오류", list.filter((c) => c.status === "오류").length, "text-red-400"]].map((s) => (
-          <Card key={s[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + s[2]}>{s[1]}</div><div className="text-xs text-slate-500 mt-0.5">{s[0]}</div></Card>
-        ))}
+      <PageToolbar desc={<>평가 대상 챗봇(응답 수집 대상) 등록·관리 <span className="text-slate-500">· 환경 필터: {env}</span></>} />
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-3 space-y-3">
+          <Btn kind="primary" icon={Plus} className="w-full" onClick={() => openModal("addChatbot")}>챗봇 추가</Btn>
+          {list.map((c, i) => (
+            <Card key={c.id} className={"cursor-pointer p-3 " + (cur && cur.id === c.id ? "border-teal-500" : "hover:border-slate-700")}>
+              <div onClick={() => chooseCb(i)}>
+                <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-100">{c.name}</span><Badge kind={stK[c.status]}>{c.status}</Badge></div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1"><Badge kind="info">{c.env}</Badge><Badge kind={chK[c.channel]}>{c.channel}</Badge></div>
+              </div>
+            </Card>
+          ))}
+          {list.length === 0 && <div className="rounded-lg border border-slate-800 p-4 text-center text-xs text-slate-500">연결된 챗봇이 없습니다 — 챗봇 추가</div>}
+        </div>
+        <div className="col-span-9">
+          {cur ? <ChatbotDetail cb={cur} onDirty={setCbDirty} /> : <Card className="p-10 text-center text-sm text-slate-500">왼쪽에서 챗봇을 선택하거나 추가하세요</Card>}
+        </div>
       </div>
-      <Card>
-        <table className="w-full text-sm">
-          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">챗봇 / 환경</th><th className="font-medium">채널</th><th className="font-medium">엔드포인트</th><th className="font-medium">인증</th><th className="font-medium">상태</th><th className="font-medium">점검</th><th></th></tr></thead>
-          <tbody className="text-slate-300">
-            {list.map((c) => (
-              <tr key={c.id} className="border-b border-slate-800 hover:bg-slate-800">
-                <td className="py-3 px-4"><span className="text-slate-100 font-medium">{c.name}</span> <Badge kind="info">{c.env}</Badge></td>
-                <td><Badge kind={chK[c.channel]}>{c.channel}</Badge></td>
-                <td className="max-w-xs truncate font-mono text-xs text-slate-400">{c.endpoint}</td>
-                <td className="text-slate-400">{c.auth}</td>
-                <td><Badge kind={stK[c.status]}>{c.status}</Badge></td>
-                <td className="text-slate-500 text-xs">{c.last}</td>
-                <td className="pr-4"><div className="flex items-center gap-2">
-                  <button onClick={() => { setChatbotStatus(c.id, "연결됨"); toast(c.name + " (" + c.env + ") 연결 정상", "ok"); }} className="text-slate-400 hover:text-teal-400" title="연결 테스트"><Link2 size={15} /></button>
-                  <button onClick={() => openModal("addChatbot", c)} className="text-slate-400 hover:text-slate-200" title="편집"><SlidersHorizontal size={15} /></button><button onClick={() => { if (window.confirm(c.name + " (" + c.env + ") 연결을 삭제할까요?")) { removeChatbot(c.id); toast(c.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={15} /></button>
-                </div></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
     </div>
   );
 }
@@ -808,30 +763,55 @@ export function Plans() {
   const [tpl, setTpl] = useState(cur.promptTpl || (prompts.find((p) => p.active) || prompts[0] || {}).name || "");
   const [pass, setPass] = useState(cur.passScore || 85);
   const [bot, setBot] = useState(cur.bot || (chatbots[0] && chatbots[0].name) || "");
+  const [planStatus, setPlanStatus] = useState(cur.status || "초안");
   const [weights, setWeights] = useState({});
+  const [wSnap, setWSnap] = useState("");
   const tplObj = prompts.find((p) => p.name === tpl);
   const dims = (tplObj && tplObj.rubric && tplObj.rubric.length) ? tplObj.rubric : METRICS.map((m) => m.key);
   const wsum = dims.reduce((acc, d) => acc + (weights[d] || 0), 0);
-  useEffect(() => {
+  const seedWeights = (t) => {
+    const tp = prompts.find((p) => p.name === t);
+    const dd = (tp && tp.rubric && tp.rubric.length) ? tp.rubric : METRICS.map((m) => m.key);
+    const base = (cur.weights && !Array.isArray(cur.weights)) ? cur.weights : {};
+    const o = {}; dd.forEach((d) => { o[d] = base[d] != null ? base[d] : Math.round(100 / dd.length); });
+    return o;
+  };
+  // 계획 전환 시 렌더 단계에서 동기 리셋 → 이전 값이 한 프레임 노출되는 껌뻑임 제거
+  const [lastId, setLastId] = useState(cur.id);
+  if (cur.id !== lastId) {
+    setLastId(cur.id);
+    const seedTpl = cur.promptTpl || (prompts.find((p) => p.active) || prompts[0] || {}).name || "";
     setJsel(defJudges(cur));
     setHall(cur.opts ? cur.opts.hall : true);
     setBert(cur.opts ? cur.opts.bert : true);
-    setTpl(cur.promptTpl || (prompts.find((p) => p.active) || prompts[0] || {}).name || "");
+    setTpl(seedTpl);
     setPass(cur.passScore || 85);
     setBot(cur.bot || (chatbots[0] && chatbots[0].name) || "");
-  }, [cur.id]);
+    setPlanStatus(cur.status || "초안");
+    const o = seedWeights(seedTpl);
+    setWeights(o); setWSnap(JSON.stringify(o));
+  }
+  // 사용자가 템플릿을 바꿀 때만 가중치 재계산 (전환은 위에서 이미 처리)
   useEffect(() => {
-    const t = prompts.find((p) => p.name === tpl);
-    const dd = (t && t.rubric && t.rubric.length) ? t.rubric : METRICS.map((m) => m.key);
-    const base = (cur.weights && !Array.isArray(cur.weights)) ? cur.weights : {};
-    const o = {}; dd.forEach((d) => { o[d] = base[d] != null ? base[d] : Math.round(100 / dd.length); });
-    setWeights(o);
-  }, [cur.id, tpl]);
+    const o = seedWeights(tpl);
+    setWeights(o); setWSnap(JSON.stringify(o));
+  }, [tpl]);
   const saveCfg = () => {
     const judgeList = Object.keys(jsel).filter((k) => jsel[k]);
-    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert }, judgeList, judges: judgeList.length });
+    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert }, judgeList, judges: judgeList.length, status: planStatus });
     toast(cur.name + " 설정이 저장되었습니다", "ok");
   };
+  const baseJudges = defJudges(cur);
+  const dirty =
+    bot !== (cur.bot || (chatbots[0] && chatbots[0].name) || "") ||
+    planStatus !== (cur.status || "초안") ||
+    tpl !== (cur.promptTpl || ((prompts.find((p) => p.active) || prompts[0] || {}).name) || "") ||
+    pass !== (cur.passScore || 85) ||
+    hall !== (cur.opts ? cur.opts.hall : true) ||
+    bert !== (cur.opts ? cur.opts.bert : true) ||
+    JSON.stringify(Object.keys(jsel).filter((k) => jsel[k]).sort()) !== JSON.stringify(Object.keys(baseJudges).filter((k) => baseJudges[k]).sort()) ||
+    (wSnap !== "" && JSON.stringify(weights) !== wSnap);
+  const chooseSel = (p) => { if (p.id === cur.id) return; if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setSel(p); };
   return (
     <div className="space-y-4">
       <PageToolbar desc="평가 계획 구성 — Judge·가중치·프롬프트·스케줄" />
@@ -840,7 +820,7 @@ export function Plans() {
         <Btn kind="primary" icon={Plus} className="w-full" onClick={() => openModal("newPlan")}>새 평가 계획</Btn>
         {plans.map((p) => (
           <Card key={p.id} className={"p-4 cursor-pointer " + (cur.id === p.id ? "border-teal-500" : "hover:border-slate-700")}>
-            <div onClick={() => setSel(p)}>
+            <div onClick={() => chooseSel(p)}>
               <div className="flex items-center justify-between"><div className="font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "active" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); if (plans.length <= 1) { toast("최소 1개 계획은 유지해야 합니다", "warn"); return; } if (window.confirm(p.name + " 계획을 삭제할까요?")) { removePlan(p.id); if (sel.id === p.id) setSel(plans.find((x) => x.id !== p.id)); toast(p.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                 <div><div className="text-lg font-bold text-slate-100">{p.tc}</div><div className="text-xs text-slate-500">TC</div></div>
@@ -855,7 +835,7 @@ export function Plans() {
       <Card className="col-span-2 p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="text-base font-semibold text-slate-100">상세 설정 — {cur.name}</div>
-          <div className="flex gap-2"><Btn kind="primary" icon={RefreshCw} onClick={saveCfg}>설정 저장</Btn></div>
+          <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><Toggle on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
         </div>
         <div className="grid grid-cols-2 gap-5">
           <div className="space-y-4">

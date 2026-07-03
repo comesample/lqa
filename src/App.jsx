@@ -21,6 +21,8 @@ import { ConsoleShell, NewTenantForm, AssignAdminForm, NewModelForm } from "./co
 import { SECTIONS, NAV, TREND, METRICS, INIT_CASES, APPROVED_INIT, mkResults, INIT_PLANS, INIT_RUNS, INIT_JUDGES, PROMPT_VARS, INIT_PROMPTS, INIT_DEFECTS, INIT_CHATBOTS, LQA_HIDDEN } from "./lqa/data.js";
 import { DOMAINS, COMMON_SECTIONS, MEMBERS_ITEM, INIT_TENANTS, INIT_USERS, INIT_MODELS } from "./common/data.js";
 import { FQA_SECTIONS, INIT_FQA_CASES, INIT_FQA_SUITES, INIT_FQA_SYSTEMS, INIT_FQA_RUNS, INIT_FQA_PLANS, FQA_HIDDEN } from "./fqa/data.js";
+import { NQA_SECTIONS } from "./nqa/data.js";
+import { NqaScreen } from "./nqa/screens.jsx";
 import { NewPlanForm, AiGenForm, NewCaseForm, JiraForm, AddPromptForm, PlanCasesForm, JiraConfigForm, AddChatbotForm, Targets, Dashboard, Plans, RunHistory, CategoryManager, ImportCasesForm, Cases, Run, Compare, Defects, Report, Settings, InviteMemberForm, MembersView } from "./lqa/screens.jsx";
 
 /* ============================ context ============================ */
@@ -100,11 +102,11 @@ export default function App() {
     models, addModel: (m) => setModels((x) => [...x, m]),
     setModelStatus: (id, status) => setModels((x) => x.map((m) => (m.id === id ? { ...m, status } : m))),
   };
-  const ALL_SECTIONS = [...SECTIONS, ...FQA_SECTIONS, ...COMMON_SECTIONS];
+  const ALL_SECTIONS = [...SECTIONS, ...FQA_SECTIONS, ...NQA_SECTIONS, ...COMMON_SECTIONS];
   const cur = [...ALL_SECTIONS.flatMap((s) => s.items), ...FQA_HIDDEN, ...LQA_HIDDEN, MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
   const curSection = ((ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group) || (FQA_HIDDEN.find((i) => i.id === view) || {}).group || (LQA_HIDDEN.find((i) => i.id === view) || {}).group;
   const tenantName = (tenants.find((t) => t.id === tenantId) || {}).name;
-  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run key="run" />, "lqa-result": <Run key="lqa-result" />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen nav={(v, arg) => { if (v === "fqa-result-detail" && arg) { setFqaResultRun(arg); setFqaResultFrom("fqa-dashboard"); } setView(v); }} />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen nav={(v, rid) => { if (rid) setFqaResultRun(rid); setView(v); }} />, "fqa-run": <FqaRunScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-run"); setView("fqa-result-detail"); }} />, "fqa-history": <FqaHistoryScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-history"); setView("fqa-result-detail"); }} />, "fqa-regression": <FqaResultScreen mode="회귀" />, "fqa-flaky": <FqaResultScreen mode="불안정" nav={(v, tc) => { if (tc) setFqaEditTc(tc); setView(v); }} />, "fqa-result-detail": <FqaResultScreen mode="상세" runId={fqaResultRun} back={() => setView(fqaResultFrom || "fqa-history")} backLabel={{ "fqa-run": "실행", "fqa-history": "실행 이력", "fqa-dashboard": "대시보드" }[fqaResultFrom] || "뒤로"} /> };
+  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run key="run" />, "lqa-result": <Run key="lqa-result" />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen nav={(v, arg) => { if (v === "fqa-result-detail" && arg) { setFqaResultRun(arg); setFqaResultFrom("fqa-dashboard"); } setView(v); }} />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen nav={(v, rid) => { if (rid) setFqaResultRun(rid); setView(v); }} />, "fqa-run": <FqaRunScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-run"); setView("fqa-result-detail"); }} />, "fqa-history": <FqaHistoryScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-history"); setView("fqa-result-detail"); }} />, "fqa-regression": <FqaResultScreen mode="회귀" />, "fqa-flaky": <FqaResultScreen mode="불안정" nav={(v, tc) => { if (tc) setFqaEditTc(tc); setView(v); }} />, "fqa-result-detail": <FqaResultScreen mode="상세" runId={fqaResultRun} back={() => setView(fqaResultFrom || "fqa-history")} backLabel={{ "fqa-run": "실행", "fqa-history": "실행 이력", "fqa-dashboard": "대시보드" }[fqaResultFrom] || "뒤로"} />, "nqa-dashboard": <NqaScreen view="nqa-dashboard" />, "nqa-targets": <NqaScreen view="nqa-targets" />, "nqa-scenarios": <NqaScreen view="nqa-scenarios" />, "nqa-plan": <NqaScreen view="nqa-plan" />, "nqa-run": <NqaScreen view="nqa-run" />, "nqa-history": <NqaScreen view="nqa-history" />, "nqa-trend": <NqaScreen view="nqa-trend" /> };
   const tk = { ok: "border-emerald-700 bg-emerald-900", warn: "border-amber-700 bg-amber-900", err: "border-red-700 bg-red-900", info: "border-slate-700 bg-slate-800" };
   const nIcon = { play: Play, bug: Bug, send: Send };
 
@@ -119,7 +121,7 @@ export default function App() {
           <div className="flex items-center gap-3 text-sm shrink-0">
               <div className="flex items-center gap-1 border-r border-slate-800 pr-3 overflow-x-auto">
                 {DOMAINS.map((d) => (
-                  <button key={d.id} onClick={() => { if (!d.ready) { toast(d.label + "는 준비 중입니다 (확장 예정)", "info"); return; } setDomain(d.id); setView(d.id === "FQA" ? "fqa-dashboard" : "dashboard"); }} className={"shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "text-slate-300 hover:bg-slate-800" : "text-slate-600")}>
+                  <button key={d.id} onClick={() => { if (!d.ready) { toast(d.label + "는 준비 중입니다 (확장 예정)", "info"); return; } setDomain(d.id); setView(d.id === "FQA" ? "fqa-dashboard" : d.id === "NQA" ? "nqa-dashboard" : "dashboard"); }} className={"shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold " + (domain === d.id ? "bg-teal-600 text-white" : d.ready ? "text-slate-300 hover:bg-slate-800" : "text-slate-600")}>
                     {d.label}
                   </button>
                 ))}
@@ -149,7 +151,7 @@ export default function App() {
         <div className="flex flex-1 min-h-0">
           <aside className="w-60 shrink-0 border-r border-slate-800 bg-slate-900 flex flex-col">
             <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
-              {[...(domain === "FQA" ? FQA_SECTIONS : SECTIONS), ...COMMON_SECTIONS].map((sec) => (
+              {[...(domain === "FQA" ? FQA_SECTIONS : domain === "NQA" ? NQA_SECTIONS : SECTIONS), ...COMMON_SECTIONS].map((sec) => (
                 <div key={sec.group}>
                   <div className="px-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">{sec.group}</div>
                   <div className="space-y-1">
@@ -199,7 +201,7 @@ export default function App() {
             jira: ["결함 등록", <JiraForm close={close} data={modal.data} />, true],
             addPrompt: ["Prompt 템플릿 " + (modal.data ? "편집" : "추가"), <AddPromptForm close={close} data={modal.data} />],
             planCases: ["평가 계획 케이스 선택", <PlanCasesForm close={close} data={modal.data} />, true],
-            addChatbot: ["챗봇 " + (modal.data ? "편집" : "연결 추가"), <AddChatbotForm close={close} data={modal.data} />, true],
+            addChatbot: ["챗봇 " + (modal.data ? "편집" : "연결 추가"), <AddChatbotForm close={close} data={modal.data} />, false],
             jiraConfig: ["Jira 연동 설정", <JiraConfigForm close={close} />, true],
             newTenant: ["조직(테넌트) 추가", <NewTenantForm close={close} />],
             assignAdmin: ["조직 관리자 지정", <AssignAdminForm close={close} data={modal.data} />],
