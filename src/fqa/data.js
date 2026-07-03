@@ -2,7 +2,7 @@
 // FQA 시드 데이터 · 네비게이션 설정 (단일 출처)
 // lqa/data.js에서 분리(2026-07-01). App이 import.
 // ============================================================
-import { LayoutDashboard, Plug, Layers, Code2, ClipboardList, Play, FileText, Clock, GitCompare, Activity } from "lucide-react";
+import { LayoutDashboard, Plug, Layers, Code2, ClipboardList, Play, FileText, History, GitCompare, Activity } from "lucide-react";
 
 export const FQA_SECTIONS = [
   { group: "모니터링", items: [
@@ -16,7 +16,7 @@ export const FQA_SECTIONS = [
   ] },
   { group: "실행 · 분석", items: [
     { id: "fqa-run", label: "실행", icon: Play },
-    { id: "fqa-history", label: "실행 이력", icon: Clock },
+    { id: "fqa-history", label: "실행 이력", icon: History },
     { id: "fqa-regression", label: "회귀 비교", icon: GitCompare },
     { id: "fqa-flaky", label: "불안정(Flaky)", icon: Activity },
   ] },
