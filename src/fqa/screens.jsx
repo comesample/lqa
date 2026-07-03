@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import {
   Video, Square, Globe, Play, Upload, FileText, Download, Cpu, Terminal, Bot,
   Wrench, Search, RefreshCw, Save, Copy, Plus, CheckCircle2, X, Tag, Send, ChevronLeft,
-  Code2, ArrowRight, Lock, GripVertical, Layers, Calendar, Bug, Clock, XCircle, AlertTriangle, Image,
+  Code2, ArrowRight, Lock, GripVertical, Layers, Calendar, Bug, Clock, History, XCircle, AlertTriangle, Image,
   LayoutDashboard, TrendingUp, Activity, Brain, ClipboardList,
   Smartphone, Sparkles, ChevronRight, ChevronDown, Server,
 } from "lucide-react";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
-import { Card, Badge, Btn, Seg, Field, Input, Select, Toast, useToast, PageToolbar } from "../common/ui.jsx";
+import { Card, Badge, Btn, Seg, Field, Input, Select, Toast, useToast, PageToolbar, backTo } from "../common/ui.jsx";
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
 import { useApp } from "../common/context.js";
 const FQA_EVENTS = [
@@ -662,7 +662,7 @@ export function FqaRunScreen({ nav }) {
   const [tab, setTab] = useState("진행");
   const [fSt, setFSt] = useState("전체 상태");
   const [fPlan, setFPlan] = useState("전체 계획");
-  const sK = { "실행 중": "warn", "대기 중": "info", "완료": "pass", "실패": "fail" };
+  const sK = { "실행 중": "warn", "대기 중": "info", "완료": "pass", "오류": "fail", "실패": "fail" };
   const lvK = { INFO: "text-slate-400", TC: "text-teal-300", STEP: "text-slate-400", PASS: "text-emerald-300", FAIL: "text-red-300" };
   const logs = RUN_LOG.filter((l) => lvl === "ALL" || l.lv === lvl);
   const tK = { "수동": "info", "스케줄": "pass", "CI": "warn", "예약": "info" };
@@ -672,11 +672,11 @@ export function FqaRunScreen({ nav }) {
   const rows = fqaRuns.filter((r) => r.status === "실행 중" || r.status === "대기 중").filter(match);
   const liveRun = fqaRuns.find((r) => r.status === "실행 중");
   const cnt = (fn) => fqaRuns.filter(fn).length;
-  const KPI = [["실행 중", cnt((r) => r.status === "실행 중"), "text-amber-400"], ["대기", cnt((r) => r.status === "대기 중"), "text-slate-100"], ["완료", cnt((r) => r.status === "완료"), "text-emerald-400"], ["실패", cnt((r) => r.status === "실패"), "text-red-400"], ["예약", cnt((r) => r.trig === "예약"), "text-teal-400"]];
+  const KPI = [["실행 중", cnt((r) => r.status === "실행 중"), "text-amber-400"], ["대기", cnt((r) => r.status === "대기 중"), "text-slate-100"], ["완료", cnt((r) => r.status === "완료"), "text-emerald-400"], ["오류", cnt((r) => r.status === "오류"), "text-red-400"], ["예약", cnt((r) => r.trig === "예약"), "text-teal-400"]];
   const nextId = () => "FRUN-" + (fqaRuns.reduce((m, r) => Math.max(m, parseInt((r.id.split("-")[1] || "0"), 10)), 500) + 1);
   const gateSuite = (plan) => { const suObj = fqaSuites.find((x) => x.name === plan.suites); if (suObj && suObj.enabled === false) { flash(plan.suites + " — 비활성 스위트라 실행할 수 없습니다"); return false; } return true; };
   const buildTcs = (plan) => { const inSuite = (c) => (plan.suites === "전체" || c.suite === plan.suites) && !c.quarantined; const appr = fqaCases.filter((c) => inSuite(c) && c.status === "승인"); const src = appr.length ? appr : fqaCases.filter(inSuite); return src.map((c) => ({ id: c.id, name: c.name, v: c.last === "FAIL" ? "FAIL" : "PASS", dur: (Math.round((Math.random() * 3 + 0.3) * 10) / 10) + "s" })); };
-  const runImmediate = (plan) => { if (!gateSuite(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, brow: (plan.brow && plan.brow[0]) || "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: fail ? "실패" : "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
+  const runImmediate = (plan) => { if (!gateSuite(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, brow: (plan.brow && plan.brow[0]) || "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
   const runDeferred = (plan, when) => { if (!gateSuite(plan)) return; const total = fqaCases.filter((c) => (plan.suites === "전체" || c.suite === plan.suites) && c.status === "승인" && !c.quarantined).length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, brow: (plan.brow && plan.brow[0]) || "Chrome", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: when + " 실행 예정", dur: "-", at: when, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] }); setRunOpen(false); flash(plan.name + " " + when + " 지연 실행 예약 · " + id); };
   const [runOpen, setRunOpen] = useState(false);
   const [rf, setRf] = useState({ plan: planNames[0] || "", mode: "즉시", when: "10분 후" });
@@ -755,51 +755,50 @@ export function FqaRunScreen({ nav }) {
 }
 export function FqaHistoryScreen({ nav }) {
   const { fqaRuns, fqaPlans } = useApp();
+  const [msg, flash] = useToast();
   const [fSt, setFSt] = useState("전체 상태");
   const [fPlan, setFPlan] = useState("전체 계획");
   const planNames = fqaPlans.map((p) => p.name);
   const tK = { "수동": "info", "스케줄": "pass", "CI": "warn", "예약": "info" };
-  const hK = { "완료": "pass", "실패": "fail" };
+  const hK = { "완료": "pass", "오류": "fail" };
+  const vK = { "통과": "pass", "실패": "fail", "경고": "warn" };
+  const verdict = (r) => { if (r.status !== "완료") return "-"; const tc = r.tcs || []; const hasFail = r.fail > 0 || tc.some((t) => t.v === "FAIL"); const hasWarn = r.warn > 0 || tc.some((t) => t.v === "WARN"); return hasFail ? "실패" : hasWarn ? "경고" : "통과"; };
+  const openRun = (r) => { if (r.status === "오류") { flash(r.id + " 오류로 종료 — 상세 결과 없음"); return; } if (nav) nav(r.id); };
   const match = (r) => (fSt === "전체 상태" || r.status === fSt) && (fPlan === "전체 계획" || r.plan === fPlan);
-  const hist = fqaRuns.filter((r) => r.status === "완료" || r.status === "실패").filter(match);
+  const hist = fqaRuns.filter((r) => r.status === "완료" || r.status === "오류").filter(match);
   return (
     <div className="space-y-4">
       <PageToolbar desc="완료된 실행 이력 · 행 클릭 시 결과 상세" />
       <div className="flex items-center gap-2">
-        <div style={{ width: 120 }}><Select value={fSt} onChange={(e) => setFSt(e.target.value)}><option>전체 상태</option><option>완료</option><option>실패</option></Select></div>
+        <div style={{ width: 120 }}><Select value={fSt} onChange={(e) => setFSt(e.target.value)}><option>전체 상태</option><option>완료</option><option>오류</option></Select></div>
         <div style={{ width: 200 }}><Select value={fPlan} onChange={(e) => setFPlan(e.target.value)}><option>전체 계획</option>{planNames.map((n) => (<option key={n}>{n}</option>))}</Select></div>
       </div>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">결과</th><th className="font-medium">소요</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">판정</th><th className="font-medium">결과</th><th className="font-medium">소요</th><th></th></tr></thead>
           <tbody>
-            {hist.length === 0 && (<tr><td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
+            {hist.length === 0 && (<tr><td colSpan={9} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
             {hist.map((r) => (
-              <tr key={r.id} onClick={() => nav && nav(r.id)} className="cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800">
+              <tr key={r.id} onClick={() => openRun(r)} className="cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                 <td className="px-4 py-3 font-mono text-xs text-teal-400">{r.id}</td>
                 <td className="text-slate-200">{r.plan || r.name}</td>
                 <td><Badge kind={tK[r.trig]}>{r.trig}</Badge></td>
                 <td className="text-xs text-slate-400">{r.at}</td>
                 <td><Badge kind={hK[r.status]}>{r.status}</Badge></td>
-                <td className="text-xs text-slate-400">{r.pass}/{r.total}</td>
+                <td>{verdict(r) === "-" ? <span className="text-xs text-slate-600">-</span> : <Badge kind={vK[verdict(r)]}>{verdict(r)}</Badge>}</td>
+                <td className="text-xs text-slate-400">{r.status === "완료" ? r.pass + "/" + r.total : "-"}</td>
                 <td className="text-xs text-slate-400">{r.dur}</td>
-                <td className="pr-4 text-right"><button onClick={(e) => { e.stopPropagation(); nav && nav(r.id); }} className="text-xs text-slate-400 hover:text-teal-400">상세</button></td>
+                <td className="pr-4 text-right">{r.status === "완료" && <button onClick={(e) => { e.stopPropagation(); openRun(r); }} className="text-xs text-slate-400 hover:text-teal-400">상세</button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </Card>
+      <Toast msg={msg} />
     </div>
   );
 }
 /* ═══════════ 7. 결과 상세 ═══════════ */
-const RES_STEPS = [
-  { act: "브라우저 열기", info: "chromium · /addon", dur: "1,942ms", ok: true },
-  { act: "로그인", info: "[data-testid=login] → 성공", dur: "892ms", ok: true },
-  { act: "부가서비스 메뉴 탭", info: "#menu_addon → 성공", dur: "324ms", ok: true },
-  { act: "부가서비스 신청", info: "#btn_subscribe → 완료", dur: "1,201ms", ok: true },
-  { act: "상태 검증 실패", info: '기대 "이용 중" / 실제 "신청 가능" (재시도 2회)', dur: "8,412ms", ok: false },
-];
 export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }) {
   const { fqaRuns, defects, addDefect, fqaPlans, fqaCases, updateFqaCase } = useApp();
   const [msg, flash] = useToast();
@@ -815,6 +814,26 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const cur = tcs.find((t) => t.id === selId) || tcs[0] || null;
   const passRate = run.total ? Math.round((run.pass / run.total) * 1000) / 10 : 0;
   const gate = run.fail > 0 || passRate < 95 ? "FAIL" : "PASS";
+  const _dur = (seed, base) => { let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 9973; return (base + (h % 500)).toLocaleString() + "ms"; };
+  const stepsFor = (t) => {
+    if (!t) return [];
+    const id = t.id || "TC";
+    const seg = (run.suite || "app").split(" ")[0].split("/")[0];
+    const last = Math.round((parseFloat(t.dur) || 1) * 1000).toLocaleString() + "ms";
+    const s = [
+      { act: "브라우저 열기", info: (run.brow || "Chrome").toLowerCase().split("+")[0] + " · 세션 시작", dur: _dur(id + "a", 1400), ok: true },
+      { act: "페이지 이동", info: "goto · /" + seg.toLowerCase(), dur: _dur(id + "b", 300), ok: true },
+      { act: t.name, info: t.heal ? "로케이터 " + t.heal.to + " · 자동 보정 적용" : "액션 수행 → " + id, dur: _dur(id + "c", 500), ok: true },
+    ];
+    s.push(
+      t.v === "FAIL"
+        ? { act: "결과 검증 실패", info: t.name + " — 기대 결과 불일치 (재시도 2회)", dur: last, ok: false }
+        : t.v === "WARN"
+        ? { act: "결과 검증 (경고)", info: t.name + " — 통과, 임계 근접 경고", dur: last, ok: true, warn: true }
+        : { act: "결과 검증", info: t.name + " — 통과", dur: last, ok: true }
+    );
+    return s;
+  };
   const SUM = [["전체 TC", run.total, "text-slate-100"], ["통과", run.pass, "text-emerald-400"], ["실패", run.fail, "text-red-400"], ["경고", run.warn, "text-amber-400"], ["보정 제안", tcs.filter((t) => t.heal).length, "text-teal-400"]];
   const hasDefect = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
   const regDefect = (t) => { if (hasDefect(t.id)) { flash(t.id + " 이미 결함 등록됨"); return; } const key = "TWORLD-" + (1900 + defects.length); addDefect({ key, tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" }); flash(t.id + " 결함 등록 · " + key); };
@@ -836,7 +855,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const toggleQuar = (r) => { updateFqaCase(r.id, { quarantined: !r.quarantined }); flash(r.id + (r.quarantined ? " 격리 해제 — 차단 실행에 복귀" : " 격리(quarantine) — 차단 실행에서 제외")); };
   const vK = { PASS: "pass", FAIL: "fail", HEAL: "teal", WARN: "warn" };
   const shown = tcs.filter((t) => filt === "전체" || (filt === "실패만" && t.v === "FAIL") || (filt === "통과만" && t.v === "PASS") || (filt === "보정 제안" && t.heal));
-  const finishedOf = (pn) => fqaRuns.filter((r) => r.plan === pn && (r.status === "완료" || r.status === "실패")).sort((x, y) => parseInt(y.id.split("-")[1] || "0", 10) - parseInt(x.id.split("-")[1] || "0", 10));
+  const finishedOf = (pn) => fqaRuns.filter((r) => r.plan === pn && r.status === "완료").sort((x, y) => parseInt(y.id.split("-")[1] || "0", 10) - parseInt(x.id.split("-")[1] || "0", 10));
   const [regPlan, setRegPlan] = useState((fqaPlans && fqaPlans[0] && fqaPlans[0].name) || "");
   const _ir = finishedOf(regPlan);
   const [bId, setBId] = useState(_ir[0] ? _ir[0].id : "");
@@ -855,12 +874,17 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const summ = regRows.reduce((acc, r) => { const k = cls(r.a, r.b).k; acc[k] = (acc[k] || 0) + 1; return acc; }, {});
   return (
     <div className="space-y-4">
-      <PageToolbar desc={mode === "상세" ? "결과 상세" : mode === "회귀" ? "회귀 비교 · 실행(계획) 기준" : "불안정(Flaky) · 테스트케이스 기준"} />
-      {mode === "상세" && back && <button onClick={back} className="inline-flex items-center gap-1 text-xs text-teal-400"><ChevronLeft size={14} />{backLabel || "뒤로"}</button>}
+      {mode === "상세" ? (
+        <PageToolbar desc={back ? <span><button onClick={back} className="text-teal-400 hover:underline">{backLabel || "실행 이력"}</button> <span className="text-slate-600">›</span> <span className="text-slate-300 font-medium">{run.id} 결과</span></span> : "결과 상세"}>
+          {back && <Btn icon={ChevronLeft} onClick={back}>{backTo(backLabel || "실행 이력")}</Btn>}
+        </PageToolbar>
+      ) : (
+        <PageToolbar desc={mode === "회귀" ? "회귀 비교 · 실행(계획) 기준" : "불안정(Flaky) · 테스트케이스 기준"} />
+      )}
       {mode === "상세" && (
         <>
           <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
-            <div className="flex items-center gap-2"><span className="font-mono text-sm text-teal-400">{run.id}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{run.brow || "Chrome"} · {run.suite}</span></div>
+            <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-sm text-teal-400">{run.id}</span><span className="text-sm font-medium text-slate-200">{run.plan}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{run.brow || "Chrome"} · {run.suite}</span></div>
             <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn><Btn icon={Download} onClick={() => flash(run.id + " 증적 번들 다운로드 — 스크린샷·영상·trace·로그")}>증적 다운로드</Btn>{run.fail > 0 && <Btn kind="primary" icon={Bug} onClick={regAll}>결함 일괄 등록</Btn>}</div>
           </Card>
           <div className="grid grid-cols-6 gap-3">
@@ -887,7 +911,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
             </Card>
             {cur && (
             <Card className="col-span-3 p-4">
-              <div className="mb-3 flex items-center justify-between"><span className="font-mono text-teal-400">{cur.id}</span><div className="flex gap-2"><Badge kind={vK[cur.v]}>{cur.v}</Badge>{cur.heal && <Badge kind="teal">보정</Badge>}<Btn icon={RefreshCw} onClick={() => flash(cur.id + " 재실행")}>재실행</Btn>{cur.v === "FAIL" && (hasDefect(cur.id) ? <Badge kind="warn">결함 등록됨</Badge> : <Btn kind="danger" icon={Bug} onClick={() => regDefect(cur)}>결함 등록</Btn>)}</div></div>
+              <div className="mb-3 flex items-center justify-between"><span className="font-mono text-teal-400">{cur.id}</span><div className="flex items-center gap-2"><Badge kind={vK[cur.v]}>{cur.v}</Badge>{cur.heal && <Badge kind="teal">보정</Badge>}{cur.v === "FAIL" && hasDefect(cur.id) && <Badge kind="warn">결함 등록됨</Badge>}<Btn icon={RefreshCw} onClick={() => flash(cur.id + " 재실행")}>재실행</Btn>{cur.v === "FAIL" && !hasDefect(cur.id) && <Btn kind="danger" icon={Bug} onClick={() => regDefect(cur)}>결함 등록</Btn>}</div></div>
               <div className="mb-3 text-sm text-slate-300">{cur.name}</div>
               {cur.heal && (
                 <div className="mb-3 rounded-lg border border-teal-800 bg-teal-950 p-3">
@@ -899,10 +923,10 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
               )}
               <div className="mb-2 text-xs font-semibold text-slate-400">스텝 실행 타임라인</div>
               <div className="space-y-1.5">
-                {RES_STEPS.map((st, i) => (
-                  <div key={i} className={"flex items-center gap-2 rounded-lg border px-3 py-2 text-xs " + (st.ok ? "border-slate-800 bg-slate-800" : "border-red-900 bg-red-950")}>
-                    {st.ok ? <CheckCircle2 size={14} className="text-emerald-400" /> : <XCircle size={14} className="text-red-400" />}
-                    <span className={"font-medium " + (st.ok ? "text-slate-200" : "text-red-300")}>{st.act}</span>
+                {stepsFor(cur).map((st, i) => (
+                  <div key={i} className={"flex items-center gap-2 rounded-lg border px-3 py-2 text-xs " + (!st.ok ? "border-red-900 bg-red-950" : st.warn ? "border-amber-900 bg-amber-950" : "border-slate-800 bg-slate-800")}>
+                    {!st.ok ? <XCircle size={14} className="text-red-400" /> : st.warn ? <AlertTriangle size={14} className="text-amber-400" /> : <CheckCircle2 size={14} className="text-emerald-400" />}
+                    <span className={"font-medium " + (!st.ok ? "text-red-300" : st.warn ? "text-amber-200" : "text-slate-200")}>{st.act}</span>
                     <span className="flex-1 font-mono text-slate-500">{st.info}</span>
                     <span className="text-slate-400">{st.dur}</span>
                   </div>
@@ -912,7 +936,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
                 <div className="flex gap-1.5 border-b border-slate-800">
                   {["스크린샷", "영상", "단말 로그"].map((t) => (<button key={t} onClick={() => setEtab(t)} className={"px-2.5 py-1.5 text-xs " + (etab === t ? "border-b-2 border-teal-500 text-teal-300" : "text-slate-500 hover:text-slate-300")}>{t}</button>))}
                 </div>
-                <div className="flex h-24 items-center justify-center text-xs text-slate-500">{etab === "스크린샷" ? "step5_status_fail.png · 1.4MB" : etab === "영상" ? "run_502.webm · 12MB" : "console/network 로그"}</div>
+                <div className="flex h-24 items-center justify-center text-xs text-slate-500">{etab === "스크린샷" ? cur.id + (cur.v === "FAIL" ? "_fail" : "_pass") + ".png · 1.4MB" : etab === "영상" ? run.id.toLowerCase().replace("-", "_") + "_" + cur.id.toLowerCase() + ".webm · 12MB" : cur.id + " · console/network 로그"}</div>
               </div>
             </Card>
             )}
@@ -996,9 +1020,9 @@ const FD_BROW = [["Chrome", 94, true], ["Firefox", 90, true], ["Safari", null, f
 export function FqaDashboardScreen({ nav }) {
   const { fqaRuns, fqaCases, fqaSuites, defects } = useApp();
   const [msg, flash] = useToast();
-  const sK = { "실행 중": "warn", "대기 중": "info", "완료": "pass", "실패": "fail" };
+  const sK = { "실행 중": "warn", "대기 중": "info", "완료": "pass", "오류": "fail" };
   const rate = (r) => (r && r.total ? Math.round((r.pass / r.total) * 1000) / 10 : 0);
-  const finished = fqaRuns.filter((r) => r.status === "완료" || r.status === "실패").slice().sort((a, b) => parseInt(b.id.split("-")[1] || "0", 10) - parseInt(a.id.split("-")[1] || "0", 10));
+  const finished = fqaRuns.filter((r) => r.status === "완료").slice().sort((a, b) => parseInt(b.id.split("-")[1] || "0", 10) - parseInt(a.id.split("-")[1] || "0", 10));
   const lastRun = finished[0];
   const recent = fqaRuns.slice().sort((a, b) => parseInt(b.id.split("-")[1] || "0", 10) - parseInt(a.id.split("-")[1] || "0", 10)).slice(0, 5);
   const totalTc = fqaCases.length;
@@ -1088,7 +1112,7 @@ export function FqaDashboardScreen({ nav }) {
           </div>
         </Card>
         <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><span className="text-sm font-semibold text-slate-200">최근 실행</span><Btn icon={Play} onClick={() => (nav ? nav("fqa-run") : flash("실행으로"))}>실행</Btn></div>
+          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><span className="text-sm font-semibold text-slate-200">최근 실행</span><Btn icon={History} onClick={() => (nav ? nav("fqa-history") : flash("실행 이력으로"))}>실행 이력으로</Btn></div>
           <table className="w-full text-sm">
             <tbody className="text-slate-300">
               {recent.length === 0 && <tr><td className="px-4 py-6 text-center text-xs text-slate-500">실행 이력이 없습니다</td></tr>}
@@ -1729,9 +1753,7 @@ export function FqaAiGenScreen({ onDone }) {
           <div className="mt-2 text-xs text-slate-500">생성된 케이스는 <span className="text-amber-300">검토중</span> 상태(No-Code 관리)로 등록되며, 검토·승인 후 실행 대상이 됩니다.</div>
         </div>
       </div>
-
       {toast && <div className="fixed bottom-5 right-5 rounded-lg border border-teal-700 bg-teal-900 px-4 py-2.5 text-sm text-teal-100 shadow-xl">{toast}</div>}
     </>
   );
 }
-

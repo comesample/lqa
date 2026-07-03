@@ -2,7 +2,7 @@
 // LQA 시드 데이터 · 네비게이션/지표 설정 (단일 출처)
 // App.jsx에서 분리(2026-07-01). App·LQA 화면이 import.
 // ============================================================
-import { ClipboardList, GitCompare, History, LayoutDashboard, MessageSquare, Play, Plug, SlidersHorizontal } from "lucide-react";
+import { ClipboardList, GitCompare, History, LayoutDashboard, MessageSquare, Play, Plug, SlidersHorizontal, FileText } from "lucide-react";
 
 export const SECTIONS = [
   { group: "모니터링", items: [
@@ -21,6 +21,9 @@ export const SECTIONS = [
   ] },
 ];
 export const NAV = SECTIONS.flatMap((s) => s.items);
+export const LQA_HIDDEN = [
+  { id: "lqa-result", label: "결과 상세", icon: FileText, group: "실행 · 분석" },
+];
 
 export const TREND = [
   { d: "6/04", score: 83.0, pass: 64 }, { d: "6/05", score: 84.1, pass: 67 },
@@ -95,7 +98,7 @@ export const INIT_RUNS = [
   { id: "R-2054", planId: 1, planName: "요금/청구 상담 평가", trigger: "스케줄", startedAt: "2026-06-10 09:00", finishedAt: "2026-06-10 09:08", status: "완료", cases: 48, score: 87.4, passRate: 79, pass: 38, warn: 7, fail: 3, snapshot: { model: "Claude sonnet-4-6", promptVer: "v3", caseVer: "2026-06-09" }, results: mkResults(APPROVED_INIT, 11) },
   { id: "R-2051", planId: 2, planName: "개통/부가서비스 안내", trigger: "스케줄", startedAt: "2026-06-09 09:00", finishedAt: "2026-06-09 09:05", status: "완료", cases: 32, score: 91.2, passRate: 88, pass: 28, warn: 3, fail: 1, snapshot: { model: "GPT-4o", promptVer: "v3", caseVer: "2026-06-08" }, results: mkResults(APPROVED_INIT, 4) },
   { id: "R-2047", planId: 1, planName: "요금/청구 상담 평가", trigger: "수동", startedAt: "2026-06-08 16:30", finishedAt: "2026-06-08 16:38", status: "완료", cases: 45, score: 85.1, passRate: 75, pass: 34, warn: 8, fail: 3, snapshot: { model: "Claude sonnet-4-6", promptVer: "v2", caseVer: "2026-06-07" }, results: mkResults(APPROVED_INIT, 23) },
-  { id: "R-2042", planId: 2, planName: "개통/부가서비스 안내", trigger: "이벤트", startedAt: "2026-06-05 11:02", finishedAt: "2026-06-05 11:07", status: "실패", cases: 32, score: null, passRate: null, pass: 0, warn: 0, fail: 0, snapshot: { model: "GPT-4o", promptVer: "v3", caseVer: "2026-06-05" } },
+  { id: "R-2042", planId: 2, planName: "개통/부가서비스 안내", trigger: "이벤트", startedAt: "2026-06-05 11:02", finishedAt: "2026-06-05 11:07", status: "오류", cases: 32, score: null, passRate: null, pass: 0, warn: 0, fail: 0, snapshot: { model: "GPT-4o", promptVer: "v3", caseVer: "2026-06-05" } },
   { id: "R-2038", planId: 1, planName: "요금/청구 상담 평가", trigger: "스케줄", startedAt: "2026-06-03 09:00", finishedAt: "2026-06-03 09:09", status: "완료", cases: 45, score: 84.0, passRate: 73, pass: 33, warn: 9, fail: 3, snapshot: { model: "Claude sonnet-4-6", promptVer: "v2", caseVer: "2026-06-02" }, results: mkResults(APPROVED_INIT, 7) },
 ];
 export const INIT_JUDGES = [

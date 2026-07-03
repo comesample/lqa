@@ -123,3 +123,4 @@ export function Seg({ options, value, onChange }) {
 export function useToast() { const [m, setM] = useState(""); return [m, (t) => { setM(t); setTimeout(() => setM(""), 2000); }]; }
 export function Toast({ msg }) { return msg ? <div className="fixed bottom-5 right-5 z-50 rounded-lg border border-teal-700 bg-teal-900 px-4 py-2.5 text-sm text-teal-100 shadow-xl">{msg}</div> : null; }
 // end of ui.jsx
+export const backTo = (w) => { const s = String(w); const c = s.charCodeAt(s.length - 1); const jong = c >= 0xAC00 && c <= 0xD7A3 ? (c - 0xAC00) % 28 : -1; return s + (jong === 0 || jong === 8 ? "로" : "으로"); };

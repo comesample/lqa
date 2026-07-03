@@ -19,7 +19,7 @@ export const KIND = {
   targetStatus: { "연결됨": "pass", "오류": "fail", "미확인": "warn" },
   channel:      { "REST API": "info", "Web 대화": "active", "Mobile 앱": "info" },
   trigger:      { "수동": "info", "스케줄": "active", "이벤트": "warn" },
-  runStatus:    { "진행중": "warn", "완료": "pass", "실패": "fail" },
+  runStatus:    { "진행중": "warn", "완료": "pass", "오류": "fail" },
   severity:     { Critical: "crit", Major: "major", Minor: "minor" },
   issueStatus:  { Open: "fail", "In Progress": "warn", Resolved: "pass" },
   domain:       { LQA: "active", FQA: "info", NQA: "warn" },

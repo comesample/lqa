@@ -3,7 +3,7 @@
 // App.jsx에서 분리(2026-07-01).
 // ============================================================
 import { useState, useRef, useEffect } from "react";
-import { Bug, Calendar, Copy, CheckCircle2, ChevronRight, ClipboardList, ExternalLink, FileDown, FileText, Ghost, History, Link2, Lock, Mail, Megaphone, Play, Plus, RefreshCw, Search, Send, Server, ShieldCheck, Slack, SlidersHorizontal, Sparkles, Tag, TrendingDown, TrendingUp, Upload, Wrench, X, XCircle } from "lucide-react";
+import { ChevronLeft, Bug, Calendar, Copy, CheckCircle2, ChevronRight, ClipboardList, ExternalLink, FileDown, FileText, Ghost, History, Link2, Lock, Mail, Megaphone, Play, Plus, RefreshCw, Search, Send, Server, ShieldCheck, Slack, SlidersHorizontal, Sparkles, Tag, TrendingDown, TrendingUp, Upload, Wrench, X, XCircle } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useApp } from "../common/context.js";
 import { C, vKind, KIND } from "../common/theme.js";
@@ -772,10 +772,10 @@ export function Dashboard() {
           <div className="mt-2 text-2xl font-bold text-amber-400">{pending}</div>
           <div className="text-xs text-slate-500 mt-0.5">생성·업로드분 검토 필요</div>
         </Card>
-        <Card className="p-4 cursor-pointer hover:border-slate-700" onClick={() => goto("history")}>
+        <Card className="p-4 cursor-pointer hover:border-slate-700" onClick={() => goto("run")}>
           <div className="flex items-center justify-between"><span className="text-sm text-slate-300">진행 중 실행</span><Play size={15} className="text-slate-500" /></div>
           <div className="mt-2 text-2xl font-bold text-teal-400">{running}</div>
-          <div className="text-xs text-slate-500 mt-0.5">실행 이력에서 확인</div>
+          <div className="text-xs text-slate-500 mt-0.5">평가 실행에서 확인</div>
         </Card>
         <Card className="p-4 cursor-pointer hover:border-slate-700" onClick={() => goto("plans")}>
           <div className="flex items-center justify-between"><span className="text-sm text-slate-300">예약된 평가</span><Calendar size={15} className="text-slate-500" /></div>
@@ -902,24 +902,23 @@ export function RunHistory() {
   const [planF, setPlanF] = useState("전체");
   const [trigF, setTrigF] = useState("전체");
   const [stF, setStF] = useState("전체");
-  const [open, setOpen] = useState(null);
   const trigKind = KIND.trigger;
   const stKind = KIND.runStatus;
-  const list = runs.filter((r) => (planF === "전체" || r.planName === planF) && (trigF === "전체" || r.trigger === trigF) && (stF === "전체" || r.status === stF));
+  const list = runs.filter((r) => (r.status === "완료" || r.status === "오류") && (planF === "전체" || r.planName === planF) && (trigF === "전체" || r.trigger === trigF) && (stF === "전체" || r.status === stF));
   return (
     <div className="space-y-4">
       <PageToolbar desc="평가 실행 이력 · 계획별 결과와 회귀 추적 · 행에서 상세 결과 열람" />
       <div className="flex items-center gap-2">
         <div style={{ width: 210 }}><Select value={planF} onChange={(e) => setPlanF(e.target.value)}><option>전체</option>{[...new Set(runs.map((r) => r.planName))].map((n) => <option key={n}>{n}</option>)}</Select></div>
         <div style={{ width: 128 }}><Select value={trigF} onChange={(e) => setTrigF(e.target.value)}><option>전체</option><option>수동</option><option>스케줄</option><option>이벤트</option></Select></div>
-        <div style={{ width: 120 }}><Select value={stF} onChange={(e) => setStF(e.target.value)}><option>전체</option><option>진행중</option><option>완료</option><option>실패</option></Select></div>
+        <div style={{ width: 120 }}><Select value={stF} onChange={(e) => setStF(e.target.value)}><option>전체</option><option>완료</option><option>오류</option></Select></div>
       </div>
       <Card>
         <table className="w-full text-sm">
           <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">실행ID</th><th className="font-medium">계획</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">케이스</th><th className="font-medium">종합점수</th><th className="font-medium">PASS율</th><th></th></tr></thead>
           <tbody>
             {list.map((r) => (
-              <tr key={r.id} onClick={() => setOpen(r)} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer text-slate-300">
+              <tr key={r.id} onClick={() => { if (r.status !== "완료") { toast(r.id + " 오류로 종료 — 상세 결과 없음", "info"); return; } setRunIntent({ type: "view", runId: r.id }); goto("lqa-result"); }} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer text-slate-300">
                 <td className="py-3 px-4 font-mono text-teal-400">{r.id}</td>
                 <td className="text-slate-200">{r.planName}</td>
                 <td><Badge kind={trigKind[r.trigger]}>{r.trigger}</Badge></td>
@@ -935,33 +934,6 @@ export function RunHistory() {
           </tbody>
         </table>
       </Card>
-      {open && (
-        <div className="fixed inset-0 z-30 bg-black bg-opacity-50 flex justify-end" onClick={() => setOpen(null)}>
-          <div className="w-full max-w-md h-full bg-slate-900 border-l border-slate-800 p-5 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4"><span className="font-mono text-teal-400">{open.id}</span><button onClick={() => setOpen(null)} className="text-slate-500 hover:text-slate-300"><X size={20} /></button></div>
-            <div className="space-y-4 text-sm">
-              <div className="flex flex-wrap gap-2"><Badge kind={trigKind[open.trigger]}>{open.trigger}</Badge><Badge kind={stKind[open.status]}>{open.status}</Badge></div>
-              <div><div className="text-xs text-slate-500 mb-1">평가 계획</div><div className="text-slate-100">{open.planName}</div></div>
-              {open.status === "진행중"
-                ? <div className="rounded-lg bg-amber-950 border border-amber-900 p-3 text-amber-200 text-xs">평가가 진행 중입니다… 완료 시 점수가 표시됩니다.</div>
-                : open.status === "실패"
-                ? <div className="rounded-lg bg-red-950 border border-red-900 p-3 text-red-200 text-xs">실행이 실패했습니다 (챗봇 연결/타임아웃 등). 재실행이 필요합니다.</div>
-                : (<div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-slate-800 p-3"><div className="text-lg font-bold text-teal-400">{open.score}</div><div className="text-xs text-slate-500">종합점수</div></div>
-                    <div className="rounded-lg bg-slate-800 p-3"><div className="text-lg font-bold text-slate-100">{open.passRate}%</div><div className="text-xs text-slate-500">PASS율</div></div>
-                    <div className="rounded-lg bg-slate-800 p-3"><div className="text-lg font-bold text-slate-100">{open.cases}</div><div className="text-xs text-slate-500">케이스</div></div>
-                  </div>)}
-              {open.status === "완료" && <div className="flex gap-2"><Badge kind="pass">통과 {open.pass}</Badge><Badge kind="warn">경고 {open.warn}</Badge><Badge kind="fail">실패 {open.fail}</Badge></div>}
-              <div><div className="text-xs text-slate-500 mb-1">스냅샷 (재현성)</div><div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">모델: <span className="text-slate-300">{open.snapshot.model}</span><div className="mt-0.5">프롬프트: <span className="text-slate-300">{open.snapshot.promptVer}</span> · 케이스: <span className="text-slate-300">{open.snapshot.caseVer}</span></div></div></div>
-              <div><div className="text-xs text-slate-500 mb-1">시각</div><div className="text-slate-400 text-xs">시작 {open.startedAt}{open.finishedAt ? " · 종료 " + open.finishedAt : ""}</div></div>
-              <div className="flex gap-2 pt-2">
-                <Btn className="flex-1" disabled={open.status !== "완료"} onClick={() => { setRunIntent({ type: "view", runId: open.id }); goto("run"); }}>상세 결과 보기</Btn>
-                <Btn className="flex-1" onClick={() => toast(open.id + " 리포트 생성 (데모)", "ok")}>리포트</Btn>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1240,12 +1212,15 @@ export function Run() {
     <div className="space-y-4">
       {fromHistory && activeRun ? (
         <PageToolbar desc={<span><button onClick={() => goto("history")} className="text-teal-400 hover:underline">실행 이력</button> <span className="text-slate-600">›</span> <span className="text-slate-300 font-medium">{activeRun.id} 결과</span></span>}>
-          <Btn icon={History} onClick={() => goto("history")}>실행 이력으로</Btn>
+          <Btn icon={ChevronLeft} onClick={() => goto("history")}>실행 이력으로</Btn>
         </PageToolbar>
       ) : (
         <PageToolbar desc="평가 실행 및 HITL 검토 · 예외 케이스 중심" />
       )}
-      <Card className="p-4">
+      {fromHistory && activeRun && (
+        <Card className="flex flex-wrap items-center gap-3 p-3 text-xs text-slate-400"><span className="font-mono text-teal-400">{activeRun.id}</span><span className="text-sm font-medium text-slate-200">{activeRun.planName}</span><Badge kind="info">{activeRun.trigger}</Badge><span>{activeRun.startedAt}</span><span className="text-slate-600">·</span><span>모델 {activeRun.snapshot.model} · 프롬프트 {activeRun.snapshot.promptVer} · 케이스 {activeRun.snapshot.caseVer}</span><span className="text-slate-600">·</span><span>점수 <span className="font-semibold text-teal-300">{activeRun.score != null ? activeRun.score : "—"}</span></span></Card>
+      )}
+      {!fromHistory && (<Card className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-sm flex-wrap">
             <div className="flex items-center gap-2"><span className="text-slate-500 text-xs">평가 계획</span>
@@ -1262,13 +1237,12 @@ export function Run() {
           <div className="mt-3"><div className="flex justify-between text-xs mb-1"><span className="text-slate-400">{mode === "running" ? "평가 수행 중…" : "완료"}</span><span className="text-teal-400 font-semibold">{prog}%</span></div><div className="h-2 rounded bg-slate-800"><div className="h-2 rounded" style={{ width: prog + "%", background: C.teal, transition: "width .1s" }} /></div></div>
         )}
         {activeRun && <div className="mt-2 text-xs text-slate-500">실행 <span className="font-mono text-teal-400">{activeRun.id}</span> · 트리거 {activeRun.trigger} · {activeRun.startedAt} · 스냅샷 {activeRun.snapshot.model} / 프롬프트 {activeRun.snapshot.promptVer}</div>}
-      </Card>
+      </Card>)}
 
-      {runningRuns.length > 0 && (
+      {!fromHistory && runningRuns.length > 0 && (
         <Card className="p-3">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-300"><span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />진행 중 {runningRuns.length}건 <span className="font-normal text-slate-500">· 스케줄·이벤트 포함 무인 실행</span></span>
-            <button onClick={() => goto("history")} className="text-xs text-teal-400">실행 이력에서 보기</button>
           </div>
           <div className="mt-2 space-y-1.5">
             {runningRuns.map((r) => (
