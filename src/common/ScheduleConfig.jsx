@@ -57,7 +57,7 @@ export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그�
     <div>
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Calendar size={15} className="text-teal-400" />{title} <span className="text-xs font-normal text-slate-500">· {subtitle}</span></div>
-        {mode === "schedule" && <div className="flex items-center gap-2 text-xs text-slate-400">활성 <Toggle on={active} onClick={() => setActive(!active)} /></div>}
+        {mode === "schedule" && <div className="flex items-center gap-2 text-xs text-slate-400">스케줄 사용 <Toggle on={active} onClick={() => setActive(!active)} /></div>}
       </div>
       <div className="mb-4"><Seg options={MODES.map((m) => m[1])} value={modeLabel} onChange={(lbl) => setMode((MODES.find((m) => m[1] === lbl) || MODES[0])[0])} /></div>
       {mode === "manual" && <div className="rounded-lg bg-slate-800 p-3 text-sm text-slate-400">{manualHint}</div>}

@@ -26,20 +26,44 @@ export const FQA_HIDDEN = [
 ];
 
 export const INIT_FQA_CASES = [
-  { id: "TC-031", name: "로그인 성공", suite: "로그인 / 인증", tags: "smoke,login", status: "승인", last: "PASS", level: "No-Code", dataset: "계정 풀 ×3", hist: ["PASS", "PASS", "PASS", "PASS"], defects: 0, steps: [
+  { id: "TC-API-101", platform: "API", name: "사용자 조회", suite: "API 연동", tags: "api,smoke", status: "승인", last: "PASS", level: "No-Code", dataset: "-", hist: ["PASS", "PASS", "PASS", "PASS"], defects: 0, steps: [
+    { act: "요청", loc: "GET /v1/users/{id}", val: "헤더: Authorization: Bearer" },
+    { act: "검증", loc: "상태코드", val: "200" },
+    { act: "검증", loc: "응답 스키마", val: "OpenAPI 계약 준수" },
+  ] },
+  { id: "TC-API-102", platform: "API", name: "사용자 생성", suite: "API 연동", tags: "api", status: "승인", last: "PASS", level: "No-Code", dataset: "가입 데이터 ×3", hist: ["PASS", "PASS", "PASS"], defects: 0, steps: [
+    { act: "요청", loc: "POST /v1/users", val: "바디: { name, phone }" },
+    { act: "검증", loc: "상태코드", val: "201" },
+    { act: "검증", loc: "응답 헤더", val: "Location 존재" },
+  ] },
+  { id: "TC-API-103", platform: "API", name: "로그인 토큰 발급", suite: "API 연동", tags: "api,auth", status: "승인", last: "PASS", level: "Full-Code", dataset: "-", hist: ["PASS", "FAIL", "PASS", "PASS"], defects: 0, steps: [
+    { act: "요청", loc: "POST /v1/auth/login", val: "바디: { id, pw }" },
+    { act: "검증", loc: "상태코드", val: "200" },
+    { act: "검증", loc: "$.token", val: "JWT 형식" },
+  ] },
+  { id: "TC-API-104", platform: "API", name: "요금제 목록 조회", suite: "API 연동", tags: "api", status: "승인", last: "FAIL", level: "No-Code", dataset: "-", hist: ["PASS", "FAIL", "FAIL", "FAIL"], defects: 1, steps: [
+    { act: "요청", loc: "GET /v1/plans", val: "헤더: Accept: application/json" },
+    { act: "검증", loc: "상태코드", val: "200" },
+    { act: "검증", loc: "$.items[]", val: "배열 · 스키마 준수" },
+  ] },
+  { id: "TC-API-105", platform: "API", name: "사용자 삭제", suite: "API 연동", tags: "api", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: [
+    { act: "요청", loc: "DELETE /v1/users/{id}", val: "헤더: Authorization: Bearer" },
+    { act: "검증", loc: "상태코드", val: "204" },
+  ] },
+  { id: "TC-031", platform: "Web", name: "로그인 성공", suite: "로그인 / 인증", tags: "smoke,login", status: "승인", last: "PASS", level: "No-Code", dataset: "계정 풀 ×3", hist: ["PASS", "PASS", "PASS", "PASS"], defects: 0, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/login" },
     { act: "텍스트 입력", loc: "[data-testid=userid]", val: '"qa_user01"' },
     { act: "텍스트 입력", loc: "[data-testid=password]", val: '"********"' },
     { act: "요소 클릭", loc: "role=button[로그인]", val: "-" },
     { act: "검증", loc: "[data-testid=welcome]", val: 'text = "환영합니다"' },
   ] },
-  { id: "TC-021", name: "회원가입 이메일 형식 검증", suite: "회원가입", tags: "signup", status: "승인", last: "PASS", level: "No-Code", dataset: "이메일 ×6", hist: ["PASS", "PASS", "FAIL", "PASS"], defects: 0, steps: [
+  { id: "TC-021", platform: "Web", name: "회원가입 이메일 형식 검증", suite: "회원가입", tags: "signup", status: "승인", last: "PASS", level: "No-Code", dataset: "이메일 ×6", hist: ["PASS", "PASS", "FAIL", "PASS"], defects: 0, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/signup" },
     { act: "텍스트 입력", loc: "[data-testid=email]", val: '"invalid-email"' },
     { act: "요소 클릭", loc: "role=button[다음]", val: "-" },
     { act: "검증", loc: "[data-testid=error]", val: 'text = "올바른 이메일 형식이 아닙니다"' },
   ] },
-  { id: "TC-156", name: "부가서비스 상태 반영", suite: "결제 / 요금제", tags: "regression", status: "승인", last: "FAIL", level: "Low-Code", dataset: "-", hist: ["FAIL", "PASS", "FAIL", "FAIL"], defects: 1, steps: [
+  { id: "TC-156", platform: "Web", name: "부가서비스 상태 반영", suite: "결제 / 요금제", tags: "regression", status: "승인", last: "FAIL", level: "Low-Code", dataset: "-", hist: ["FAIL", "PASS", "FAIL", "FAIL"], defects: 1, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/login" },
     { act: "텍스트 입력", loc: "[data-testid=userid]", val: '"qa_user01"' },
     { act: "요소 클릭", loc: "role=button[로그인]", val: "-" },
@@ -47,19 +71,19 @@ export const INIT_FQA_CASES = [
     { act: "요소 클릭", loc: "#btn_subscribe", val: "-" },
     { act: "검증", loc: "[data-testid=addon_status]", val: 'text = "이용 중"' },
   ] },
-  { id: "TC-203", name: "OTP 재발송 오류", suite: "로그인 / 인증", tags: "regression", status: "승인", last: "FAIL", level: "No-Code", dataset: "-", hist: ["FAIL", "PASS", "FAIL", "PASS"], defects: 1, steps: [
+  { id: "TC-203", platform: "Web", name: "OTP 재발송 오류", suite: "로그인 / 인증", tags: "regression", status: "승인", last: "FAIL", level: "No-Code", dataset: "-", hist: ["FAIL", "PASS", "FAIL", "PASS"], defects: 1, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/login" },
     { act: "요소 클릭", loc: "role=button[OTP 재발송]", val: "-" },
     { act: "검증", loc: "[data-testid=otp_msg]", val: 'text = "재발송되었습니다"' },
   ] },
-  { id: "TC-REC-001", name: "로그인 정상 동작 (레코딩)", suite: "로그인 / 인증", tags: "login", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: [
+  { id: "TC-REC-001", platform: "Web", name: "로그인 정상 동작 (레코딩)", suite: "로그인 / 인증", tags: "login", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/login" },
     { act: "텍스트 입력", loc: "#id", val: '"qa_user01"' },
     { act: "텍스트 입력", loc: "#pw", val: '"********"' },
     { act: "요소 클릭", loc: "button.login", val: "-" },
     { act: "검증", loc: ".dashboard", val: 'visible = true' },
   ] },
-  { id: "TC-MCP-001", name: "로그인 탐색 시나리오 (MCP)", suite: "로그인 / 인증", tags: "login", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: [
+  { id: "TC-MCP-001", platform: "Web", name: "로그인 탐색 시나리오 (MCP)", suite: "로그인 / 인증", tags: "login", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr" },
     { act: "요소 클릭", loc: "text=로그인", val: "-" },
     { act: "텍스트 입력", loc: "[name=user]", val: '"qa_user01"' },
@@ -69,15 +93,15 @@ export const INIT_FQA_CASES = [
 ]
 
 export const INIT_FQA_SUITES = [
-  { id: 1, name: "로그인 / 인증", parent: 0, module: "인증", owner: "QA Lead", tags: "smoke,login", desc: "로그인·세션·인증 흐름", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
-  { id: 2, name: "회원가입", parent: 1, module: "온보딩", owner: "김QA", tags: "signup", desc: "가입 폼·검증", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
-  { id: 3, name: "메인 화면", parent: 0, module: "홈", owner: "이QA", tags: "smoke", desc: "메인 스모크", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
-  { id: 4, name: "결제 / 요금제", parent: 0, module: "결제", owner: "박QA", tags: "critical,pay", desc: "결제·요금제 (전용 계정·데이터 필요)", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: true, ssMode: "role", seedExtra: true, cleanExtra: true },
-  { id: 5, name: "API 연동", parent: 0, module: "API", owner: "QA Lead", tags: "api", desc: "레거시 폴더 조직 테스트", enabled: true, mapOverride: true, mapType: "폴더", mapVal: "tests/api/", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
+  { id: 1, platform: "Web", name: "로그인 / 인증", parent: 0, module: "인증", owner: "QA Lead", tags: "smoke,login", desc: "로그인·세션·인증 흐름", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
+  { id: 2, platform: "Web", name: "회원가입", parent: 1, module: "온보딩", owner: "김QA", tags: "signup", desc: "가입 폼·검증", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
+  { id: 3, platform: "Web", name: "메인 화면", parent: 0, module: "홈", owner: "이QA", tags: "smoke", desc: "메인 스모크", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
+  { id: 4, platform: "Web", name: "결제 / 요금제", parent: 0, module: "결제", owner: "박QA", tags: "critical,pay", desc: "결제·요금제 (전용 계정·데이터 필요)", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: true, ssMode: "role", seedExtra: true, cleanExtra: true },
+  { id: 5, platform: "API", name: "API 연동", parent: 0, module: "API", owner: "QA Lead", tags: "api", desc: "레거시 폴더 조직 테스트", enabled: true, mapOverride: true, mapType: "폴더", mapVal: "tests/api/", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false },
 ];
 
 export const INIT_FQA_SYSTEMS = [
-  { id: 1, name: "T월드 웹", type: "Web", envs: [
+  { id: 1, name: "T월드 웹", platform: "Web", envs: [
     { env: "스테이징", url: "https://stg.tworld.co.kr", status: "연결됨", ver: "v5.12.0-rc", prod: false, accts: [
       { role: "일반", acct: "qa_user01", secretRef: "vault://tworld/stg/qa_user01", st: "활성" },
       { role: "VIP", acct: "qa_vip01", secretRef: "vault://tworld/stg/qa_vip01", st: "활성" },
@@ -87,12 +111,12 @@ export const INIT_FQA_SYSTEMS = [
       { role: "합성", acct: "synth_prod01", secretRef: "vault://tworld/prod/synth01", st: "활성" },
     ] },
   ] },
-  { id: 2, name: "T월드 API", type: "API", envs: [
-    { env: "스테이징", url: "https://api-stg.tworld.co.kr", status: "미확인", ver: "-", prod: false, accts: [
+  { id: 2, name: "T월드 API", platform: "API", envs: [
+    { env: "스테이징", url: "https://api-stg.tworld.co.kr", status: "연결됨", ver: "v2.4.1", prod: false, apiSpec: "OpenAPI 3.0", specUrl: "https://api-stg.tworld.co.kr/openapi.json", accts: [
       { role: "서비스", acct: "svc_api_stg", secretRef: "vault://tworld/api-stg/token", st: "활성" },
     ] },
   ] },
-  { id: 3, name: "고객센터 웹", type: "Web", envs: [
+  { id: 3, name: "고객센터 웹", platform: "Web", envs: [
     { env: "스테이징", url: "https://stg-cs.tworld.co.kr", status: "연결됨", ver: "v2.3.0", prod: false, accts: [
       { role: "일반", acct: "cs_qa01", secretRef: "vault://cs/stg/qa01", st: "활성" },
     ] },
@@ -101,6 +125,13 @@ export const INIT_FQA_SYSTEMS = [
 
 
 export const INIT_FQA_RUNS = [
+  { id: "FRUN-503", platform: "API", name: "API 스모크", plan: "API 스모크 (스테이징)", suite: "API 연동", brow: "", trig: "CI", by: "CI/CD Bot", status: "완료", prog: 100, progt: "5/5", dur: "0분 9초", at: "오늘 10:30", total: 5, pass: 4, fail: 1, warn: 0, heal: 0, tcs: [
+    { id: "TC-API-101", name: "사용자 조회", v: "PASS", dur: "0.3s" },
+    { id: "TC-API-102", name: "사용자 생성", v: "PASS", dur: "0.4s" },
+    { id: "TC-API-103", name: "로그인 토큰 발급", v: "PASS", dur: "0.5s" },
+    { id: "TC-API-104", name: "요금제 목록 조회", v: "FAIL", dur: "0.6s" },
+    { id: "TC-API-105", name: "사용자 삭제", v: "PASS", dur: "0.2s" },
+  ] },
   { id: "FRUN-512", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 62, progt: "42/68", dur: "3분 12초", at: "방금 전", total: 68, pass: 42, fail: 0, warn: 0, heal: 1, tcs: [] },
   { id: "FRUN-511", name: "결제 스모크", plan: "결제 회귀", suite: "결제 / 요금제", brow: "Chrome+FF", trig: "CI", by: "CI/CD Bot", status: "실행 중", prog: 33, progt: "8/24", dur: "5분 02초", at: "방금 전", total: 24, pass: 8, fail: 0, warn: 0, heal: 0, tcs: [] },
   { id: "FRUN-509", name: "회원가입 검증", plan: "전체 스모크 (운영)", suite: "회원가입", brow: "Chrome", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: "대기 #1", dur: "-", at: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
@@ -133,6 +164,7 @@ export const INIT_FQA_RUNS = [
 ];
 
 export const INIT_FQA_PLANS = [
+  { id: 4, name: "API 스모크 (스테이징)", target: "T월드 API · 스테이징", suites: "API 연동", tags: "api,smoke", sched: "커밋 시(CI)", status: "활성", brow: [], res: "-", headless: true, workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", timeout: 30, gate: 95 },
   { id: 1, name: "로그인 회귀 (스테이징)", target: "T월드 웹 · 스테이징", suites: "로그인 / 인증", tags: "regression", sched: "매일 09:00", status: "활성", brow: ["Chrome"], res: "1920×1080", headless: true, workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", gate: 95 },
   { id: 2, name: "전체 스모크 (운영)", target: "T월드 웹 · 운영", suites: "전체", tags: "smoke", sched: "커밋 시(CI)", status: "활성", brow: ["Chrome", "Firefox"], res: "1920×1080", headless: true, workers: "auto", retry: 0, onfail: "계속 진행", video: "녹화 안 함", gate: 98 },
   { id: 3, name: "결제 회귀", target: "T월드 웹 · 스테이징", suites: "결제 / 요금제", tags: "critical", sched: "예약 없음", status: "초안", brow: ["Chrome"], res: "1440×900", headless: false, workers: "2", retry: 2, onfail: "첫 에러 시 중단", video: "전체 녹화", gate: 100 },

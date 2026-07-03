@@ -271,6 +271,7 @@ test('TC-021 회원가입 이메일 형식 검증', async ({ page }) => {
     .toHaveText('올바른 이메일 형식이 아닙니다');
 });`;
 const E_PLATS = [["Web", true], ["Android", false], ["iOS", false], ["API", false]];
+const PLAT_K = { Web: "info", App: "active", API: "warn" };
 const STEP_ACTS = ["브라우저 열기", "텍스트 입력", "요소 클릭", "검증"];
 const _pad = (t, n) => (t + " ".repeat(n)).slice(0, Math.max(t.length, n));
 const _url = (s) => (s.val && s.val !== "-" ? s.val : s.loc);
@@ -353,6 +354,76 @@ function stepsToCode(steps, tc) {
 }
 
 
+/* ═══════════ API OpenAPI 임포트 ═══════════ */
+const API_ENDPOINTS = [
+  { m: "GET", path: "/v1/users/{id}", name: "사용자 조회", asrt: "200 · 스키마" },
+  { m: "POST", path: "/v1/users", name: "사용자 생성", asrt: "201 · Location" },
+  { m: "GET", path: "/v1/plans", name: "요금제 목록", asrt: "200 · 배열" },
+  { m: "PUT", path: "/v1/users/{id}", name: "사용자 수정", asrt: "200" },
+  { m: "DELETE", path: "/v1/users/{id}", name: "사용자 삭제", asrt: "204" },
+  { m: "POST", path: "/v1/auth/login", name: "로그인 토큰 발급", asrt: "200 · token" },
+];
+const M_K = { GET: "info", POST: "pass", PUT: "warn", DELETE: "fail" };
+const apiSteps = (ep) => [
+  { act: "요청", loc: ep.m + " " + ep.path, val: "헤더: Authorization: Bearer" },
+  { act: "검증", loc: "상태코드", val: ep.asrt.split("·")[0].trim() },
+  { act: "검증", loc: "응답 스키마", val: "OpenAPI 계약 준수" },
+];
+export function FqaApiImportScreen({ onDone }) {
+  const { addFqaCase, fqaSystems, fqaSuites } = useApp();
+  const [msg, flash] = useToast();
+  const apiSys = (fqaSystems || []).filter((s) => s.platform === "API");
+  const apiSuites = (fqaSuites || []).filter((s) => (s.platform || "Web") === "API");
+  const [specUrl, setSpecUrl] = useState((apiSys[0] && apiSys[0].envs && apiSys[0].envs[0] && apiSys[0].envs[0].specUrl) || "https://api-stg.tworld.co.kr/openapi.json");
+  const [suite, setSuite] = useState((apiSuites[0] && apiSuites[0].name) || "API 연동");
+  const [phase, setPhase] = useState("idle");
+  const [rows, setRows] = useState([]);
+  const [picked, setPicked] = useState(new Set());
+  const load = () => { setPhase("running"); setTimeout(() => { setRows(API_ENDPOINTS); setPicked(new Set()); setPhase("done"); }, 600); };
+  const toggle = (k) => setPicked((pv) => { const n = new Set(pv); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const commit = () => { if (!picked.size) { flash("엔드포인트를 선택하세요"); return; } const sel = rows.filter((r) => picked.has(r.m + r.path)); sel.forEach((ep, i) => addFqaCase({ id: "TC-API-" + Date.now().toString().slice(-4) + "-" + i, platform: "API", name: ep.name, suite, tags: "api", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: apiSteps(ep) })); if (onDone) onDone(sel.length + "건 API 케이스 검토중 등록 · 목록에 추가됨"); };
+  return (
+    <>
+      <Hdr icon={FileText} title="OpenAPI 임포트 (API 테스트 생성)" desc="스펙 → 엔드포인트별 요청·검증 케이스 골격" />
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-5 space-y-4">
+          <Card className="p-4 space-y-3">
+            <Field label="스펙 URL" hint="대상·환경의 등록 스펙에서 상속"><Input value={specUrl} onChange={(e) => setSpecUrl(e.target.value)} /></Field>
+            <Field label="등록 스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{apiSuites.map((x) => <option key={x.id}>{x.name}</option>)}{apiSuites.length === 0 && <option>API 연동</option>}</Select></Field>
+            <Btn kind="primary" icon={RefreshCw} className="w-full" onClick={load}>{phase === "running" ? "불러오는 중…" : "스펙 불러오기"}</Btn>
+            <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">등록된 OpenAPI 스펙에서 엔드포인트를 읽어 <span className="text-slate-300">요청+검증</span> 케이스 골격을 만듭니다. 등록 후 에디터에서 파라미터·검증을 보강합니다.</div>
+          </Card>
+        </div>
+        <div className="col-span-7">
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><div className="text-sm font-semibold text-slate-200">감지된 엔드포인트</div>{phase === "done" && <span className="text-xs text-slate-400">{rows.length}개 · 선택 {picked.size}</span>}</div>
+            {phase !== "done" ? (
+              <div className="px-4 py-16 text-center text-sm text-slate-500">{phase === "running" ? "스펙을 분석하는 중…" : "스펙 URL을 확인하고 \"스펙 불러오기\"를 누르세요"}</div>
+            ) : (
+              <>
+                <div className="border-b border-slate-800 bg-slate-900 px-4 py-2"><button onClick={() => setPicked(picked.size === rows.length ? new Set() : new Set(rows.map((r) => r.m + r.path)))} className="rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700">{picked.size === rows.length ? "전체 해제" : "전체 선택"}</button></div>
+                <div className="overflow-y-auto" style={{ maxHeight: 360 }}>
+                  {rows.map((r) => { const k = r.m + r.path; return (
+                    <div key={k} onClick={() => toggle(k)} className="flex cursor-pointer items-center gap-3 border-b border-slate-800 px-4 py-2.5 hover:bg-slate-800">
+                      <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(k)} className="accent-teal-500" />
+                      <Badge kind={M_K[r.m] || "info"}>{r.m}</Badge>
+                      <span className="font-mono text-xs text-slate-300">{r.path}</span>
+                      <span className="flex-1 text-sm text-slate-200">{r.name}</span>
+                      <span className="text-xs text-slate-500">{r.asrt}</span>
+                    </div>
+                  ); })}
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-slate-800 px-4 py-3"><Btn kind="primary" icon={Plus} disabled={!picked.size} onClick={commit}>검토중으로 등록</Btn></div>
+              </>
+            )}
+          </Card>
+          <div className="mt-2 text-xs text-slate-500">생성된 API 케이스는 <span className="text-amber-300">검토중</span>으로 등록되며, 스텝은 요청/검증 구조입니다. 이후 에디터에서 보강합니다.</div>
+        </div>
+      </div>
+      <Toast msg={msg} />
+    </>
+  );
+}
 export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
   const { updateFqaCase, addFqaCase, fqaSuites, fqaCases, runnerConnected } = useApp();
   const tcOf = (name) => fqaCases.filter((c) => c.suite === name).length;
@@ -527,7 +598,7 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
 
 
 /* ═══════════ 5. 테스트 스위트 관리 ═══════════ */
-const SF0 = { name: "", parent: 0, module: "", owner: "미지정", tags: "", desc: "", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false };
+const SF0 = { platform: "Web", name: "", parent: 0, module: "", owner: "미지정", tags: "", desc: "", enabled: true, mapOverride: false, mapType: "태그", mapVal: "", fxOverride: false, ssMode: "inherit", seedExtra: false, cleanExtra: false };
 export function FqaSuiteScreen() {
   const [msg, flash] = useToast();
   const { fqaSuites: suites, addFqaSuite, updateFqaSuite, removeFqaSuite, fqaCases } = useApp();
@@ -568,11 +639,12 @@ export function FqaSuiteScreen() {
           <Btn kind="primary" icon={Plus} onClick={openAdd}>스위트 추가</Btn>
         </div>
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">스위트</th><th className="font-medium">대상 모듈</th><th className="font-medium">실행 대상</th><th className="font-medium">fixture</th><th className="font-medium">기본 태그</th><th className="font-medium">담당</th><th className="font-medium">TC</th><th className="font-medium">상태</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">스위트</th><th className="font-medium">플랫폼</th><th className="font-medium">대상 모듈</th><th className="font-medium">실행 대상</th><th className="font-medium">fixture</th><th className="font-medium">기본 태그</th><th className="font-medium">담당</th><th className="font-medium">TC</th><th className="font-medium">상태</th><th></th></tr></thead>
           <tbody>
             {ordered.map((s) => (
               <tr key={s.id} className="border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                 <td className="px-4 py-3"><div style={{ paddingLeft: s.depth * 18 }}><div className="font-medium text-slate-200">{s.depth ? "└ " : ""}{s.name}</div>{s.desc && <div className="text-xs text-slate-500">{s.desc}</div>}</div></td>
+                <td><Badge kind={PLAT_K[s.platform || "Web"] || "info"}>{s.platform || "Web"}</Badge></td>
                 <td>{s.module}</td>
                 <td>{s.mapOverride ? <><Badge kind={mK[s.mapType] || "info"}>{s.mapType}</Badge> <span className="font-mono text-xs text-slate-400">{s.mapVal}</span></> : <span className="text-xs text-slate-500">자동 · 소속 {tcOf(s.name)}건</span>}</td>
                 <td>{s.fxOverride ? <Badge kind="warn">재정의</Badge> : <Badge kind="info">상속</Badge>}</td>
@@ -592,20 +664,21 @@ export function FqaSuiteScreen() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setOpen(false)}>
           <div className="w-full max-w-3xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5"><h3 className="font-semibold text-slate-100">{edit === null ? "스위트 추가" : "스위트 편집"}</h3><button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button></div>
-            <div className="space-y-3.5 overflow-y-auto p-5" style={{ maxHeight: "76vh" }}>
+            <div className="space-y-3.5 overflow-y-auto p-5" style={{ maxHeight: "88vh" }}>
               {edit !== null && <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs text-slate-400">이 스위트에 속한 케이스 <span className="font-semibold text-teal-400">{tcOf(form.name)}</span>건</div>}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="이름"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 로그인 / 인증" /></Field>
-                <Field label="상위 스위트"><Select value={form.parent} onChange={(e) => setForm({ ...form, parent: +e.target.value })}><option value={0}>없음 (최상위)</option>{suites.filter((x) => x.id !== edit).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select></Field>
+                <Field label="플랫폼" hint={edit !== null ? "생성 후 변경 불가 · 하위 케이스 정합 보호" : "생성 후 변경 불가"}>{edit === null ? (<Select value={form.platform || "Web"} onChange={(e) => setForm({ ...form, platform: e.target.value, parent: 0 })}><option value="Web">Web</option><option value="App" disabled>App (준비 중)</option><option value="API">API</option></Select>) : (<div className="flex h-[38px] items-center rounded-lg border border-slate-800 bg-slate-800 px-3"><Badge kind={PLAT_K[form.platform || "Web"] || "info"}>{form.platform || "Web"}</Badge></div>)}</Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
+                <Field label="상위 스위트" hint="같은 플랫폼만"><Select value={form.parent} onChange={(e) => setForm({ ...form, parent: +e.target.value })}><option value={0}>없음 (최상위)</option>{suites.filter((x) => x.id !== edit && (x.platform || "Web") === (form.platform || "Web")).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select></Field>
                 <Field label="대상 모듈"><Input value={form.module} onChange={(e) => setForm({ ...form, module: e.target.value })} placeholder="예: 인증" /></Field>
-                <Field label="담당"><Select value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>{FQA_MEMBERS.map((m) => <option key={m}>{m}</option>)}</Select></Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
+                <Field label="담당"><Select value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>{FQA_MEMBERS.map((m) => <option key={m}>{m}</option>)}</Select></Field>
                 <Field label="기본 태그"><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="smoke,login" /></Field>
-                <Field label="설명 (선택)"><Input value={form.desc || ""} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="이 스위트가 검증하는 범위" /></Field>
               </div>
+              <Field label="설명 (선택)"><Input value={form.desc || ""} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="이 스위트가 검증하는 범위" /></Field>
               <div className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2.5 text-sm text-slate-300"><span>활성 <span className="text-xs text-slate-500">· 실행 계획·회귀에 포함</span></span><TG on={form.enabled !== false} onClick={() => setForm({ ...form, enabled: form.enabled === false ? true : false })} /></div>
               <div className="grid grid-cols-2 gap-3 items-start">
               <Field label="실행 대상">
@@ -614,8 +687,8 @@ export function FqaSuiteScreen() {
                   <div className="flex items-center justify-between text-sm text-slate-300"><span>실행 매핑 재정의 <span className="text-xs text-slate-500">· 레거시(폴더/태그) 흡수</span></span><TG on={!!form.mapOverride} onClick={() => setForm({ ...form, mapOverride: !form.mapOverride })} /></div>
                   {form.mapOverride && (
                     <div className="grid grid-cols-3 gap-2 pt-1">
-                      <Select value={form.mapType} onChange={(e) => setForm({ ...form, mapType: e.target.value })}><option>태그</option><option>폴더</option><option>project</option></Select>
-                      <div className="col-span-2"><Input value={form.mapVal} onChange={(e) => setForm({ ...form, mapVal: e.target.value })} placeholder="@home  /  tests/auth/  /  payment" /></div>
+                      <Select value={form.mapType} onChange={(e) => setForm({ ...form, mapType: e.target.value })}><option>태그</option><option>폴더</option>{(form.platform || "Web") === "API" ? <option>컬렉션</option> : <option>project</option>}</Select>
+                      <div className="col-span-2"><Input value={form.mapVal} onChange={(e) => setForm({ ...form, mapVal: e.target.value })} placeholder={(form.platform || "Web") === "API" ? "@auth  /  collections/api  /  /v1/*" : "@home  /  tests/auth/  /  payment"} /></div>
                     </div>
                   )}
                   {form.mapOverride && form.mapVal && <div className="text-xs text-amber-300">＊ 재정의 시 소속({tcOf(form.name)}건)과 매핑이 잡는 대상이 다를 수 있습니다.</div>}
@@ -625,10 +698,10 @@ export function FqaSuiteScreen() {
                 <div className="space-y-2 rounded-lg bg-slate-800 p-3">
                   <div className="flex items-center justify-between text-sm text-slate-300"><span>대상·환경 설정 상속 <span className="text-xs text-slate-500">· 인증·시드·정리</span></span><TG on={!form.fxOverride} onClick={() => setForm({ ...form, fxOverride: !form.fxOverride })} /></div>
                   {!form.fxOverride ? (
-                    <div className="text-xs text-slate-500">환경(대상·환경)에서 정의한 storageState·데이터 시드·teardown을 그대로 사용합니다.</div>
+                    <div className="text-xs text-slate-500">환경(대상·환경)에서 정의한 {(form.platform || "Web") === "API" ? "인증 토큰" : "storageState"}·데이터 시드·teardown을 그대로 사용합니다.</div>
                   ) : (
                     <div className="space-y-2 pt-1">
-                      <Field label="로그인 세션(storageState)"><Select value={form.ssMode} onChange={(e) => setForm({ ...form, ssMode: e.target.value })}><option value="inherit">환경 세션 사용</option><option value="role">다른 역할 계정</option><option value="none">사용 안 함</option></Select></Field>
+                      <Field label={(form.platform || "Web") === "API" ? "인증 토큰(auth)" : "로그인 세션(storageState)"}><Select value={form.ssMode} onChange={(e) => setForm({ ...form, ssMode: e.target.value })}><option value="inherit">{(form.platform || "Web") === "API" ? "환경 토큰 사용" : "환경 세션 사용"}</option><option value="role">{(form.platform || "Web") === "API" ? "다른 역할 토큰" : "다른 역할 계정"}</option><option value="none">사용 안 함</option></Select></Field>
                       <div className="flex items-center justify-between text-sm text-slate-300"><span>이 스위트 추가 데이터 시드</span><TG on={!!form.seedExtra} onClick={() => setForm({ ...form, seedExtra: !form.seedExtra })} /></div>
                       <div className="flex items-center justify-between text-sm text-slate-300"><span>이 스위트 추가 정리(teardown)</span><TG on={!!form.cleanExtra} onClick={() => setForm({ ...form, cleanExtra: !form.cleanExtra })} /></div>
                     </div>
@@ -656,7 +729,7 @@ const RUN_LOG = [
   { lv: "FAIL", t: "TC-156 상태 미반영 (8.4s)" },
 ];
 export function FqaRunScreen({ nav }) {
-  const { fqaRuns, addFqaRun, updateFqaRun, fqaCases, fqaSuites, fqaPlans } = useApp();
+  const { fqaRuns, addFqaRun, updateFqaRun, fqaCases, fqaSuites, fqaSystems, fqaPlans } = useApp();
   const [msg, flash] = useToast();
   const [lvl, setLvl] = useState("ALL");
   const [tab, setTab] = useState("진행");
@@ -675,12 +748,14 @@ export function FqaRunScreen({ nav }) {
   const KPI = [["실행 중", cnt((r) => r.status === "실행 중"), "text-amber-400"], ["대기", cnt((r) => r.status === "대기 중"), "text-slate-100"], ["완료", cnt((r) => r.status === "완료"), "text-emerald-400"], ["오류", cnt((r) => r.status === "오류"), "text-red-400"], ["예약", cnt((r) => r.trig === "예약"), "text-teal-400"]];
   const nextId = () => "FRUN-" + (fqaRuns.reduce((m, r) => Math.max(m, parseInt((r.id.split("-")[1] || "0"), 10)), 500) + 1);
   const gateSuite = (plan) => { const suObj = fqaSuites.find((x) => x.name === plan.suites); if (suObj && suObj.enabled === false) { flash(plan.suites + " — 비활성 스위트라 실행할 수 없습니다"); return false; } return true; };
-  const buildTcs = (plan) => { const inSuite = (c) => (plan.suites === "전체" || c.suite === plan.suites) && !c.quarantined; const appr = fqaCases.filter((c) => inSuite(c) && c.status === "승인"); const src = appr.length ? appr : fqaCases.filter(inSuite); return src.map((c) => ({ id: c.id, name: c.name, v: c.last === "FAIL" ? "FAIL" : "PASS", dur: (Math.round((Math.random() * 3 + 0.3) * 10) / 10) + "s" })); };
-  const runImmediate = (plan) => { if (!gateSuite(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, brow: (plan.brow && plan.brow[0]) || "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
-  const runDeferred = (plan, when) => { if (!gateSuite(plan)) return; const total = fqaCases.filter((c) => (plan.suites === "전체" || c.suite === plan.suites) && c.status === "승인" && !c.quarantined).length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, brow: (plan.brow && plan.brow[0]) || "Chrome", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: when + " 실행 예정", dur: "-", at: when, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] }); setRunOpen(false); flash(plan.name + " " + when + " 지연 실행 예약 · " + id); };
+  const suiteEnabled = (name) => { const su = fqaSuites.find((x) => x.name === name); return !su || su.enabled !== false; };
+  const runPlatOf = (target) => { const nm = String(target || "").split(" · ")[0]; const sy = (fqaSystems || []).find((x) => x.name === nm); return sy ? sy.platform : "Web"; };
+  const buildTcs = (plan) => { const inSuite = (c) => (plan.suites === "전체" || c.suite === plan.suites) && !c.quarantined && suiteEnabled(c.suite); const appr = fqaCases.filter((c) => inSuite(c) && c.status === "승인"); const src = appr.length ? appr : fqaCases.filter(inSuite); return src.map((c) => ({ id: c.id, name: c.name, v: c.last === "FAIL" ? "FAIL" : "PASS", dur: (Math.round((Math.random() * 3 + 0.3) * 10) / 10) + "s" })); };
+  const runImmediate = (plan) => { if (!gateSuite(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, platform: runPlatOf(plan.target), brow: runPlatOf(plan.target) === "API" ? "" : ((plan.brow && plan.brow[0]) || "Chrome"), trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
+  const runDeferred = (plan, when) => { if (!gateSuite(plan)) return; const total = fqaCases.filter((c) => (plan.suites === "전체" || c.suite === plan.suites) && c.status === "승인" && !c.quarantined && suiteEnabled(c.suite)).length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, platform: runPlatOf(plan.target), brow: runPlatOf(plan.target) === "API" ? "" : ((plan.brow && plan.brow[0]) || "Chrome"), trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: when + " 실행 예정", dur: "-", at: when, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] }); setRunOpen(false); flash(plan.name + " " + when + " 지연 실행 예약 · " + id); };
   const [runOpen, setRunOpen] = useState(false);
   const [rf, setRf] = useState({ plan: planNames[0] || "", mode: "즉시", when: "10분 후" });
-  const PlanInfo = ({ name }) => { const pl = fqaPlans.find((p) => p.name === name); if (!pl) return null; return <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400">계획에서 상속 · 대상 <span className="text-slate-300">{pl.target}</span> · 스위트 <span className="text-slate-300">{pl.suites}</span> · 브라우저 <span className="text-slate-300">{(pl.brow || []).join(", ") || "Chrome"}</span></div>; };
+  const PlanInfo = ({ name }) => { const pl = fqaPlans.find((p) => p.name === name); if (!pl) return null; return <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400">계획에서 상속 · 대상 <span className="text-slate-300">{pl.target}</span> · 스위트 <span className="text-slate-300">{pl.suites}</span> · <span className="text-slate-300">{runPlatOf(pl.target) === "API" ? ("타임아웃 " + (pl.timeout || 30) + "s · 동시성 " + (pl.workers || "4")) : ("브라우저 " + ((pl.brow || []).join(", ") || "Chrome"))}</span></div>; };
   return (
     <div className="space-y-4">
       <PageToolbar desc="진행 중 · 실행 큐 (지금 실행 중·대기)" />
@@ -697,14 +772,14 @@ export function FqaRunScreen({ nav }) {
           <div className="grid grid-cols-12 gap-4">
             <Card className="col-span-8 overflow-hidden">
               <table className="w-full text-sm">
-                <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">스위트</th><th className="font-medium">브라우저</th><th className="font-medium">상태</th><th className="font-medium">진행</th><th className="font-medium">소요</th><th></th></tr></thead>
+                <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">스위트</th><th className="font-medium">환경</th><th className="font-medium">상태</th><th className="font-medium">진행</th><th className="font-medium">소요</th><th></th></tr></thead>
                 <tbody>
                   {rows.length === 0 && (<tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 실행이 없습니다</td></tr>)}
                   {rows.map((r) => (
                     <tr key={r.id} className="border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                       <td className="px-4 py-3"><div className="font-mono text-xs text-teal-400">{r.id}</div><div className="text-slate-200">{r.name}</div></td>
                       <td className="text-slate-400">{r.suite}</td>
-                      <td className="text-xs text-slate-400">{r.brow}</td>
+                      <td className="text-xs text-slate-400">{r.platform === "API" ? "API · REST" : (r.brow || "-")}</td>
                       <td><Badge kind={sK[r.status]}>{r.status}</Badge></td>
                       <td style={{ minWidth: 90 }}>{r.status === "대기 중" ? <span className="text-xs text-slate-500">{r.progt}</span> : <div><div className="mb-0.5 text-xs text-slate-400">{r.progt}</div><div className="h-1.5 rounded bg-slate-800"><div className="h-1.5 rounded bg-teal-500" style={{ width: r.prog + "%" }} /></div></div>}</td>
                       <td className="text-xs text-slate-400">{r.dur}</td>
@@ -775,13 +850,14 @@ export function FqaHistoryScreen({ nav }) {
       </div>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">판정</th><th className="font-medium">결과</th><th className="font-medium">소요</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">플랫폼</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">판정</th><th className="font-medium">결과</th><th className="font-medium">소요</th><th></th></tr></thead>
           <tbody>
-            {hist.length === 0 && (<tr><td colSpan={9} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
+            {hist.length === 0 && (<tr><td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
             {hist.map((r) => (
               <tr key={r.id} onClick={() => openRun(r)} className="cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                 <td className="px-4 py-3 font-mono text-xs text-teal-400">{r.id}</td>
                 <td className="text-slate-200">{r.plan || r.name}</td>
+                <td><Badge kind={PLAT_K[r.platform || "Web"] || "info"}>{r.platform || "Web"}</Badge></td>
                 <td><Badge kind={tK[r.trig]}>{r.trig}</Badge></td>
                 <td className="text-xs text-slate-400">{r.at}</td>
                 <td><Badge kind={hK[r.status]}>{r.status}</Badge></td>
@@ -814,17 +890,24 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const cur = tcs.find((t) => t.id === selId) || tcs[0] || null;
   const passRate = run.total ? Math.round((run.pass / run.total) * 1000) / 10 : 0;
   const gate = run.fail > 0 || passRate < 95 ? "FAIL" : "PASS";
+  const evTabs = run.platform === "API" ? ["요청", "응답", "로그"] : ["스크린샷", "영상", "단말 로그"];
+  const evTab = evTabs.includes(etab) ? etab : evTabs[0];
   const _dur = (seed, base) => { let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 9973; return (base + (h % 500)).toLocaleString() + "ms"; };
   const stepsFor = (t) => {
     if (!t) return [];
     const id = t.id || "TC";
     const seg = (run.suite || "app").split(" ")[0].split("/")[0];
     const last = Math.round((parseFloat(t.dur) || 1) * 1000).toLocaleString() + "ms";
-    const s = [
-      { act: "브라우저 열기", info: (run.brow || "Chrome").toLowerCase().split("+")[0] + " · 세션 시작", dur: _dur(id + "a", 1400), ok: true },
-      { act: "페이지 이동", info: "goto · /" + seg.toLowerCase(), dur: _dur(id + "b", 300), ok: true },
-      { act: t.name, info: t.heal ? "로케이터 " + t.heal.to + " · 자동 보정 적용" : "액션 수행 → " + id, dur: _dur(id + "c", 500), ok: true },
-    ];
+    const s = run.platform === "API"
+      ? [
+          { act: "요청 전송", info: (t.name || id) + " · REST 요청", dur: _dur(id + "a", 300), ok: true },
+          { act: "응답 수신", info: t.v === "FAIL" ? "상태/스키마 불일치" : "200 OK · 스키마 준수", dur: _dur(id + "b", 200), ok: true },
+        ]
+      : [
+          { act: "브라우저 열기", info: (run.brow || "Chrome").toLowerCase().split("+")[0] + " · 세션 시작", dur: _dur(id + "a", 1400), ok: true },
+          { act: "페이지 이동", info: "goto · /" + seg.toLowerCase(), dur: _dur(id + "b", 300), ok: true },
+          { act: t.name, info: t.heal ? "로케이터 " + t.heal.to + " · 자동 보정 적용" : "액션 수행 → " + id, dur: _dur(id + "c", 500), ok: true },
+        ];
     s.push(
       t.v === "FAIL"
         ? { act: "결과 검증 실패", info: t.name + " — 기대 결과 불일치 (재시도 2회)", dur: last, ok: false }
@@ -834,7 +917,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
     );
     return s;
   };
-  const SUM = [["전체 TC", run.total, "text-slate-100"], ["통과", run.pass, "text-emerald-400"], ["실패", run.fail, "text-red-400"], ["경고", run.warn, "text-amber-400"], ["보정 제안", tcs.filter((t) => t.heal).length, "text-teal-400"]];
+  const SUM = [["전체 TC", run.total, "text-slate-100"], ["통과", run.pass, "text-emerald-400"], ["실패", run.fail, "text-red-400"], ["경고", run.warn, "text-amber-400"]].concat(run.platform === "API" ? [] : [["보정 제안", tcs.filter((t) => t.heal).length, "text-teal-400"]]);
   const hasDefect = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
   const regDefect = (t) => { if (hasDefect(t.id)) { flash(t.id + " 이미 결함 등록됨"); return; } const key = "TWORLD-" + (1900 + defects.length); addDefect({ key, tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" }); flash(t.id + " 결함 등록 · " + key); };
   const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !hasDefect(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다"); return; } tgt.forEach((t, i) => addDefect({ key: "TWORLD-" + (1900 + defects.length + i), tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
@@ -884,21 +967,21 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
       {mode === "상세" && (
         <>
           <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
-            <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-sm text-teal-400">{run.id}</span><span className="text-sm font-medium text-slate-200">{run.plan}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{run.brow || "Chrome"} · {run.suite}</span></div>
-            <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn><Btn icon={Download} onClick={() => flash(run.id + " 증적 번들 다운로드 — 스크린샷·영상·trace·로그")}>증적 다운로드</Btn>{run.fail > 0 && <Btn kind="primary" icon={Bug} onClick={regAll}>결함 일괄 등록</Btn>}</div>
+            <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-sm text-teal-400">{run.id}</span><span className="text-sm font-medium text-slate-200">{run.plan}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{run.platform === "API" ? "API" : (run.brow || "Chrome")} · {run.suite}</span></div>
+            <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn><Btn icon={Download} onClick={() => flash(run.id + " 증적 번들 다운로드 — " + (run.platform === "API" ? "요청·응답·trace·로그" : "스크린샷·영상·trace·로그"))}>증적 다운로드</Btn>{run.fail > 0 && <Btn kind="primary" icon={Bug} onClick={regAll}>결함 일괄 등록</Btn>}</div>
           </Card>
-          <div className="grid grid-cols-6 gap-3">
+          <div className={"grid gap-3 " + (run.platform === "API" ? "grid-cols-5" : "grid-cols-6")}>
             {SUM.map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
             <Card className="p-3 text-center"><div className="text-2xl font-bold text-slate-100">{run.dur}</div><div className="mt-0.5 text-xs text-slate-500">소요</div></Card>
           </div>
-          <Card className="flex flex-wrap items-center gap-3 p-3 text-sm"><span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>품질 게이트: {gate}</span><span className="text-slate-400">기준 95% · 실제 <span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>{passRate}%</span></span><span className="text-slate-600">·</span><span className="text-slate-400">보정 제안 {tcs.filter((t) => t.heal).length}건</span></Card>
+          <Card className="flex flex-wrap items-center gap-3 p-3 text-sm"><span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>품질 게이트: {gate}</span><span className="text-slate-400">기준 95% · 실제 <span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>{passRate}%</span></span>{run.platform !== "API" && (<><span className="text-slate-600">·</span><span className="text-slate-400">보정 제안 {tcs.filter((t) => t.heal).length}건</span></>)}</Card>
           {tcs.length === 0 ? (
             <Card className="p-8 text-center text-sm text-slate-500">{run.status === "실행 중" || run.status === "대기 중" ? "실행이 진행 중입니다 — 완료 후 케이스 결과가 표시됩니다." : "이 실행에는 케이스 상세 결과가 없습니다."}</Card>
           ) : (
           <div className="grid grid-cols-5 gap-4">
             <Card className="col-span-2 overflow-hidden">
               <div className="flex flex-wrap gap-1.5 border-b border-slate-800 px-3 py-2">
-                {["전체", "실패만", "통과만", "보정 제안"].map((t) => (<button key={t} onClick={() => setFilt(t)} className={"rounded-full px-2.5 py-1 text-xs " + (filt === t ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>{t}</button>))}
+                {(run.platform === "API" ? ["전체", "실패만", "통과만"] : ["전체", "실패만", "통과만", "보정 제안"]).map((t) => (<button key={t} onClick={() => setFilt(t)} className={"rounded-full px-2.5 py-1 text-xs " + (filt === t ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>{t}</button>))}
               </div>
               <div className="overflow-y-auto" style={{ maxHeight: 340 }}>
                 {shown.map((t) => (
@@ -934,9 +1017,9 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
               </div>
               <div className="mt-3">
                 <div className="flex gap-1.5 border-b border-slate-800">
-                  {["스크린샷", "영상", "단말 로그"].map((t) => (<button key={t} onClick={() => setEtab(t)} className={"px-2.5 py-1.5 text-xs " + (etab === t ? "border-b-2 border-teal-500 text-teal-300" : "text-slate-500 hover:text-slate-300")}>{t}</button>))}
+                  {evTabs.map((t) => (<button key={t} onClick={() => setEtab(t)} className={"px-2.5 py-1.5 text-xs " + (evTab === t ? "border-b-2 border-teal-500 text-teal-300" : "text-slate-500 hover:text-slate-300")}>{t}</button>))}
                 </div>
-                <div className="flex h-24 items-center justify-center text-xs text-slate-500">{etab === "스크린샷" ? cur.id + (cur.v === "FAIL" ? "_fail" : "_pass") + ".png · 1.4MB" : etab === "영상" ? run.id.toLowerCase().replace("-", "_") + "_" + cur.id.toLowerCase() + ".webm · 12MB" : cur.id + " · console/network 로그"}</div>
+                <div className="flex h-24 items-center justify-center text-xs text-slate-500">{run.platform === "API" ? (evTab === "응답" ? cur.id + " · 응답 " + (cur.v === "FAIL" ? "4xx · 불일치" : "200 OK") + " · body.json" : evTab === "로그" ? cur.id + " · HTTP trace · 헤더 · 타이밍" : cur.id + " · 요청 원문 · 메서드·URL·헤더·바디") : (evTab === "스크린샷" ? cur.id + (cur.v === "FAIL" ? "_fail" : "_pass") + ".png · 1.4MB" : evTab === "영상" ? run.id.toLowerCase().replace("-", "_") + "_" + cur.id.toLowerCase() + ".webm · 12MB" : cur.id + " · console/network 로그")}</div>
               </div>
             </Card>
             )}
@@ -1086,7 +1169,7 @@ export function FqaDashboardScreen({ nav }) {
           </div>
         </Card>
         <Card className="p-4">
-          <div className="mb-3 text-sm font-semibold text-slate-200">브라우저별 PASS율 <span className="font-normal text-slate-500">· 예시</span></div>
+          <div className="mb-3 text-sm font-semibold text-slate-200">웹 브라우저별 PASS율 <span className="font-normal text-slate-500">· 예시</span></div>
           <div className="space-y-3">
             {FD_BROW.map(([b, p, run]) => (
               <div key={b}>
@@ -1129,6 +1212,51 @@ export function FqaDashboardScreen({ nav }) {
   );
 }
 /* ═══════════ 9. 테스트케이스 (통합 저장소) ═══════════ */
+/* ═══════════ API 케이스 뷰 (A안: 읽기 전용 · B안 확장 지점) ═══════════ */
+function FqaApiCaseView({ tc }) {
+  const [tab, setTab] = useState("Form");
+  const [resp, setResp] = useState(null);
+  const steps = (tc && tc.steps) || [];
+  const req = steps.find((s) => s.act === "요청");
+  const asserts = steps.filter((s) => s.act === "검증");
+  const method = req ? (req.loc.split(" ")[0] || "GET") : "GET";
+  const path = req ? req.loc.split(" ").slice(1).join(" ") : "";
+  const status = (asserts[0] && parseInt(asserts[0].val, 10)) || 200;
+  const send = () => { setResp({ s: "run" }); setTimeout(() => setResp({ s: "done", code: status, ms: 40 + (method.length * 17) % 120, body: '{ "id": 1, "result": "ok" }' }), 600); };
+  const script = "import { test, expect } from '@playwright/test';\n\ntest('" + (tc ? tc.id + " " + tc.name : "") + "', async ({ request }) => {\n  const res = await request." + method.toLowerCase() + "('" + (path || "/") + "');\n  expect(res.status()).toBe(" + status + ");\n  // 응답 스키마·본문 검증 ...\n});";
+  return (
+    <>
+      <Hdr icon={Code2} title={"API 케이스 · " + (tc ? tc.id : "")} desc="요청 / 검증 정의 · 전용 편집기 준비 중" />
+      <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-300">API 전용 편집기는 준비 중입니다 — 현재는 요청·검증 구조를 조회만 할 수 있습니다. (OpenAPI 임포트로 생성 · 폼 편집은 B단계 제공)</div>
+      <div className="mt-3"><Seg options={["Form", "Script"]} value={tab} onChange={setTab} /></div>
+      {tab === "Form" ? (
+        <Card className="mt-3 space-y-4 p-4">
+          <div>
+            <div className="mb-1.5 text-xs font-semibold text-slate-400">요청</div>
+            {req ? (<div className="flex items-center gap-2"><Badge kind={M_K[method] || "info"}>{method}</Badge><span className="font-mono text-sm text-slate-200">{path}</span></div>) : <span className="text-xs text-slate-500">요청 정의 없음</span>}
+            {req && req.val && <div className="mt-1.5 font-mono text-xs text-slate-500">{req.val}</div>}
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold text-slate-400">검증 ({asserts.length})</div>
+            <div className="space-y-1.5">
+              {asserts.map((a, i) => (<div key={i} className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-800 px-3 py-1.5 text-xs"><CheckCircle2 size={13} className="text-emerald-400" /><span className="text-slate-300">{a.loc}</span><span className="font-mono text-slate-400">{a.val}</span></div>))}
+              {asserts.length === 0 && <span className="text-xs text-slate-500">검증 없음</span>}
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card className="mt-3 p-4"><div className="mb-2 text-xs font-semibold text-slate-400">스크립트 미리보기 <span className="font-normal text-slate-500">· 읽기 전용</span></div><pre className="overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300" style={{ fontFamily: "monospace" }}>{script}</pre></Card>
+      )}
+      <div className="mt-3 flex items-center gap-2"><Btn kind="primary" icon={Send} onClick={send}>{resp && resp.s === "run" ? "전송 중…" : "요청 전송 (Send)"}</Btn><span className="text-xs text-slate-500">＊ 브라우저·러너 없이 요청 직접 전송 · 공식 이력·게이트 미집계(디버그)</span></div>
+      {resp && resp.s === "done" && (
+        <Card className="mt-2 space-y-2 p-3">
+          <div className="flex items-center gap-2 text-xs"><Badge kind={resp.code < 400 ? "pass" : "fail"}>{resp.code}</Badge><span className="text-slate-400">{resp.ms}ms</span><span className={"font-semibold " + (resp.code === status ? "text-emerald-400" : "text-red-400")}>{resp.code === status ? "기대 상태 일치" : "기대 불일치"}</span></div>
+          <pre className="overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300" style={{ fontFamily: "monospace" }}>{resp.body}</pre>
+        </Card>
+      )}
+    </>
+  );
+}
 export function FqaCasesScreen() {
   const { fqaCases, fqaSuites, setFqaCaseStatus, removeFqaCase, fqaEditTc, setFqaEditTc, defects } = useApp();
   const defCount = (id) => defects.filter((d) => d.tc === id && (d.domain || "LQA") === "FQA").length;
@@ -1137,36 +1265,45 @@ export function FqaCasesScreen() {
   const [msg, flash] = useToast();
   const [mode, setMode] = useState("목록");
   const [addOpen, setAddOpen] = useState(false);
+  const [newPlat, setNewPlat] = useState("Web");
   const [q, setQ] = useState("");
   const [stf, setStf] = useState("전체");
   const [suiteF, setSuiteF] = useState("전체");
   const [resF, setResF] = useState("전체");
+  const [platF, setPlatF] = useState("전체");
   const [sel, setSel] = useState(null);
   const [open, setOpen] = useState(null);
   const stK = { "승인": "pass", "검토중": "warn", "초안": "draft" };
   const lvK2 = { "No-Code": "info", "Low-Code": "teal", "Full-Code": "warn" };
-  const list = fqaCases.filter((c) => (stf === "전체" || c.status === stf) && (suiteF === "전체" || c.suite === suiteF) && (resF === "전체" || (resF === "미실행" ? c.last === "-" : c.last === resF)) && (c.id + c.name + c.suite + c.tags).toLowerCase().includes(q.toLowerCase()));
+  const lvLabel = (c) => (c.platform || "Web") === "API" ? (c.level === "Full-Code" ? "Script" : "Form") : c.level;
+  const list = fqaCases.filter((c) => (stf === "전체" || c.status === stf) && (suiteF === "전체" || c.suite === suiteF) && (resF === "전체" || (resF === "미실행" ? c.last === "-" : c.last === resF)) && (platF === "전체" || (c.platform || "Web") === platF) && (c.id + c.name + c.suite + c.tags).toLowerCase().includes(q.toLowerCase()));
   const delCase = (c, after) => { if (!window.confirm(c.id + " 삭제할까요? 되돌릴 수 없습니다.")) return; removeFqaCase(c.id); if (after) after(); flash(c.id + " 삭제됨"); };
   const Back = () => <button onClick={() => { if (editorDirty.current && !window.confirm("저장하지 않은 변경이 있습니다. 목록으로 나가시겠습니까?")) return; editorDirty.current = false; setMode("목록"); }} className="mb-3 inline-flex items-center gap-1 text-xs text-teal-400"><ChevronLeft size={14} />테스트케이스 목록</button>;
   if (mode === "레코딩") return <div><Back /><FqaRecordScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
   if (mode === "AI") return <div><Back /><FqaAiGenScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
   if (mode === "엑셀") return <div><Back /><FqaExcelScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
   if (mode === "MCP") return <div><Back /><FqaMcpScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
-  if (mode === "edit") return <div><Back /><FqaEditorScreen entry={sel ? sel.level : "No-Code"} tc={sel} onDirty={(d) => { editorDirty.current = d; }} /></div>;
+  if (mode === "api-import") return <div><Back /><FqaApiImportScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
+  if (mode === "edit") return <div><Back />{sel && (sel.platform || "Web") === "API" ? <FqaApiCaseView tc={sel} /> : <FqaEditorScreen entry={sel ? sel.level : "No-Code"} tc={sel} onDirty={(d) => { editorDirty.current = d; }} />}</div>;
   return (
     <div className="space-y-4">
       <PageToolbar desc="기능 TC 저장소 · 생성·편집·관리" />
       <div className="flex items-center gap-2">
         <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"><Search size={15} className="text-slate-500" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="TC·스위트·태그 검색" className="flex-1 bg-transparent text-sm text-slate-200 outline-none" /></div>
+        <div style={{ width: 100 }}><Select value={platF} onChange={(e) => setPlatF(e.target.value)}><option>전체</option><option>Web</option><option>API</option></Select></div>
         <div style={{ width: 150 }}><Select value={suiteF} onChange={(e) => setSuiteF(e.target.value)}><option>전체</option>{fqaSuites.map((x) => <option key={x.id}>{x.name}</option>)}</Select></div>
         <div style={{ width: 110 }}><Select value={stf} onChange={(e) => setStf(e.target.value)}><option>전체</option><option>승인</option><option>검토중</option><option>초안</option></Select></div>
         <div style={{ width: 120 }}><Select value={resF} onChange={(e) => setResF(e.target.value)}><option>전체</option><option>PASS</option><option>FAIL</option><option>미실행</option></Select></div>
         <div className="relative">
           <Btn kind="primary" icon={Plus} onClick={() => setAddOpen(!addOpen)}>새 TC</Btn>
           {addOpen && (
-            <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-xl">
-              {[["레코딩", Video, "레코딩"], ["AI 생성", Brain, "AI"], ["엑셀 업로드", Upload, "엑셀"], ["MCP 탐색", Cpu, "MCP"]].map(([l, Ic, m]) => (
-                <button key={l} onClick={() => { setMode(m); setAddOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"><Ic size={14} className="text-teal-400" />{l}</button>
+            <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-xl">
+              <div className="flex gap-1 px-2 py-1.5">
+                {["Web", "API"].map((pl) => (<button key={pl} onClick={() => setNewPlat(pl)} className={"flex-1 rounded px-2 py-1 text-xs font-medium " + (newPlat === pl ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{pl}</button>))}
+              </div>
+              <div className="my-1 border-t border-slate-800" />
+              {(newPlat === "Web" ? [["레코딩", Video, "레코딩", true], ["AI 생성", Brain, "AI", true], ["엑셀 업로드", Upload, "엑셀", true], ["MCP 탐색", Cpu, "MCP", true]] : [["OpenAPI 임포트", FileText, "api-import", true], ["cURL / HAR", Terminal, "", false], ["직접 요청 정의", Send, "", false], ["엑셀 업로드", Upload, "", false]]).map(([l, Ic, m, ok]) => (
+                <button key={l} disabled={!ok} onClick={() => { if (!ok) return; setMode(m); setAddOpen(false); }} className={"flex w-full items-center gap-2 px-3 py-2 text-sm " + (ok ? "text-slate-200 hover:bg-slate-800" : "cursor-not-allowed text-slate-600")}><Ic size={14} className={ok ? "text-teal-400" : "text-slate-600"} />{l}{!ok && <span className="ml-auto text-slate-500" style={{ fontSize: 10 }}>준비 중</span>}</button>
               ))}
             </div>
           )}
@@ -1174,14 +1311,15 @@ export function FqaCasesScreen() {
       </div>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">ID</th><th className="font-medium">이름</th><th className="font-medium">스위트</th><th className="font-medium">관리</th><th className="font-medium">상태</th><th className="font-medium">최근 이력</th><th className="font-medium">결함</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">ID</th><th className="font-medium">이름</th><th className="font-medium">스위트</th><th className="font-medium">플랫폼</th><th className="font-medium">관리</th><th className="font-medium">상태</th><th className="font-medium">최근 이력</th><th className="font-medium">결함</th><th></th></tr></thead>
           <tbody>
             {list.map((c) => (
               <tr key={c.id} onClick={() => setOpen(c)} className="cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                 <td className="px-4 py-3 font-mono text-teal-400">{c.id}</td>
                 <td className="text-slate-200">{c.name}</td>
                 <td className="text-slate-400">{c.suite}</td>
-                <td><Badge kind={lvK2[c.level] || "info"}>{c.level}</Badge></td>
+                <td><Badge kind={PLAT_K[c.platform || "Web"] || "info"}>{c.platform || "Web"}</Badge></td>
+                <td><Badge kind={lvK2[c.level] || "info"}>{lvLabel(c)}</Badge></td>
                 <td><Badge kind={stK[c.status]}>{c.status}</Badge></td>
                 <td>{c.hist && c.hist.length ? <div className="flex gap-0.5">{c.hist.map((h, i) => <span key={i} className={"flex h-5 w-5 items-center justify-center rounded text-xs font-semibold " + (h === "PASS" ? "bg-emerald-900 text-emerald-300" : "bg-red-900 text-red-300")}>{h === "PASS" ? "P" : "F"}</span>)}</div> : <span className="text-xs text-slate-600">-</span>}</td>
                 <td>{defCount(c.id) ? <Badge kind="fail">{defCount(c.id)}</Badge> : <span className="text-xs text-slate-600">-</span>}</td>
@@ -1198,7 +1336,7 @@ export function FqaCasesScreen() {
           <div className="h-full w-full max-w-md overflow-y-auto border-l border-slate-800 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><span className="font-mono text-teal-400">{open.id}</span><button onClick={() => setOpen(null)} className="text-slate-500 hover:text-slate-300"><X size={20} /></button></div>
             <div className="space-y-4 text-sm">
-              <div><div className="text-slate-100">{open.name}</div><div className="mt-1.5 flex flex-wrap gap-1.5"><Badge kind="info">{open.suite}</Badge><Badge kind={lvK2[open.level]}>{open.level}</Badge><Badge kind={stK[open.status]}>{open.status}</Badge></div></div>
+              <div><div className="text-slate-100">{open.name}</div><div className="mt-1.5 flex flex-wrap gap-1.5"><Badge kind={PLAT_K[open.platform || "Web"] || "info"}>{open.platform || "Web"}</Badge><Badge kind="info">{open.suite}</Badge><Badge kind={lvK2[open.level]}>{lvLabel(open)}</Badge><Badge kind={stK[open.status]}>{open.status}</Badge></div></div>
               <div><div className="mb-1 text-xs text-slate-500">태그</div><div className="text-xs text-slate-400">{open.tags || "-"}</div></div>
               <div>
                 <div className="mb-1 text-xs text-slate-500">최근 실행 이력</div>
@@ -1237,17 +1375,17 @@ export function FqaTargetScreen() {
   const [envIdx, setEnvIdx] = useState(0);
   const [test, setTest] = useState(null);
   const [modal, setModal] = useState(null);
-  const [tf, setTf] = useState({ name: "", type: "Web", env: "스테이징", url: "" });
+  const [tf, setTf] = useState({ name: "", platform: "Web", env: "스테이징", url: "" });
   const [ef, setEf] = useState({ env: "스테이징", url: "" });
   const [af, setAf] = useState({ role: "일반", acct: "", secretRef: "" });
   const stK = { "연결됨": "pass", "미확인": "warn", "오류": "fail" };
   const sys = systems[sel] || systems[0];
   const env = sys.envs[envIdx] || sys.envs[0];
-  const isApi = sys.type === "API";
-  const CFG_DEF = { auth: "storageState 재사용", tfa: "TOTP 시드", apiAuth: "Bearer 토큰", writeBlock: true, synth: true, approval: true, vpn: true, basic: false, tls: true, seedBefore: true, cleanAfter: true, dataset: "기본 시드셋", seedMethod: "SQL 스크립트", seedSource: "", loginAcct: "", ci: { provider: "GitLab CI" }, deploy: { signal: "CD 배포 완료 웹훅" } };
+  const isApi = sys.platform === "API";
+  const CFG_DEF = { auth: "storageState 재사용", tfa: "TOTP 시드", apiAuth: "Bearer 토큰", writeBlock: true, synth: true, approval: true, vpn: true, basic: false, tls: true, seedBefore: true, cleanAfter: true, dataset: "기본 시드셋", seedMethod: isApi ? "API 호출" : "SQL 스크립트", seedSource: "", loginAcct: "", ci: { provider: "GitLab CI" }, deploy: { signal: "CD 배포 완료 웹훅" } };
   const cfg = { ...CFG_DEF, ...env };
   const setEnvCfg = (patch) => updateFqaSystem(sys.id, { envs: sys.envs.map((e, i) => (i === envIdx ? { ...e, ...patch } : e)) });
-  const SCM_DEF = { provider: "GitLab", testRepo: "gitlab.skt/tworld/web-tests", appRepo: "gitlab.skt/tworld/web", branch: "main" };
+  const SCM_DEF = isApi ? { provider: "GitLab", testRepo: "gitlab.skt/tworld/api-tests", appRepo: "gitlab.skt/tworld/api", branch: "main" } : { provider: "GitLab", testRepo: "gitlab.skt/tworld/web-tests", appRepo: "gitlab.skt/tworld/web", branch: "main" };
   const scm = { ...SCM_DEF, ...(sys.scm || {}) };
   const setSysScm = (patch) => updateFqaSystem(sys.id, { scm: { ...scm, ...patch } });
   const envSlug = { "스테이징": "stg", "운영": "prod", "개발": "dev" }[env.env] || "env";
@@ -1256,10 +1394,10 @@ export function FqaTargetScreen() {
   const delTarget = (i, sy) => { if (systems.length <= 1) { flash("최소 1개 대상은 유지해야 합니다"); return; } if (!window.confirm(sy.name + " 대상을 삭제할까요?")) return; removeFqaSystem(sy.id); setSel(0); setEnvIdx(0); setTest(null); flash(sy.name + " 삭제됨"); };
   const delEnv = () => { if (sys.envs.length <= 1) { flash("최소 1개 환경은 유지해야 합니다"); return; } if (!window.confirm(env.env + " 환경을 삭제할까요?")) return; updateFqaSystem(sys.id, { envs: sys.envs.filter((_, i) => i !== envIdx) }); setEnvIdx(0); flash(env.env + " 환경 삭제됨"); };
   const delAcct = (idx) => { setEnvCfg({ accts: (cfg.accts || []).filter((_, j) => j !== idx) }); flash("계정 삭제됨"); };
-  const runTest = () => { setTest({ s: "run" }); setTimeout(() => setTest({ s: "ok", m: "연결 성공 · 200 OK · 빌드 " + env.ver + (isApi ? " · 인증 토큰 유효" : " · 로그인 가능") }), 800); };
+  const runTest = () => { setTest({ s: "run" }); setTimeout(() => setTest({ s: "ok", m: "연결 성공 · 200 OK · " + (env.ver !== "-" ? (isApi ? "버전 " : "빌드 ") + env.ver : "미배포") + (isApi ? " · 인증 토큰 유효" : " · 로그인 가능") }), 800); };
   const addTarget = () => {
     if (!tf.name.trim() || !tf.url.trim()) { flash("이름과 Base URL을 입력하세요"); return; }
-    const ns = { id: Date.now(), name: tf.name, type: tf.type, envs: [{ env: tf.env, url: tf.url, status: "미확인", ver: "-", prod: tf.env === "운영" }] };
+    const ns = { id: Date.now(), name: tf.name, platform: tf.platform, envs: [{ env: tf.env, url: tf.url, status: "미확인", ver: "-", prod: tf.env === "운영" }] };
     addFqaSystem(ns); setSel(systems.length); setEnvIdx(0); setModal(null); flash("대상이 추가되었습니다");
   };
   const addEnv = () => {
@@ -1275,11 +1413,11 @@ export function FqaTargetScreen() {
       <PageToolbar desc="대상(SUT) → 환경 · 인증 · 접근 · 데이터" />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-3 space-y-3">
-          <Btn kind="primary" icon={Plus} className="w-full" onClick={() => { setTf({ name: "", type: "Web", env: "스테이징", url: "" }); setModal("target"); }}>대상 추가</Btn>
+          <Btn kind="primary" icon={Plus} className="w-full" onClick={() => { setTf({ name: "", platform: "Web", env: "스테이징", url: "" }); setModal("target"); }}>대상 추가</Btn>
           {systems.map((sy, i) => (
             <Card key={sy.id} className={"cursor-pointer p-3 " + (sel === i ? "border-teal-500" : "hover:border-slate-700")} >
               <div onClick={() => choose(i)}>
-                <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-100">{sy.name}</span><div className="flex items-center gap-1.5"><Badge kind="info">{sy.type}</Badge><button onClick={(e) => { e.stopPropagation(); delTarget(i, sy); }} className="text-slate-500 hover:text-red-400" title="대상 삭제"><X size={12} /></button></div></div>
+                <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-100">{sy.name}</span><div className="flex items-center gap-1.5"><Badge kind="info">{sy.platform}</Badge><button onClick={(e) => { e.stopPropagation(); delTarget(i, sy); }} className="text-slate-500 hover:text-red-400" title="대상 삭제"><X size={12} /></button></div></div>
                 <div className="mt-1.5 flex flex-wrap gap-1">{sy.envs.map((e) => <Badge key={e.env} kind={e.prod ? "warn" : "info"}>{e.env}</Badge>)}</div>
               </div>
             </Card>
@@ -1287,7 +1425,7 @@ export function FqaTargetScreen() {
         </div>
         <div className="col-span-9 space-y-3">
           <Card className="flex items-center justify-between p-3">
-            <div className="flex items-center gap-2"><span className="text-base font-semibold text-slate-100">{sys.name}</span><Badge kind="info">{sys.type}</Badge></div>
+            <div className="flex items-center gap-2"><span className="text-base font-semibold text-slate-100">{sys.name}</span><Badge kind="info">{sys.platform}</Badge></div>
             <div className="flex items-center gap-1.5">{sys.envs.map((e, i) => (<button key={e.env} onClick={() => { setEnvIdx(i); setTest(null); }} className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (envIdx === i ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{e.env}{e.prod ? " ●" : ""}</button>))}<button onClick={() => { setEf({ env: "개발", url: "" }); setModal("env"); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800">+ 환경</button>{sys.envs.length > 1 && <button onClick={delEnv} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-500 hover:text-red-400" title="현재 환경 삭제">− 환경</button>}</div>
           </Card>
 
@@ -1298,6 +1436,20 @@ export function FqaTargetScreen() {
             </div>
             {test && test.s === "ok" && <div className="mt-2 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />{test.m}</div>}
           </Card>
+
+          {isApi && (
+            <Card className="p-4 space-y-3">
+              <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><FileText size={15} className="text-teal-400" />API 스펙 (계약) <span className="text-xs font-normal text-slate-500">· 스키마 검증 · 테스트 생성(임포트) 근거</span></div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="스펙 형식"><Select value={cfg.apiSpec || "OpenAPI 3.0"} onChange={(e) => setEnvCfg({ apiSpec: e.target.value })}><option>OpenAPI 3.0</option><option>Swagger 2.0</option><option>Postman Collection</option><option>없음(수동 정의)</option></Select></Field>
+                <Field label="스펙 URL"><Input value={cfg.specUrl || ""} onChange={(e) => setEnvCfg({ specUrl: e.target.value })} placeholder="https://api-stg.tworld.co.kr/openapi.json" /></Field>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500">등록된 스펙은 <span className="text-slate-400">테스트케이스 생성(임포트) · 응답 스키마 검증</span>의 기준이 됩니다.</span>
+                <Btn icon={RefreshCw} onClick={() => flash((cfg.specUrl || "openapi.json") + " 불러오기 · 엔드포인트 " + (12 + sys.id) + "개 감지 (시뮬)")}>스펙 불러오기</Btn>
+              </div>
+            </Card>
+          )}
 
           {env.prod && (
             <Card className="border-amber-800 bg-amber-950 p-4">
@@ -1394,7 +1546,7 @@ export function FqaTargetScreen() {
               </div>
               {(((cfg.deploy || {}).signal) || "CD 배포 완료 웹훅") === "릴리스 태그(v*)" && <div className="text-xs text-slate-500">SCM 앱 저장소(<span className="font-mono text-slate-400">{scm.appRepo}</span>)의 <span className="font-mono text-slate-400">v*</span> 태그 push 시 감지 — 별도 수신 설정 불필요.</div>}
               {(((cfg.deploy || {}).signal) || "CD 배포 완료 웹훅") === "CD 배포 완료 웹훅" && <Field label="CD 완료 웹훅 URL (플랫폼 발급)"><div className="flex items-center gap-2"><div className="flex-1 truncate rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-2 font-mono text-xs text-slate-300">{hookUrl.replace("/hooks/", "/hooks/deploy-")}</div><Btn onClick={() => flash("배포 웹훅 URL 복사됨")}>복사</Btn></div></Field>}
-              {(((cfg.deploy || {}).signal) || "CD 배포 완료 웹훅") === "이미지 태그 push" && <Field label="컨테이너 레지스트리"><Input value={(cfg.deploy || {}).registry || ""} onChange={(e) => setEnvCfg({ deploy: { ...(cfg.deploy || {}), registry: e.target.value } })} placeholder="registry.skt/tworld/web" /></Field>}
+              {(((cfg.deploy || {}).signal) || "CD 배포 완료 웹훅") === "이미지 태그 push" && <Field label="컨테이너 레지스트리"><Input value={(cfg.deploy || {}).registry || ""} onChange={(e) => setEnvCfg({ deploy: { ...(cfg.deploy || {}), registry: e.target.value } })} placeholder={isApi ? "registry.skt/tworld/api" : "registry.skt/tworld/web"} /></Field>}
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-slate-500">배포 신호 발생 시 이 환경 대상으로 트리거 실행 · 버전은 결과 스냅샷에 기록.</div>
                 <Btn icon={RefreshCw} onClick={() => { const nv = "v" + (5 + sys.id) + "." + Math.floor(Math.random() * 20) + "." + Math.floor(Math.random() * 9); setEnvCfg({ ver: nv }); flash("배포 수신(시뮬) · 버전 " + nv + " 갱신"); }}>배포 수신(시뮬)</Btn>
@@ -1434,13 +1586,13 @@ export function FqaTargetScreen() {
             <div className="space-y-3.5 p-5">
               {modal === "target" && (<>
                 <Field label="대상 이름"><Input value={tf.name} onChange={(e) => setTf({ ...tf, name: e.target.value })} placeholder="예: T월드 웹" /></Field>
-                <div className="grid grid-cols-2 gap-3"><Field label="유형"><Select value={tf.type} onChange={(e) => setTf({ ...tf, type: e.target.value })}><option>Web</option><option>API</option></Select></Field><Field label="첫 환경"><Select value={tf.env} onChange={(e) => setTf({ ...tf, env: e.target.value })}><option>스테이징</option><option>운영</option><option>개발</option></Select></Field></div>
-                <Field label="Base URL"><Input value={tf.url} onChange={(e) => setTf({ ...tf, url: e.target.value })} placeholder="https://stg.tworld.co.kr" /></Field>
+                <div className="grid grid-cols-2 gap-3"><Field label="플랫폼"><Select value={tf.platform} onChange={(e) => setTf({ ...tf, platform: e.target.value })}><option value="Web">Web</option><option value="App" disabled>App (준비 중)</option><option value="API">API</option></Select></Field><Field label="첫 환경"><Select value={tf.env} onChange={(e) => setTf({ ...tf, env: e.target.value })}><option>스테이징</option><option>운영</option><option>개발</option></Select></Field></div>
+                <Field label={tf.platform === "API" ? "API Base URL" : "Base URL"}><Input value={tf.url} onChange={(e) => setTf({ ...tf, url: e.target.value })} placeholder={tf.platform === "API" ? "https://api-stg.tworld.co.kr" : "https://stg.tworld.co.kr"} /></Field>
                 <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(null)}>취소</Btn><Btn kind="primary" icon={Save} onClick={addTarget}>추가</Btn></div>
               </>)}
               {modal === "env" && (<>
                 <Field label="환경"><Select value={ef.env} onChange={(e) => setEf({ ...ef, env: e.target.value })}><option>스테이징</option><option>운영</option><option>개발</option></Select></Field>
-                <Field label="Base URL"><Input value={ef.url} onChange={(e) => setEf({ ...ef, url: e.target.value })} placeholder="https://..." /></Field>
+                <Field label={isApi ? "API Base URL" : "Base URL"}><Input value={ef.url} onChange={(e) => setEf({ ...ef, url: e.target.value })} placeholder={isApi ? "https://api-stg.tworld.co.kr" : "https://stg.tworld.co.kr"} /></Field>
                 <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(null)}>취소</Btn><Btn kind="primary" icon={Save} onClick={addEnv}>추가</Btn></div>
               </>)}
               {modal === "acct" && (<>
@@ -1462,8 +1614,12 @@ const TG = ({ on, onClick }) => (
   <button onClick={onClick} className={"relative h-5 w-9 rounded-full transition " + (on ? "bg-teal-600" : "bg-slate-700")}><span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all" style={{ left: on ? 18 : 2 }} /></button>
 );
 export function FqaPlanScreen({ nav }) {
-  const { fqaSuites, fqaCases, fqaRuns, addFqaRun, updateFqaRun, fqaPlans, addFqaPlan, updateFqaPlan, removeFqaPlan } = useApp();
+  const { fqaSuites, fqaSystems, fqaCases, fqaRuns, addFqaRun, updateFqaRun, fqaPlans, addFqaPlan, updateFqaPlan, removeFqaPlan } = useApp();
   const [msg, flash] = useToast();
+  const targetOpts = (fqaSystems || []).flatMap((sy) => (sy.envs || []).map((e) => sy.name + " · " + e.env));
+  const platOf = (t) => { const nm = String(t || "").split(" · ")[0]; const sy = (fqaSystems || []).find((s) => s.name === nm); return sy ? sy.platform : "Web"; };
+  const suitesFor = (t) => fqaSuites.filter((x) => x.enabled !== false && (x.platform || "Web") === platOf(t));
+  const mismatch = (t, su) => su !== "전체" && (((fqaSuites.find((x) => x.name === su) || {}).platform) || "Web") !== platOf(t);
   const [addOpen, setAddOpen] = useState(false);
   const [nf, setNf] = useState({ name: "", target: "T월드 웹 · 스테이징", suites: "전체", tags: "" });
   const [selId, setSelId] = useState(fqaPlans[0] ? fqaPlans[0].id : null);
@@ -1478,11 +1634,13 @@ export function FqaPlanScreen({ nav }) {
   const [retry, setRetry] = useState(sel.retry != null ? sel.retry : 1);
   const [onfail, setOnfail] = useState(sel.onfail || "계속 진행");
   const [video, setVideo] = useState(sel.video || "실패 시만");
+  const [apiTimeout, setApiTimeout] = useState(sel.timeout || 30);
   const [gate, setGate] = useState(sel.gate != null ? sel.gate : 95);
+  const [planStatus, setPlanStatus] = useState(sel.status || "초안");
   const toggleB = (b) => setBrow(brow.includes(b) ? brow.filter((x) => x !== b) : [...brow, b]);
-  const pick = (p) => { setSelId(p.id); setTarget(p.target); setSuites(p.suites); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setHeadless(p.headless !== false); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setGate(p.gate != null ? p.gate : 95); };
-  const saveCfg = () => { updateFqaPlan(sel.id, { target, suites, tags, brow, res, headless, workers, retry, onfail, video, gate }); flash(sel.name + " 설정 저장됨"); };
-  const createPlan = () => { const nm = nf.name.trim(); if (!nm) { flash("계획 이름을 입력하세요"); return; } const id = Math.max(0, ...fqaPlans.map((x) => x.id)) + 1; const np = { id, name: nm, target: nf.target, suites: nf.suites, tags: nf.tags, sched: "예약 없음", status: "초안", brow: ["Chrome"], res: "1920×1080", headless: true, workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", gate: 95 }; addFqaPlan(np); pick(np); setAddOpen(false); setNf({ name: "", target: "T월드 웹 · 스테이징", suites: "전체", tags: "" }); flash(nm + " 계획 생성 (초안)"); };
+  const pick = (p) => { setSelId(p.id); setTarget(p.target); setSuites(p.suites); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setHeadless(p.headless !== false); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setApiTimeout(p.timeout != null ? p.timeout : 30); setGate(p.gate != null ? p.gate : 95); setPlanStatus(p.status || "초안"); };
+  const saveCfg = () => { updateFqaPlan(sel.id, { target, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus }); flash(sel.name + " 설정 저장됨"); };
+  const createPlan = () => { const nm = nf.name.trim(); if (!nm) { flash("계획 이름을 입력하세요"); return; } const id = Math.max(0, ...fqaPlans.map((x) => x.id)) + 1; const np = { id, name: nm, target: nf.target, suites: nf.suites, tags: nf.tags, sched: "예약 없음", status: "초안", brow: ["Chrome"], res: "1920×1080", headless: true, workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", timeout: 30, gate: 95 }; addFqaPlan(np); pick(np); setAddOpen(false); setNf({ name: "", target: "T월드 웹 · 스테이징", suites: "전체", tags: "" }); flash(nm + " 계획 생성 (초안)"); };
   const delPlan = (pl) => { if (!window.confirm(pl.name + " 계획을 삭제할까요?")) return; removeFqaPlan(pl.id); if (selId === pl.id) { const rest = fqaPlans.filter((x) => x.id !== pl.id); setSelId(rest[0] ? rest[0].id : null); } flash(pl.name + " 삭제됨"); };
   return (
     <div className="space-y-4">
@@ -1493,7 +1651,7 @@ export function FqaPlanScreen({ nav }) {
           {fqaPlans.map((p) => (
             <Card key={p.id} className={"cursor-pointer p-3 " + (sel.id === p.id ? "border-teal-500" : "hover:border-slate-700")} >
               <div onClick={() => pick(p)}>
-                <div className="flex items-center justify-between"><div className="text-sm font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "pass" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); delPlan(p); }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
+                <div className="flex items-center justify-between"><div className="text-sm font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={PLAT_K[platOf(p.target)] || "info"}>{platOf(p.target)}</Badge><Badge kind={p.status === "활성" ? "pass" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); delPlan(p); }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
                 <div className="mt-1 text-xs text-slate-500">{p.target}</div>
                 <div className="mt-1 text-xs text-slate-500">{p.suites} · {p.sched}</div>
               </div>
@@ -1503,16 +1661,31 @@ export function FqaPlanScreen({ nav }) {
         <Card className="col-span-9 p-5">
           <div className="mb-4 flex items-center justify-between">
             <div className="text-base font-semibold text-slate-100">상세 설정 — {sel.name}</div>
-            <div className="flex gap-2"><Btn kind="primary" icon={RefreshCw} onClick={saveCfg}>설정 저장</Btn></div>
+            <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><TG on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div><Btn kind="primary" icon={RefreshCw} onClick={saveCfg}>설정 저장</Btn></div>
           </div>
           <div className="grid grid-cols-2 gap-5">
             <div className="space-y-3.5">
-              <Field label="대상·환경"><Select value={target} onChange={(e) => setTarget(e.target.value)}><option>T월드 웹 · 스테이징</option><option>T월드 웹 · 운영</option><option>T월드 API · 스테이징</option></Select></Field>
-              <Field label="대상 스위트"><Select value={suites} onChange={(e) => setSuites(e.target.value)}><option>전체</option>{fqaSuites.filter((x) => x.enabled !== false).map((x) => <option key={x.id}>{x.name}</option>)}</Select></Field>
+              <Field label="대상·환경" hint={platOf(target) + " 플랫폼"}><Select value={target} onChange={(e) => { const t = e.target.value; setTarget(t); if (mismatch(t, suites)) setSuites("전체"); }}>{targetOpts.map((t) => <option key={t}>{t}</option>)}</Select></Field>
+              <Field label="대상 스위트" hint={"플랫폼 일치 스위트만 · " + platOf(target)}><Select value={suites} onChange={(e) => setSuites(e.target.value)}><option>전체</option>{suitesFor(target).map((x) => <option key={x.id}>{x.name}</option>)}</Select></Field>
+              {mismatch(target, suites) && <div className="rounded-lg border border-amber-800 bg-amber-950 px-2.5 py-1.5 text-xs text-amber-300">⚠ 선택 스위트가 대상 플랫폼({platOf(target)})과 불일치 — 실행 시 제외될 수 있습니다.</div>}
               <Field label="태그 필터" hint="@smoke @regression @critical 등"><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="regression,critical" /></Field>
               <Field label="품질 게이트 (PASS 기준 %)"><Input type="number" value={gate} onChange={(e) => setGate(+e.target.value || 0)} className="w-28" /></Field>
             </div>
             <div className="space-y-3.5">
+              {platOf(target) === "API" ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="동시성 (workers)"><Select value={workers} onChange={(e) => setWorkers(e.target.value)}><option>1 (순차)</option><option>2</option><option>4</option><option>auto</option></Select></Field>
+                    <Field label="요청 타임아웃(초)"><Input type="number" value={apiTimeout} onChange={(e) => setApiTimeout(+e.target.value || 0)} /></Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="재시도"><Input type="number" value={retry} onChange={(e) => setRetry(+e.target.value || 0)} /></Field>
+                    <Field label="종료 조건"><Select value={onfail} onChange={(e) => setOnfail(e.target.value)}><option>계속 진행</option><option>첫 에러 시 중단</option></Select></Field>
+                  </div>
+                  <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">API 실행은 브라우저·해상도·headless가 없습니다 — 동시성·타임아웃·재시도로 제어하며, 응답(상태코드·본문·스키마)이 증적으로 기록됩니다.</div>
+                </>
+              ) : (
+                <>
               <Field label="브라우저 (다중)">
                 <div className="grid grid-cols-2 gap-2">
                   {["Chrome", "Firefox", "Safari", "Mobile Chrome"].map((b) => (
@@ -1532,11 +1705,19 @@ export function FqaPlanScreen({ nav }) {
                 <Field label="영상 녹화"><Select value={video} onChange={(e) => setVideo(e.target.value)}><option>녹화 안 함</option><option>실패 시만</option><option>전체 녹화</option></Select></Field>
                 <div className="flex items-center gap-2 pt-5 text-sm text-slate-300"><span>Headless</span><TG on={headless} onClick={() => setHeadless(!headless)} /></div>
               </div>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-5 border-t border-slate-800 pt-4">
-            <ScheduleConfig events={FQA_EVENTS} manualHint="자동 실행 없음 — 수동 실행으로만 수행합니다." toast={flash} />
-            <div className="mt-3 text-xs text-slate-500">스케줄·이벤트 트리거 실행은 항상 켜진 <span className="text-slate-300">공유/CI 러너</span>에서 무인 수행됩니다 — 저작용 개인 로컬 러너와 분리(대상·환경 CI/CD 연동과 연결).</div>
+            {planStatus === "활성" ? (
+              <>
+                <ScheduleConfig events={FQA_EVENTS} manualHint="자동 실행 없음 — 수동 실행으로만 수행합니다." toast={flash} />
+                <div className="mt-3 text-xs text-slate-500">스케줄·이벤트 트리거 실행은 항상 켜진 <span className="text-slate-300">공유/CI 러너</span>에서 무인 수행됩니다 — 저작용 개인 로컬 러너와 분리(대상·환경 CI/CD 연동과 연결).</div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2.5 text-xs text-amber-300">이 계획은 <span className="font-semibold">초안</span>입니다 — 스케줄·이벤트(무인) 실행 설정은 <span className="font-semibold">활성화</span> 후 가능합니다. 초안 상태에서는 수동 실행만 됩니다.</div>
+            )}
           </div>
         </Card>
       </div>
@@ -1546,8 +1727,8 @@ export function FqaPlanScreen({ nav }) {
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5"><h3 className="font-semibold text-slate-100">새 실행 계획</h3><button onClick={() => setAddOpen(false)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button></div>
             <div className="space-y-3.5 p-5">
               <Field label="계획 이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="예: 로그인 회귀 (스테이징)" /></Field>
-              <Field label="대상·환경"><Select value={nf.target} onChange={(e) => setNf({ ...nf, target: e.target.value })}><option>T월드 웹 · 스테이징</option><option>T월드 웹 · 운영</option><option>T월드 API · 스테이징</option></Select></Field>
-              <Field label="대상 스위트"><Select value={nf.suites} onChange={(e) => setNf({ ...nf, suites: e.target.value })}><option>전체</option>{fqaSuites.filter((x) => x.enabled !== false).map((x) => <option key={x.id}>{x.name}</option>)}</Select></Field>
+              <Field label="대상·환경" hint={platOf(nf.target) + " 플랫폼"}><Select value={nf.target} onChange={(e) => { const t = e.target.value; setNf({ ...nf, target: t, suites: mismatch(t, nf.suites) ? "전체" : nf.suites }); }}>{targetOpts.map((t) => <option key={t}>{t}</option>)}</Select></Field>
+              <Field label="대상 스위트"><Select value={nf.suites} onChange={(e) => setNf({ ...nf, suites: e.target.value })}><option>전체</option>{suitesFor(nf.target).map((x) => <option key={x.id}>{x.name}</option>)}</Select></Field>
               <Field label="태그 필터" hint="@smoke @regression @critical 등"><Input value={nf.tags} onChange={(e) => setNf({ ...nf, tags: e.target.value })} placeholder="regression,critical" /></Field>
               <div className="text-xs text-slate-500">생성 시 <span className="text-slate-300">초안</span> 상태로 추가됩니다 — 실행 옵션·스케줄은 상세 설정에서 이어서 정의합니다.</div>
             </div>

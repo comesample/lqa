@@ -248,7 +248,7 @@ export function JiraForm({ close, data }) {
         <Toggle on={jira} onClick={() => setJira(!jira)} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">챗봇 평가</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></Field>
+        <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></Field>
         <Field label="심각도"><Select value={sev} onChange={(e) => { setSev(e.target.value); setPrio(prioMap[e.target.value] || "High"); }}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
       </div>
       {jira && (
@@ -734,7 +734,7 @@ export function Dashboard() {
   ];
   return (
     <div className="space-y-5">
-      <PageToolbar desc="챗봇 평가 현황 요약 · 최근 실행과 안전성 지표" />
+      <PageToolbar desc="AI 품질 현황 요약 · 최근 실행과 안전성 지표" />
       <div className="grid grid-cols-4 gap-4">
         {kpis.map((k) => (
           <Card key={k.label} className="p-4">
@@ -1445,7 +1445,7 @@ export function Defects() {
   const sev = KIND.severity;
   const st = KIND.issueStatus;
   const domKind = KIND.domain;
-  const domLabel = { LQA: "챗봇 평가", FQA: "기능 QA", NQA: "비기능 QA" };
+  const domLabel = { LQA: "AI 품질", FQA: "기능 QA", NQA: "비기능 QA" };
   const [dom, setDom] = useState(domain || "전체");
   const [stf, setStf] = useState("전체");
   const TRANS = { "Open": [["진행", "In Progress"], ["해결", "Resolved"]], "In Progress": [["해결", "Resolved"], ["보류", "Open"]], "Resolved": [["Reopen", "Open"]] };
@@ -1462,7 +1462,7 @@ export function Defects() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="GitLab / Jira 연계 · 전 도메인 공통">
-        <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">챗봇 평가</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></div>
+        <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></div>
         <div style={{ width: 130 }}><Select value={stf} onChange={(e) => setStf(e.target.value)}><option value="전체">전체 상태</option><option value="Open">Open</option><option value="In Progress">In Progress</option><option value="Resolved">Resolved</option></Select></div>
         <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
       </PageToolbar>
@@ -1652,7 +1652,7 @@ export function MembersView() {
   const members = users.filter((u) => u.tenant === tenantId);
   const tName = (tenants.find((t) => t.id === tenantId) || {}).name;
   const MENU_GROUPS = [
-    { id: "LQA", label: "챗봇 평가", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge·Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
+    { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge·Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
     { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "결과"] },
     { id: "COM", label: "공통", menus: ["결함", "리포트·알림"] },
   ];
