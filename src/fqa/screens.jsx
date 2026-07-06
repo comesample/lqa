@@ -140,7 +140,7 @@ export function FqaExcelScreen({ onDone }) {
               <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFile} />
             </label>
             {fname && <div className="text-xs text-teal-400">{fname} · {rows.length}건 인식</div>}
-            <Field label="스위트" hint="가져온 TC가 배치될 스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{fqaSuites.map((x) => <option key={x.id}>{x.name}</option>)}</Select></Field>
+            <Field label="스위트" hint="가져온 TC가 배치될 스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{fqaSuites.filter((x) => (x.platform || "Web") === "Web").map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select></Field>
           </Card>
         </div>
         <div className="col-span-7">
@@ -529,11 +529,12 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
   const [low, setLow] = useState(() => stepsToDSL(initSteps));
   const [code, setCode] = useState(() => stepsToCode(initSteps, tc || { id: "TC-021", name: "회원가입 이메일 형식 검증" }));
   const [plat, setPlat] = useState("Web");
+  const [suite, setSuite] = useState(tc ? tc.suite : ((fqaSuites[0] || {}).name || ""));
   const [dragIdx, setDragIdx] = useState(null);
   const reorder = (from, to) => setSteps((prev) => { const arr = [...prev]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return arr; });
   const vi = LV.indexOf(view);
-  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, low: stepsToDSL(initSteps), code: stepsToCode(initSteps, tc || {}), committed: ei }));
-  const dirty = snap !== JSON.stringify({ steps, low, code, committed });
+  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, low: stepsToDSL(initSteps), code: stepsToCode(initSteps, tc || {}), committed: ei, suite: tc ? tc.suite : ((fqaSuites[0] || {}).name || "") }));
+  const dirty = snap !== JSON.stringify({ steps, low, code, committed, suite });
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
   const editable = vi === committed;
   const readonly = vi < committed;
@@ -545,11 +546,8 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
         <div className="col-span-3 space-y-3">
           <Card className="p-3">
             <div className="mb-2 text-xs font-semibold text-slate-400">테스트 스위트</div>
-            <div className="space-y-1">
-              {fqaSuites.map((sx) => (
-                <div key={sx.id} className={"flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm " + ((tc && sx.name === tc.suite) ? "bg-teal-900 text-teal-200" : "text-slate-300 hover:bg-slate-800")}><span>{sx.name}</span><span className="text-xs text-slate-500">{tcOf(sx.name)}</span></div>
-              ))}
-            </div>
+            <Select value={suite} onChange={(e) => setSuite(e.target.value)}>{fqaSuites.filter((x) => (x.platform || "Web") === ((tc && tc.platform) || "Web")).map((sx) => <option key={sx.id} value={sx.name}>{sx.name} · {tcOf(sx.name)}건</option>)}</Select>
+            <div className="mt-1.5 text-xs text-slate-500">이 케이스가 속한 스위트 (상단 &quot;저장&quot;으로 반영)</div>
           </Card>
           <Card className="p-3">
             <div className="mb-2 text-xs font-semibold text-slate-400">빠른 작업</div>
@@ -644,7 +642,7 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
                 {committed < 2 && view === LV[committed] && (
                   <Btn icon={ArrowRight} onClick={descend}>{LV[committed + 1]}로 변환{committed + 1 === 2 ? " (eject)" : ""}</Btn>
                 )}
-                <Btn kind="primary" icon={Save} disabled={!dirty} onClick={() => { const revert = status === "승인"; if (tc) updateFqaCase(tc.id, { steps, level: LV[committed], ...(revert ? { status: "검토중" } : {}) }); if (revert) setStatus("검토중"); setSnap(JSON.stringify({ steps, low, code, committed })); flash(revert ? "저장됨 · 승인 해제(검토중) — 재검토 필요" : "저장됨 · 검토중"); }}>{dirty ? "저장" : "저장됨"}</Btn>
+                <Btn kind="primary" icon={Save} disabled={!dirty} onClick={() => { const revert = status === "승인"; if (tc) updateFqaCase(tc.id, { steps, level: LV[committed], suite, ...(revert ? { status: "검토중" } : {}) }); if (revert) setStatus("검토중"); setSnap(JSON.stringify({ steps, low, code, committed, suite })); flash(revert ? "저장됨 · 승인 해제(검토중) — 재검토 필요" : "저장됨 · 검토중"); }}>{dirty ? "저장" : "저장됨"}</Btn>
               </div>
             </div>
           </Card>
@@ -1303,6 +1301,11 @@ export function FqaDashboardScreen({ nav }) {
 /* ═══════════ 9. 테스트케이스 (통합 저장소) ═══════════ */
 /* ═══════════ API 케이스 뷰 (A안: 읽기 전용 · B안 확장 지점) ═══════════ */
 function FqaApiCaseView({ tc }) {
+  const { updateFqaCase, fqaSuites } = useApp();
+  const [msg, flash] = useToast();
+  const apiSuites = (fqaSuites || []).filter((x) => (x.platform || "Web") === "API");
+  const [suite, setSuite] = useState(tc ? tc.suite : "");
+  const suiteDirty = suite !== (tc ? tc.suite : "");
   const [tab, setTab] = useState("Form");
   const [resp, setResp] = useState(null);
   const steps = (tc && tc.steps) || [];
@@ -1317,6 +1320,7 @@ function FqaApiCaseView({ tc }) {
     <>
       <Hdr icon={Code2} title={"API 케이스 · " + (tc ? tc.id : "")} desc="요청 / 검증 정의 · 전용 편집기 준비 중" />
       <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-300">API 전용 편집기는 준비 중입니다 — 현재는 요청·검증 구조를 조회만 할 수 있습니다. (스펙 임포트로 생성 · 폼 편집은 B단계 제공)</div>
+      <div className="mt-3 flex items-center gap-2"><span className="text-xs font-semibold text-slate-400">테스트 스위트</span><div style={{ width: 240 }}><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{apiSuites.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}{apiSuites.length === 0 && <option>{tc ? tc.suite : "API 연동"}</option>}</Select></div>{suiteDirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={Save} disabled={!suiteDirty} onClick={() => { if (tc) updateFqaCase(tc.id, { suite }); flash("스위트 저장됨: " + suite); }}>저장</Btn></div>
       <div className="mt-3"><Seg options={["Form", "Script"]} value={tab} onChange={setTab} /></div>
       {tab === "Form" ? (
         <Card className="mt-3 space-y-4 p-4">
@@ -1343,6 +1347,7 @@ function FqaApiCaseView({ tc }) {
           <pre className="overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300" style={{ fontFamily: "monospace" }}>{resp.body}</pre>
         </Card>
       )}
+      <Toast msg={msg} />
     </>
   );
 }
@@ -1862,12 +1867,13 @@ const SAMPLE = [
 const priKind = { "높음": "crit", "중간": "warn", "낮음": "info" };
 
 export function FqaAiGenScreen({ onDone }) {
-  const { addFqaCase } = useApp();
+  const { addFqaCase, fqaSuites } = useApp();
   const [src, setSrc] = useState("직접 입력");
   const [req, setReq] = useState("T월드 앱 로그인 기능\n- 전화번호/비밀번호로 로그인\n- 3회 실패 시 계정 잠금\n- 자동 로그인 (Remember Me)\n- 로그아웃 시 세션 즉시 만료");
   const [cov, setCov] = useState("Standard");
   const [out, setOut] = useState("No-Code");
   const [plat, setPlat] = useState("Web");
+  const [suite, setSuite] = useState("로그인 / 인증");
   const [edge, setEdge] = useState(true);
   const [phase, setPhase] = useState("idle"); // idle | running | done
   const [rows, setRows] = useState([]);
@@ -1883,7 +1889,7 @@ export function FqaAiGenScreen({ onDone }) {
     setTimeout(() => { setRows(SAMPLE); setPicked(new Set()); setPhase("done"); }, 750);
   };
   const toggle = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const commit = (msg) => { if (!picked.size) { flash("케이스를 선택하세요"); return; } if (msg.includes("등록")) { const n = picked.size; rows.filter((r) => picked.has(r.id)).forEach((r, i) => addFqaCase({ id: "TC-AI-" + Date.now().toString().slice(-4) + "-" + i, name: r.title, suite: "로그인 / 인증", tags: (r.tags || []).join(","), status: "검토중", last: "-", level: out === "Low-Code" ? "Low-Code" : "No-Code", dataset: "-", hist: [], defects: 0, steps: aiSteps() })); if (onDone) { onDone(n + "건 검토중 등록 · 목록에 추가됨"); return; } } flash(picked.size + msg); };
+  const commit = (msg) => { if (!picked.size) { flash("케이스를 선택하세요"); return; } if (msg.includes("등록")) { const n = picked.size; rows.filter((r) => picked.has(r.id)).forEach((r, i) => addFqaCase({ id: "TC-AI-" + Date.now().toString().slice(-4) + "-" + i, name: r.title, suite, tags: (r.tags || []).join(","), status: "검토중", last: "-", level: out === "Low-Code" ? "Low-Code" : "No-Code", dataset: "-", hist: [], defects: 0, steps: aiSteps() })); if (onDone) { onDone(n + "건 검토중 등록 · 목록에 추가됨"); return; } } flash(picked.size + msg); };
 
   const platforms = [["Web", Globe, true], ["Android", Smartphone, false], ["iOS", Smartphone, false], ["API", Code2, false]];
 
@@ -1926,6 +1932,7 @@ export function FqaAiGenScreen({ onDone }) {
 
           <Card className="p-4 space-y-3.5">
             <div className="text-sm font-semibold text-slate-200">생성 옵션</div>
+            <Field label="등록 스위트" hint="생성된 TC가 배치될 스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{(fqaSuites || []).filter((x) => (x.platform || "Web") === plat).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select></Field>
             <Field label="커버리지"><Seg options={["Basic", "Standard", "Full"]} value={cov} onChange={setCov} /></Field>
             <Field label="출력 형식" hint="Full-Code(Playwright · TypeScript)는 GitLab 연동으로 내보냅니다">
               <Seg options={["No-Code", "Low-Code"]} value={out} onChange={setOut} />
