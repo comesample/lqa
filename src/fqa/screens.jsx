@@ -354,21 +354,73 @@ function stepsToCode(steps, tc) {
 }
 
 
-/* ═══════════ API OpenAPI 임포트 ═══════════ */
-const API_ENDPOINTS = [
-  { m: "GET", path: "/v1/users/{id}", name: "사용자 조회", asrt: "200 · 스키마" },
-  { m: "POST", path: "/v1/users", name: "사용자 생성", asrt: "201 · Location" },
-  { m: "GET", path: "/v1/plans", name: "요금제 목록", asrt: "200 · 배열" },
-  { m: "PUT", path: "/v1/users/{id}", name: "사용자 수정", asrt: "200" },
-  { m: "DELETE", path: "/v1/users/{id}", name: "사용자 삭제", asrt: "204" },
-  { m: "POST", path: "/v1/auth/login", name: "로그인 토큰 발급", asrt: "200 · token" },
-];
-const M_K = { GET: "info", POST: "pass", PUT: "warn", DELETE: "fail" };
-const apiSteps = (ep) => [
-  { act: "요청", loc: ep.m + " " + ep.path, val: "헤더: Authorization: Bearer" },
-  { act: "검증", loc: "상태코드", val: ep.asrt.split("·")[0].trim() },
-  { act: "검증", loc: "응답 스키마", val: "OpenAPI 계약 준수" },
-];
+/* ═══════════ API 스펙 임포트 (OpenAPI · Postman · 파일/URL) ═══════════ */
+const M_K = { GET: "info", POST: "pass", PUT: "warn", DELETE: "fail", PATCH: "warn", HEAD: "info", OPTIONS: "info" };
+
+// 데모용 번들 샘플 — URL 임포트 시뮬용. 실제 제품은 서버/러너가 스펙 URL을 가져옴.
+const SAMPLE_OPENAPI = {
+  openapi: "3.0.1", info: { title: "T월드 API", version: "1.2.0" },
+  paths: {
+    "/v1/users/{id}": { get: { summary: "사용자 조회", responses: { "200": {}, "404": {} } }, put: { summary: "사용자 수정", responses: { "200": {}, "400": {} } }, delete: { summary: "사용자 삭제", responses: { "204": {} } } },
+    "/v1/users": { post: { summary: "사용자 생성", responses: { "201": {}, "409": {} } } },
+    "/v1/plans": { get: { summary: "요금제 목록", responses: { "200": {} } } },
+    "/v1/plans/{id}/subscribe": { post: { summary: "요금제 가입", responses: { "200": {}, "402": {} } } },
+    "/v1/auth/login": { post: { summary: "로그인 토큰 발급", responses: { "200": {}, "401": {} } } },
+    "/v1/auth/refresh": { post: { summary: "토큰 갱신", responses: { "200": {}, "401": {} } } },
+  },
+};
+
+// ── 미니 파서: 무거운 의존성 없이 공통 엔드포인트 IR로 정규화 ──
+function detectSpec(obj) {
+  if (!obj || typeof obj !== "object") return null;
+  if (obj.openapi || obj.swagger) return "OpenAPI";
+  if ((obj.info && obj.info._postman_id) || Array.isArray(obj.item)) return "Postman";
+  return null;
+}
+function parseOpenApi(spec) {
+  const METHODS = ["get", "post", "put", "delete", "patch", "head", "options"];
+  const paths = spec.paths || {};
+  const out = [];
+  Object.keys(paths).forEach((p) => {
+    const item = paths[p] || {};
+    METHODS.forEach((m) => {
+      const op = item[m];
+      if (!op || typeof op !== "object") return;
+      const codes = Object.keys(op.responses || {});
+      const ok = codes.find((c) => /^2\d\d$/.test(c)) || codes[0] || "200";
+      out.push({ m: m.toUpperCase(), path: p, name: op.summary || op.operationId || (m.toUpperCase() + " " + p), status: ok, asrt: ok + " · 스키마", src: "OpenAPI", script: false });
+    });
+  });
+  return out;
+}
+function parsePostman(col) {
+  const out = [];
+  const walk = (items) => (items || []).forEach((it) => {
+    if (Array.isArray(it.item)) { walk(it.item); return; }
+    if (!it.request) return;
+    const req = typeof it.request === "string" ? { method: "GET", url: it.request } : it.request;
+    let path = "";
+    const url = req.url;
+    if (typeof url === "string") path = url;
+    else if (url && Array.isArray(url.path)) path = "/" + url.path.join("/");
+    else if (url && url.raw) path = url.raw;
+    const hasTest = Array.isArray(it.event) && it.event.some((e) => e.listen === "test");
+    const resp = Array.isArray(it.response) && it.response[0];
+    const status = resp && resp.code ? String(resp.code) : "200";
+    out.push({ m: String(req.method || "GET").toUpperCase(), path: path || "/", name: it.name || (req.method + " " + path), status, asrt: status + (hasTest ? " · 스크립트" : " · 예시"), src: "Postman", script: hasTest });
+  });
+  walk(col.item);
+  return out;
+}
+const apiSteps = (ep) => {
+  const steps = [
+    { act: "요청", loc: ep.m + " " + ep.path, val: "헤더: Authorization: Bearer {{token}}" },
+    { act: "검증", loc: "상태코드", val: (ep.status || "200") + " 기대" },
+  ];
+  if (ep.src === "Postman" && ep.script) steps.push({ act: "검증", loc: "응답", val: "기존 Postman 테스트 스크립트 참조 — 수동 이관(메모)" });
+  else steps.push({ act: "검증", loc: "응답 스키마", val: ep.src === "Postman" ? "예시 응답 기준 (스키마 미정의)" : "OpenAPI 계약 준수" });
+  return steps;
+};
 export function FqaApiImportScreen({ onDone }) {
   const { addFqaCase, fqaSystems, fqaSuites } = useApp();
   const [msg, flash] = useToast();
@@ -376,29 +428,65 @@ export function FqaApiImportScreen({ onDone }) {
   const apiSuites = (fqaSuites || []).filter((s) => (s.platform || "Web") === "API");
   const [specUrl, setSpecUrl] = useState((apiSys[0] && apiSys[0].envs && apiSys[0].envs[0] && apiSys[0].envs[0].specUrl) || "https://api-stg.tworld.co.kr/openapi.json");
   const [suite, setSuite] = useState((apiSuites[0] && apiSuites[0].name) || "API 연동");
+  const [mode, setMode] = useState("파일 업로드");
   const [phase, setPhase] = useState("idle");
   const [rows, setRows] = useState([]);
   const [picked, setPicked] = useState(new Set());
-  const load = () => { setPhase("running"); setTimeout(() => { setRows(API_ENDPOINTS); setPicked(new Set()); setPhase("done"); }, 600); };
+  const [fmt, setFmt] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [err, setErr] = useState("");
+  const key = (r) => r.m + r.path;
+  const onFile = (file) => {
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      let obj;
+      try { obj = JSON.parse(rd.result); }
+      catch (e) { setErr("JSON 파싱 실패 — 데모는 JSON 스펙(openapi.json · postman_collection.json)을 지원합니다. YAML은 JSON으로 변환 후 업로드하세요."); setRows([]); setFmt(null); setFileName(file.name); setPhase("done"); return; }
+      const f = detectSpec(obj);
+      if (!f) { setErr("형식 인식 실패 — OpenAPI(openapi/swagger 키) 또는 Postman Collection(item)이어야 합니다."); setRows([]); setFmt(null); setFileName(file.name); setPhase("done"); return; }
+      const parsed = f === "OpenAPI" ? parseOpenApi(obj) : parsePostman(obj);
+      setErr(parsed.length ? "" : "엔드포인트를 찾지 못했습니다 — 스펙 내용을 확인하세요."); setFmt(f); setRows(parsed); setPicked(new Set()); setFileName(file.name); setPhase("done");
+    };
+    rd.readAsText(file);
+  };
+  const loadUrl = () => { setPhase("running"); setErr(""); setFileName(""); setTimeout(() => { setFmt("OpenAPI"); setRows(parseOpenApi(SAMPLE_OPENAPI)); setPicked(new Set()); setPhase("done"); }, 600); };
   const toggle = (k) => setPicked((pv) => { const n = new Set(pv); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const commit = () => { if (!picked.size) { flash("엔드포인트를 선택하세요"); return; } const sel = rows.filter((r) => picked.has(r.m + r.path)); sel.forEach((ep, i) => addFqaCase({ id: "TC-API-" + Date.now().toString().slice(-4) + "-" + i, platform: "API", name: ep.name, suite, tags: "api", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: apiSteps(ep) })); if (onDone) onDone(sel.length + "건 API 케이스 검토중 등록 · 목록에 추가됨"); };
+  const commit = () => { if (!picked.size) { flash("엔드포인트를 선택하세요"); return; } const sel = rows.filter((r) => picked.has(key(r))); sel.forEach((ep, i) => addFqaCase({ id: "TC-API-" + Date.now().toString().slice(-4) + "-" + i, platform: "API", name: ep.name, suite, tags: "api," + (ep.src === "Postman" ? "postman" : "openapi"), status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: apiSteps(ep) })); if (onDone) onDone(sel.length + "건 API 케이스 검토중 등록 · 목록에 추가됨"); };
   return (
     <>
-      <Hdr icon={FileText} title="OpenAPI 임포트 (API 테스트 생성)" desc="스펙 → 엔드포인트별 요청·검증 케이스 골격" />
+      <Hdr icon={FileText} title="스펙 임포트 (API 테스트 생성)" desc="OpenAPI · Postman → 엔드포인트별 요청·검증 케이스 골격" />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-5 space-y-4">
           <Card className="p-4 space-y-3">
-            <Field label="스펙 URL" hint="대상·환경의 등록 스펙에서 상속"><Input value={specUrl} onChange={(e) => setSpecUrl(e.target.value)} /></Field>
+            <Seg options={["파일 업로드", "URL 임포트"]} value={mode} onChange={(v) => { setMode(v); setErr(""); }} />
+            {mode === "파일 업로드" ? (
+              <>
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-700 bg-slate-900 px-4 py-6 text-center hover:border-teal-600 hover:bg-slate-800">
+                  <Upload size={20} className="text-teal-400" />
+                  <span className="text-sm text-slate-300">스펙 파일 선택</span>
+                  <span className="text-xs text-slate-500">openapi.json · swagger.json · postman_collection.json</span>
+                  <input type="file" accept=".json,.yaml,.yml" className="hidden" onChange={(e) => onFile(e.target.files && e.target.files[0])} />
+                </label>
+                {fileName && !err && <div className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={13} />{fileName} · 형식 {fmt} · {rows.length}개 감지</div>}
+              </>
+            ) : (
+              <>
+                <Field label="스펙 URL" hint="대상·환경의 등록 스펙에서 상속"><Input value={specUrl} onChange={(e) => setSpecUrl(e.target.value)} /></Field>
+                <Btn kind="primary" icon={RefreshCw} className="w-full" onClick={loadUrl}>{phase === "running" ? "불러오는 중…" : "스펙 불러오기"}</Btn>
+                <div className="rounded-lg border border-amber-800 bg-amber-950 p-3 text-xs text-amber-300">브라우저 직접 fetch는 CORS·인증 제한 — 데모는 번들 샘플 스펙으로 시뮬합니다. 실제 제품은 <span className="text-amber-200">서버/러너</span>가 스펙 URL을 가져옵니다.</div>
+              </>
+            )}
             <Field label="등록 스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{apiSuites.map((x) => <option key={x.id}>{x.name}</option>)}{apiSuites.length === 0 && <option>API 연동</option>}</Select></Field>
-            <Btn kind="primary" icon={RefreshCw} className="w-full" onClick={load}>{phase === "running" ? "불러오는 중…" : "스펙 불러오기"}</Btn>
-            <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">등록된 OpenAPI 스펙에서 엔드포인트를 읽어 <span className="text-slate-300">요청+검증</span> 케이스 골격을 만듭니다. 등록 후 에디터에서 파라미터·검증을 보강합니다.</div>
+            {err && <div className="rounded-lg border border-red-900 bg-red-950 p-3 text-xs text-red-300">{err}</div>}
+            <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">스펙에서 엔드포인트를 읽어 <span className="text-slate-300">요청+검증</span> 케이스 골격을 만듭니다. 등록 후 에디터에서 파라미터·검증을 보강합니다.</div>
           </Card>
         </div>
         <div className="col-span-7">
           <Card className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><div className="text-sm font-semibold text-slate-200">감지된 엔드포인트</div>{phase === "done" && <span className="text-xs text-slate-400">{rows.length}개 · 선택 {picked.size}</span>}</div>
-            {phase !== "done" ? (
-              <div className="px-4 py-16 text-center text-sm text-slate-500">{phase === "running" ? "스펙을 분석하는 중…" : "스펙 URL을 확인하고 \"스펙 불러오기\"를 누르세요"}</div>
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold text-slate-200">감지된 엔드포인트{fmt && phase === "done" && <Badge kind={fmt === "Postman" ? "active" : "info"}>{fmt}</Badge>}</div>{phase === "done" && rows.length > 0 && <span className="text-xs text-slate-400">{rows.length}개 · 선택 {picked.size}</span>}</div>
+            {phase !== "done" || rows.length === 0 ? (
+              <div className="px-4 py-16 text-center text-sm text-slate-500">{phase === "running" ? "스펙을 분석하는 중…" : mode === "파일 업로드" ? "스펙 파일을 선택하세요" : "스펙 URL을 확인하고 \"스펙 불러오기\"를 누르세요"}</div>
             ) : (
               <>
                 <div className="border-b border-slate-800 bg-slate-900 px-4 py-2"><button onClick={() => setPicked(picked.size === rows.length ? new Set() : new Set(rows.map((r) => r.m + r.path)))} className="rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700">{picked.size === rows.length ? "전체 해제" : "전체 선택"}</button></div>
@@ -409,6 +497,7 @@ export function FqaApiImportScreen({ onDone }) {
                       <Badge kind={M_K[r.m] || "info"}>{r.m}</Badge>
                       <span className="font-mono text-xs text-slate-300">{r.path}</span>
                       <span className="flex-1 text-sm text-slate-200">{r.name}</span>
+                      {r.script && <span className="rounded bg-amber-900 px-1.5 py-0.5 text-xs text-amber-300">script</span>}
                       <span className="text-xs text-slate-500">{r.asrt}</span>
                     </div>
                   ); })}
@@ -1227,7 +1316,7 @@ function FqaApiCaseView({ tc }) {
   return (
     <>
       <Hdr icon={Code2} title={"API 케이스 · " + (tc ? tc.id : "")} desc="요청 / 검증 정의 · 전용 편집기 준비 중" />
-      <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-300">API 전용 편집기는 준비 중입니다 — 현재는 요청·검증 구조를 조회만 할 수 있습니다. (OpenAPI 임포트로 생성 · 폼 편집은 B단계 제공)</div>
+      <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-300">API 전용 편집기는 준비 중입니다 — 현재는 요청·검증 구조를 조회만 할 수 있습니다. (스펙 임포트로 생성 · 폼 편집은 B단계 제공)</div>
       <div className="mt-3"><Seg options={["Form", "Script"]} value={tab} onChange={setTab} /></div>
       {tab === "Form" ? (
         <Card className="mt-3 space-y-4 p-4">
@@ -1302,7 +1391,7 @@ export function FqaCasesScreen() {
                 {["Web", "API"].map((pl) => (<button key={pl} onClick={() => setNewPlat(pl)} className={"flex-1 rounded px-2 py-1 text-xs font-medium " + (newPlat === pl ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{pl}</button>))}
               </div>
               <div className="my-1 border-t border-slate-800" />
-              {(newPlat === "Web" ? [["레코딩", Video, "레코딩", true], ["AI 생성", Brain, "AI", true], ["엑셀 업로드", Upload, "엑셀", true], ["MCP 탐색", Cpu, "MCP", true]] : [["OpenAPI 임포트", FileText, "api-import", true], ["cURL / HAR", Terminal, "", false], ["직접 요청 정의", Send, "", false], ["엑셀 업로드", Upload, "", false]]).map(([l, Ic, m, ok]) => (
+              {(newPlat === "Web" ? [["레코딩", Video, "레코딩", true], ["AI 생성", Brain, "AI", true], ["엑셀 업로드", Upload, "엑셀", true], ["MCP 탐색", Cpu, "MCP", true]] : [["스펙 임포트", FileText, "api-import", true], ["cURL / HAR", Terminal, "", false], ["직접 요청 정의", Send, "", false], ["엑셀 업로드", Upload, "", false]]).map(([l, Ic, m, ok]) => (
                 <button key={l} disabled={!ok} onClick={() => { if (!ok) return; setMode(m); setAddOpen(false); }} className={"flex w-full items-center gap-2 px-3 py-2 text-sm " + (ok ? "text-slate-200 hover:bg-slate-800" : "cursor-not-allowed text-slate-600")}><Ic size={14} className={ok ? "text-teal-400" : "text-slate-600"} />{l}{!ok && <span className="ml-auto text-slate-500" style={{ fontSize: 10 }}>준비 중</span>}</button>
               ))}
             </div>
