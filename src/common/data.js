@@ -3,14 +3,24 @@
 // 도메인(LQA/FQA/NQA) 목록 · 공통 네비 · 테넌트/사용자/모델 시드
 // lqa/data.js에서 분리(2026-07-01). App·콘솔이 import.
 // ============================================================
-import { Bug, Megaphone, UserCog } from "lucide-react";
+import { Bug, Megaphone, UserCog, Braces } from "lucide-react";
 
 export const DOMAINS = [{ id: "LQA", label: "AI 품질", ready: true }, { id: "FQA", label: "기능 QA", ready: true }, { id: "NQA", label: "비기능 QA", ready: true }];
 export const COMMON_SECTIONS = [
   { group: "공통", items: [
+    { id: "variables", label: "변수", icon: Braces },
     { id: "defects", label: "결함", icon: Bug },
     { id: "report", label: "리포트 · 알림", icon: Megaphone },
   ] },
+];
+
+/* 변수 작업 공간 — 평면 K/V. secret=true는 마스킹. 대상/시나리오에서 ${key} 참조. 환경별 값은 접두어(dev_/stg_/prd_) 관례로 구분. */
+export const INIT_VARIABLES = [
+  { id: "v1", key: "base_domain", value: "tworld.co.kr", secret: false, desc: "공통 서비스 도메인", createdAt: "2026-01-10 09:12", updatedAt: "2026-01-10 09:12" },
+  { id: "v2", key: "stg_tworld_token", value: "eyJhbGciOiJIUzI1Ni-stg", secret: true, desc: "T월드 스테이징 API 토큰", createdAt: "2026-02-03 14:20", updatedAt: "2026-06-28 11:05" },
+  { id: "v3", key: "dev_tworld_token", value: "eyJhbGciOiJIUzI1Ni-dev", secret: true, desc: "T월드 개발 API 토큰", createdAt: "2026-02-03 14:22", updatedAt: "2026-02-03 14:22" },
+  { id: "v4", key: "stg_test_pw", value: "P@ssw0rd!23", secret: true, desc: "스테이징 테스트 계정 비밀번호", createdAt: "2026-03-15 10:00", updatedAt: "2026-05-02 16:40" },
+  { id: "v5", key: "vip_account_id", value: "1000482", secret: false, desc: "VIP 시나리오 대표 계정", createdAt: "2026-01-10 09:15", updatedAt: "2026-04-11 13:30" },
 ];
 export const MEMBERS_ITEM = { id: "members", label: "조직 관리", icon: UserCog };
 export const INIT_TENANTS = [

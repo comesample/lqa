@@ -19,13 +19,17 @@ import { ConsoleShell, NewTenantForm, AssignAdminForm, NewModelForm } from "./co
 
 /* ============================ static data ============================ */
 import { SECTIONS, NAV, TREND, METRICS, INIT_CASES, APPROVED_INIT, mkResults, INIT_PLANS, INIT_RUNS, INIT_JUDGES, PROMPT_VARS, INIT_PROMPTS, INIT_DEFECTS, INIT_CHATBOTS, LQA_HIDDEN } from "./lqa/data.js";
-import { DOMAINS, COMMON_SECTIONS, MEMBERS_ITEM, INIT_TENANTS, INIT_USERS, INIT_MODELS } from "./common/data.js";
+import { DOMAINS, COMMON_SECTIONS, MEMBERS_ITEM, INIT_TENANTS, INIT_USERS, INIT_MODELS, INIT_VARIABLES } from "./common/data.js";
+import { VariablesScreen } from "./common/variables.jsx";
 import { FQA_SECTIONS, INIT_FQA_CASES, INIT_FQA_SUITES, INIT_FQA_SYSTEMS, INIT_FQA_RUNS, INIT_FQA_PLANS, FQA_HIDDEN } from "./fqa/data.js";
-import { NQA_SECTIONS } from "./nqa/data.js";
-import { NqaScreen } from "./nqa/screens.jsx";
+import { NQA_SECTIONS, INIT_NQA_SYSTEMS, INIT_NQA_SCENARIOS } from "./nqa/data.js";
+import { NqaScreen, NqaTargetScreen, NqaScenarioScreen } from "./nqa/screens.jsx";
 import { NewPlanForm, AiGenForm, NewCaseForm, JiraForm, AddPromptForm, PlanCasesForm, JiraConfigForm, AddChatbotForm, Targets, Dashboard, Plans, RunHistory, CategoryManager, ImportCasesForm, Cases, Run, Compare, Defects, Report, Settings, InviteMemberForm, MembersView } from "./lqa/screens.jsx";
 
 /* ============================ context ============================ */
+
+const SEED_USERS = ["이민준", "최서연", "김지훈", "박지영"];
+const stampSeeds = (arr) => (arr || []).map((o, i) => { if (o.createdAt) return o; const z = (n) => String(n).padStart(2, "0"); return { createdBy: SEED_USERS[i % 4], createdAt: "2026-" + z(1 + (i % 6)) + "-" + z(1 + (i % 27)) + " " + z(9 + (i % 8)) + ":" + z((i * 7) % 60), updatedBy: SEED_USERS[(i + 2) % 4], updatedAt: "2026-" + z(4 + (i % 3)) + "-" + z(1 + ((i * 3) % 27)) + " " + z(10 + (i % 7)) + ":" + z((i * 11) % 60), ...o }; });
 
 export default function App() {
   const [view, setView] = useState("dashboard");
@@ -34,28 +38,31 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [notifs, setNotifs] = useState([
     { icon: "play", text: "요금/청구 평가 완료 — PASS율 79%", t: "14:36" },
-    { icon: "bug", text: "TWORLD-1842 자동 등록 (PII)", t: "14:36" },
+    { icon: "bug", text: "DEF-1842 자동 등록 (PII)", t: "14:36" },
   ]);
   const [bellOpen, setBellOpen] = useState(false);
   const [modal, setModal] = useState(null);
-  const [cases, setCases] = useState(INIT_CASES);
+  const [cases, setCases] = useState(stampSeeds(INIT_CASES));
   const [categories, setCategories] = useState(["요금제", "부가서비스", "결제/청구", "개통", "안전성"]);
-  const [plans, setPlans] = useState(INIT_PLANS);
+  const [plans, setPlans] = useState(stampSeeds(INIT_PLANS));
   const [runs, setRuns] = useState(INIT_RUNS);
   const [runIntent, setRunIntent] = useState(null);
   const [defects, setDefects] = useState(INIT_DEFECTS);
-  const [fqaCases, setFqaCases] = useState(INIT_FQA_CASES);
-  const [fqaSuites, setFqaSuites] = useState(INIT_FQA_SUITES);
-  const [fqaSystems, setFqaSystems] = useState(INIT_FQA_SYSTEMS);
+  const [fqaCases, setFqaCases] = useState(stampSeeds(INIT_FQA_CASES));
+  const [fqaSuites, setFqaSuites] = useState(stampSeeds(INIT_FQA_SUITES));
+  const [fqaSystems, setFqaSystems] = useState(stampSeeds(INIT_FQA_SYSTEMS));
+  const [nqaSystems, setNqaSystems] = useState(stampSeeds(INIT_NQA_SYSTEMS));
+  const [nqaScenarios, setNqaScenarios] = useState(stampSeeds(INIT_NQA_SCENARIOS));
+  const [variables, setVariables] = useState(INIT_VARIABLES);
   const [fqaRuns, setFqaRuns] = useState(INIT_FQA_RUNS);
-  const [fqaPlans, setFqaPlans] = useState(INIT_FQA_PLANS);
+  const [fqaPlans, setFqaPlans] = useState(stampSeeds(INIT_FQA_PLANS));
   const [fqaResultRun, setFqaResultRun] = useState("FRUN-502");
   const [runnerConnected, setRunnerConnected] = useState(true);
   const [fqaEditTc, setFqaEditTc] = useState(null);
   const [fqaResultFrom, setFqaResultFrom] = useState("fqa-history");
   const [judges, setJudges] = useState(INIT_JUDGES);
   const [prompts, setPrompts] = useState(INIT_PROMPTS);
-  const [chatbots, setChatbots] = useState(INIT_CHATBOTS);
+  const [chatbots, setChatbots] = useState(stampSeeds(INIT_CHATBOTS));
   const [role, setRole] = useState("admin");
   const [space, setSpace] = useState("product");
   const [domain, setDomain] = useState("LQA");
@@ -71,27 +78,37 @@ export default function App() {
   };
   const now = () => new Date().toTimeString().slice(0, 5);
   const notify = (n) => setNotifs((x) => [{ ...n, t: now() }, ...x].slice(0, 12));
+  const USER_BY_ROLE = { admin: "김지훈", tadmin: "박지영", user: "이민준" };
+  const currentUser = USER_BY_ROLE[role] || "이민준";
+  const auditNow = () => { const d = new Date(); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); };
+  const withCreate = (o) => { const t = auditNow(); return { createdBy: currentUser, createdAt: t, updatedBy: currentUser, updatedAt: t, ...o }; };
+  const withUpdate = (patch) => ({ ...patch, updatedBy: currentUser, updatedAt: auditNow() });
   const api = {
+    currentUser,
     goto: setView, env, setEnv, toast, notify, openModal: (type, data) => setModal({ type, data }),
-    cases, addCases: (arr) => setCases((c) => [...arr, ...c]),
-    setCaseStatus: (id, status) => setCases((c) => c.map((x) => (x.id === id ? { ...x, status } : x))),
+    cases, addCases: (arr) => setCases((c) => [...arr.map(withCreate), ...c]),
+    setCaseStatus: (id, status) => setCases((c) => c.map((x) => (x.id === id ? { ...x, ...withUpdate({ status }) } : x))),
+    removeCase: (id) => setCases((c) => c.filter((x) => x.id !== id)),
     categories, addCategory: (n) => setCategories((x) => (x.includes(n) ? x : [...x, n])), removeCategory: (n) => setCategories((x) => x.filter((c) => c !== n)),
-    plans, addPlan: (p) => setPlans((x) => [...x, p]), updatePlan: (id, patch) => setPlans((x) => x.map((p) => (p.id === id ? { ...p, ...patch } : p))), removePlan: (id) => setPlans((x) => x.filter((p) => p.id !== id)),
+    plans, addPlan: (p) => setPlans((x) => [...x, withCreate(p)]), updatePlan: (id, patch) => setPlans((x) => x.map((p) => (p.id === id ? { ...p, ...withUpdate(patch) } : p))), removePlan: (id) => setPlans((x) => x.filter((p) => p.id !== id)),
     runs, addRun: (r) => setRuns((x) => [r, ...x]), updateRun: (id, patch) => setRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
     runIntent, setRunIntent,
-    defects, addDefect: (d) => setDefects((x) => [d, ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, status } : d))),
-    fqaCases, addFqaCase: (c) => setFqaCases((x) => [c, ...x]), updateFqaCase: (id, patch) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...patch } : c))), setFqaCaseStatus: (id, status) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, status } : c))), removeFqaCase: (id) => setFqaCases((x) => x.filter((c) => c.id !== id)),
-    fqaSuites, addFqaSuite: (su) => setFqaSuites((x) => [...x, su]), updateFqaSuite: (id, patch) => setFqaSuites((x) => x.map((su) => (su.id === id ? { ...su, ...patch } : su))), removeFqaSuite: (id) => setFqaSuites((x) => x.filter((su) => su.id !== id)),
-    fqaSystems, addFqaSystem: (sy) => setFqaSystems((x) => [...x, sy]), updateFqaSystem: (id, patch) => setFqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...patch } : sy))), removeFqaSystem: (id) => setFqaSystems((x) => x.filter((sy) => sy.id !== id)),
+    defects, addDefect: (d) => setDefects((x) => [withCreate(d), ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ status }) } : d))), setDefectAssignee: (key, assignee) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ assignee }) } : d))),
+    fqaCases, addFqaCase: (c) => setFqaCases((x) => [withCreate(c), ...x]), updateFqaCase: (id, patch) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), setFqaCaseStatus: (id, status) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate({ status }) } : c))), removeFqaCase: (id) => setFqaCases((x) => x.filter((c) => c.id !== id)),
+    fqaSuites, addFqaSuite: (su) => setFqaSuites((x) => [...x, withCreate(su)]), updateFqaSuite: (id, patch) => setFqaSuites((x) => x.map((su) => (su.id === id ? { ...su, ...withUpdate(patch) } : su))), removeFqaSuite: (id) => setFqaSuites((x) => x.filter((su) => su.id !== id)),
+    fqaSystems, addFqaSystem: (sy) => setFqaSystems((x) => [...x, withCreate(sy)]), updateFqaSystem: (id, patch) => setFqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...withUpdate(patch) } : sy))), removeFqaSystem: (id) => setFqaSystems((x) => x.filter((sy) => sy.id !== id)),
+    nqaSystems, addNqaSystem: (sy) => setNqaSystems((x) => [...x, withCreate(sy)]), updateNqaSystem: (id, patch) => setNqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...withUpdate(patch) } : sy))), removeNqaSystem: (id) => setNqaSystems((x) => x.filter((sy) => sy.id !== id)),
+    nqaScenarios, addNqaScenario: (s) => setNqaScenarios((x) => [...x, withCreate(s)]), updateNqaScenario: (id, patch) => setNqaScenarios((x) => x.map((s) => (s.id === id ? { ...s, ...withUpdate(patch) } : s))), removeNqaScenario: (id) => setNqaScenarios((x) => x.filter((s) => s.id !== id)),
+    variables, addVariable: (v) => setVariables((x) => [...x, v]), updateVariable: (id, patch) => setVariables((x) => x.map((v) => (v.id === id ? { ...v, ...patch } : v))), removeVariable: (id) => setVariables((x) => x.filter((v) => v.id !== id)),
     fqaRuns, addFqaRun: (r) => setFqaRuns((x) => [r, ...x]), updateFqaRun: (id, patch) => setFqaRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
-    fqaPlans, addFqaPlan: (pl) => setFqaPlans((x) => [pl, ...x]), updateFqaPlan: (id, patch) => setFqaPlans((x) => x.map((pl) => (pl.id === id ? { ...pl, ...patch } : pl))), removeFqaPlan: (id) => setFqaPlans((x) => x.filter((pl) => pl.id !== id)),
+    fqaPlans, addFqaPlan: (pl) => setFqaPlans((x) => [withCreate(pl), ...x]), updateFqaPlan: (id, patch) => setFqaPlans((x) => x.map((pl) => (pl.id === id ? { ...pl, ...withUpdate(patch) } : pl))), removeFqaPlan: (id) => setFqaPlans((x) => x.filter((pl) => pl.id !== id)),
     fqaResultRun, setFqaResultRun,
     runnerConnected, setRunnerConnected,
     fqaEditTc, setFqaEditTc,
     judges, toggleJudge: (name) => setJudges((x) => x.map((j) => (j.name === name ? { ...j, enabled: !j.enabled } : j))),
     prompts, addPrompt: (p) => setPrompts((x) => [...x, p]), updatePrompt: (name, patch) => setPrompts((x) => x.map((pp) => (pp.name === name ? { ...pp, ...patch } : pp))), removePrompt: (name) => setPrompts((x) => x.filter((pp) => pp.name !== name)),
-    chatbots, addChatbot: (c) => setChatbots((x) => [...x, c]), updateChatbot: (id, patch) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...patch } : c))), removeChatbot: (id) => setChatbots((x) => x.filter((c) => c.id !== id)),
-    setChatbotStatus: (id, status) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, status } : c))),
+    chatbots, addChatbot: (c) => setChatbots((x) => [...x, withCreate(c)]), updateChatbot: (id, patch) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), removeChatbot: (id) => setChatbots((x) => x.filter((c) => c.id !== id)),
+    setChatbotStatus: (id, status) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate({ status }) } : c))),
     role, setRole, space, setSpace, domain, setDomain, tenants, tenantId, setTenantId,
     addTenant: (t) => setTenants((x) => [...x, t]),
     setTenantStatus: (id, status) => setTenants((x) => x.map((t) => (t.id === id ? { ...t, status } : t))),
@@ -106,7 +123,7 @@ export default function App() {
   const cur = [...ALL_SECTIONS.flatMap((s) => s.items), ...FQA_HIDDEN, ...LQA_HIDDEN, MEMBERS_ITEM].find((n) => n.id === view) || NAV[0];
   const curSection = ((ALL_SECTIONS.find((s) => s.items.some((i) => i.id === view)) || {}).group) || (FQA_HIDDEN.find((i) => i.id === view) || {}).group || (LQA_HIDDEN.find((i) => i.id === view) || {}).group;
   const tenantName = (tenants.find((t) => t.id === tenantId) || {}).name;
-  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run key="run" />, "lqa-result": <Run key="lqa-result" />, history: <RunHistory />, compare: <Compare />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen nav={(v, arg) => { if (v === "fqa-result-detail" && arg) { setFqaResultRun(arg); setFqaResultFrom("fqa-dashboard"); } setView(v); }} />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen nav={(v, rid) => { if (rid) setFqaResultRun(rid); setView(v); }} />, "fqa-run": <FqaRunScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-run"); setView("fqa-result-detail"); }} />, "fqa-history": <FqaHistoryScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-history"); setView("fqa-result-detail"); }} />, "fqa-regression": <FqaResultScreen mode="회귀" />, "fqa-flaky": <FqaResultScreen mode="불안정" nav={(v, tc) => { if (tc) setFqaEditTc(tc); setView(v); }} />, "fqa-result-detail": <FqaResultScreen mode="상세" runId={fqaResultRun} back={() => setView(fqaResultFrom || "fqa-history")} backLabel={{ "fqa-run": "실행", "fqa-history": "실행 이력", "fqa-dashboard": "대시보드" }[fqaResultFrom] || "뒤로"} />, "nqa-dashboard": <NqaScreen view="nqa-dashboard" />, "nqa-targets": <NqaScreen view="nqa-targets" />, "nqa-scenarios": <NqaScreen view="nqa-scenarios" />, "nqa-plan": <NqaScreen view="nqa-plan" />, "nqa-run": <NqaScreen view="nqa-run" />, "nqa-history": <NqaScreen view="nqa-history" />, "nqa-trend": <NqaScreen view="nqa-trend" /> };
+  const screens = { dashboard: <Dashboard />, plans: <Plans />, cases: <Cases />, run: <Run key="run" />, "lqa-result": <Run key="lqa-result" />, history: <RunHistory />, compare: <Compare />, variables: <VariablesScreen />, defects: <Defects />, report: <Report />, targets: <Targets />, settings: <Settings />, members: <MembersView />, "fqa-dashboard": <FqaDashboardScreen nav={(v, arg) => { if (v === "fqa-result-detail" && arg) { setFqaResultRun(arg); setFqaResultFrom("fqa-dashboard"); } setView(v); }} />, "fqa-targets": <FqaTargetScreen />, "fqa-suites": <FqaSuiteScreen />, "fqa-cases": <FqaCasesScreen />, "fqa-plan": <FqaPlanScreen nav={(v, rid) => { if (rid) setFqaResultRun(rid); setView(v); }} />, "fqa-run": <FqaRunScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-run"); setView("fqa-result-detail"); }} />, "fqa-history": <FqaHistoryScreen nav={(rid) => { setFqaResultRun(rid); setFqaResultFrom("fqa-history"); setView("fqa-result-detail"); }} />, "fqa-regression": <FqaResultScreen mode="회귀" />, "fqa-flaky": <FqaResultScreen mode="불안정" nav={(v, tc) => { if (tc) setFqaEditTc(tc); setView(v); }} />, "fqa-result-detail": <FqaResultScreen mode="상세" runId={fqaResultRun} back={() => setView(fqaResultFrom || "fqa-history")} backLabel={{ "fqa-run": "실행", "fqa-history": "실행 이력", "fqa-dashboard": "대시보드" }[fqaResultFrom] || "뒤로"} />, "nqa-dashboard": <NqaScreen view="nqa-dashboard" />, "nqa-targets": <NqaTargetScreen />, "nqa-scenarios": <NqaScenarioScreen />, "nqa-plan": <NqaScreen view="nqa-plan" />, "nqa-run": <NqaScreen view="nqa-run" />, "nqa-history": <NqaScreen view="nqa-history" />, "nqa-trend": <NqaScreen view="nqa-trend" /> };
   const tk = { ok: "border-emerald-700 bg-emerald-900", warn: "border-amber-700 bg-amber-900", err: "border-red-700 bg-red-900", info: "border-slate-700 bg-slate-800" };
   const nIcon = { play: Play, bug: Bug, send: Send };
 

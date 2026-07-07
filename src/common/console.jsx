@@ -18,7 +18,7 @@ const INIT_USAGE = [
 
 const INIT_AUDIT = [
   { t: "2026-06-11 14:36", actor: "이민준", tenant: "t1", action: "평가 실행", target: "요금/청구 평가 (48 TC)" },
-  { t: "2026-06-11 14:36", actor: "system", tenant: "t1", action: "결함 등록", target: "TWORLD-1842 (PII)" },
+  { t: "2026-06-11 14:36", actor: "system", tenant: "t1", action: "결함 등록", target: "DEF-1842 (PII)" },
   { t: "2026-06-11 11:20", actor: "김지훈", tenant: "t1", action: "권한 변경", target: "QA엔지니어 · 챗봇연결 조회→허용" },
   { t: "2026-06-10 17:02", actor: "admin", tenant: "-", action: "모델 등록", target: "Gemini 2.0 Flash" },
   { t: "2026-06-10 09:15", actor: "admin", tenant: "t3", action: "테넌트 정지", target: "데모 조직" },
@@ -166,7 +166,7 @@ export function NewModelForm({ close }) {
         <Field label="모델 ID"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="model-id" /></Field>
         <Field label="단가 (참고)"><Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="$3 / 1M tokens" /></Field>
       </div>
-      <Field label="Endpoint / 인증 (선택)"><Input placeholder="https://... · 시크릿은 Secrets 저장소 관리" /></Field>
+      <Field label="Endpoint / 인증 (선택)"><Input placeholder="https://... · 시크릿은 변수 화면에서 관리" /></Field>
       <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">여기 등록된 모델만 각 조직의 Judge·Prompt에서 사용 설정할 수 있습니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>등록</Btn></div>
     </div>

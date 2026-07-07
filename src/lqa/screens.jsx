@@ -3,9 +3,10 @@
 // App.jsx에서 분리(2026-07-01).
 // ============================================================
 import { useState, useRef, useEffect } from "react";
-import { ChevronLeft, Bug, Calendar, Copy, CheckCircle2, ChevronRight, ClipboardList, ExternalLink, FileDown, FileText, Ghost, History, Link2, Lock, Mail, Megaphone, Play, Plus, RefreshCw, Search, Send, Server, ShieldCheck, Slack, SlidersHorizontal, Sparkles, Tag, TrendingDown, TrendingUp, Upload, Wrench, X, XCircle } from "lucide-react";
+import { ChevronLeft, Bug, Calendar, Copy, CheckCircle2, ChevronRight, ClipboardList, ExternalLink, FileDown, FileText, Ghost, History, Link2, Lock, Mail, Megaphone, Play, Plus, RefreshCw, Search, Send, Server, ShieldCheck, Slack, SlidersHorizontal, Sparkles, Tag, TrendingDown, TrendingUp, Upload, Wrench, X, XCircle, Trash2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useApp } from "../common/context.js";
+import { VarRefInput } from "../common/VarRefInput.jsx";
 import { C, vKind, KIND } from "../common/theme.js";
 import { Badge, ScoreBar, Card, Field, Btn, Input, Select, Toggle, PageToolbar, EmptyState, SearchInput } from "../common/ui.jsx";
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
@@ -314,7 +315,7 @@ export function JiraForm({ close, data }) {
       {d.env && <Field label="환경"><div className="rounded-lg bg-slate-800 p-2 text-xs text-slate-400">{d.env}{d.tc ? " · 대상 " + d.tc : ""}</div></Field>}
         </div>
       </div>
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">{d.q ? "실패 케이스 데이터가 자동으로 채워졌습니다. " : ""}시크릿은 Secrets 저장소에 보관되며, 등록은 audit_log에 기록됩니다.</div>
+      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">{d.q ? "실패 케이스 데이터가 자동으로 채워졌습니다. " : ""}시크릿은 공통 변수 화면에서 관리(마스킹)되며, 등록은 audit_log에 기록됩니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Bug} onClick={submit}>결함 등록</Btn></div>
     </div>
   );
@@ -428,10 +429,10 @@ export function JiraConfigForm({ close }) {
       {deploy === "Cloud" ? (
         <div className="grid grid-cols-2 gap-3">
           <Field label="계정 이메일"><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="qa@skt.com" /></Field>
-          <Field label="API 토큰"><Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Secrets 저장소 보관" /></Field>
+          <Field label="API 토큰"><Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="직접 입력 또는 ${키} 참조" /></Field>
         </div>
       ) : (
-        <Field label="Personal Access Token"><Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Bearer PAT · Secrets 저장소 보관" /></Field>
+        <Field label="Personal Access Token"><Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Bearer PAT · 직접 입력 또는 ${키}" /></Field>
       )}
       <div className="grid grid-cols-3 gap-3">
         <Field label="프로젝트 키"><Input value={project} onChange={(e) => setProject(e.target.value)} placeholder="TWORLD" /></Field>
@@ -466,7 +467,7 @@ export function JiraConfigForm({ close }) {
       </div>
       </div>
       </div>
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">중복 방지 ON 시 같은 TC의 Open 이슈가 있으면 새 이슈 대신 코멘트를 추가합니다. 토큰은 Secrets 저장소에 암호화 보관, 등록 호출은 audit_log에 기록됩니다.</div>
+      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">중복 방지 ON 시 같은 TC의 Open 이슈가 있으면 새 이슈 대신 코멘트를 추가합니다. 토큰은 공통 변수 화면에서 관리(마스킹)되며, 등록 호출은 audit_log에 기록됩니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>저장</Btn></div>
     </div>
   );
@@ -507,7 +508,7 @@ export function AddChatbotForm({ close, data }) {
       {channel === "REST API" && <Field label="인증 방식"><Select value={authType} onChange={(e) => setAuthType(e.target.value)}><option>None</option><option>API Key</option><option>Bearer Token</option><option>OAuth 2.0</option></Select></Field>}
       <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">헤더·요청 본문·응답 추출·연결 테스트 등 상세 설정은 추가 후 <span className="text-slate-300">오른쪽 상세 패널</span>에서 진행합니다.</div>
       <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800">
-        <div className="text-xs text-slate-500 flex-1">인증 시크릿은 Secrets 저장소에 암호화 보관됩니다.</div>
+        <div className="text-xs text-slate-500 flex-1">인증 시크릿은 공통 변수 화면에서 관리(마스킹)됩니다.</div>
         <div className="flex gap-2 shrink-0"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "추가"}</Btn></div>
       </div>
     </div>
@@ -516,10 +517,11 @@ export function AddChatbotForm({ close, data }) {
 
 /* 챗봇 상세 설정 — 마스터-디테일 오른쪽 패널 (심층 설정은 목업 로컬) */
 function ChatbotDetail({ cb, onDirty }) {
-  const { updateChatbot, setChatbotStatus, removeChatbot, toast } = useApp();
+  const { updateChatbot, setChatbotStatus, removeChatbot, toast, variables } = useApp();
   const stK = KIND.targetStatus; const chK = KIND.channel;
   const isRest = cb.channel === "REST API";
   const [endpoint, setEndpoint] = useState(cb.endpoint || "");
+  const [name, setName] = useState(cb.name || "");
   const [authType, setAuthType] = useState(cb.auth || "Bearer Token");
   const [method, setMethod] = useState("POST");
   const [headers, setHeaders] = useState([{ k: "Content-Type", v: "application/json" }]);
@@ -543,12 +545,13 @@ function ChatbotDetail({ cb, onDirty }) {
   const [test, setTest] = useState(null);
   const deployHook = "https://xq.skt/api/hooks/model-" + (cb.name.trim() ? cb.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "chatbot") + "-9c1e";
   const setH = (i, key, val) => setHeaders(headers.map((h, j) => (j === i ? { ...h, [key]: val } : h)));
-  useEffect(() => { setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setTest(null); }, [cb.id]);
+  const secretRef = (val, setVal, ph) => <VarRefInput value={val} onChange={setVal} placeholder={ph} />;
+  useEffect(() => { setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setName(cb.name || ""); setTest(null); }, [cb.id]);
   const baseAuth = isRest ? (cb.auth || "Bearer Token") : (cb.auth === "로그인 세션" ? "로그인 세션" : "없음");
   const effAuth = isRest ? authType : (needLogin ? "로그인 세션" : "없음");
-  const dirty = endpoint !== (cb.endpoint || "") || effAuth !== baseAuth;
+  const dirty = endpoint !== (cb.endpoint || "") || effAuth !== baseAuth || name !== (cb.name || "");
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
-  const save = () => { updateChatbot(cb.id, { endpoint, auth: effAuth }); toast(cb.name + " 설정 저장됨", "ok"); };
+  const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
   const runTest = () => {
     setTest({ state: "running" });
     setTimeout(() => { setTest({ state: "ok", latency: 700 + Math.floor(Math.random() * 700), answer: isRest ? "나의 T월드 → 요금제 변경 탭에서 LTE 요금제를 선택해 신청하시면 됩니다. (당월 1회 제한)" : "(웹 챗 위젯 응답 캡처) 나의 T월드에서 요금제를 변경할 수 있습니다." }); setChatbotStatus(cb.id, "연결됨"); }, 950);
@@ -556,7 +559,7 @@ function ChatbotDetail({ cb, onDirty }) {
   return (
     <div className="space-y-3">
       <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
-        <div className="flex items-center gap-2"><span className="text-base font-semibold text-slate-100">{cb.name}</span><Badge kind="info">{cb.env}</Badge><Badge kind={chK[cb.channel]}>{cb.channel}</Badge><Badge kind={stK[cb.status]}>{cb.status}</Badge></div>
+        <div className="flex items-center gap-2"><Input value={name} onChange={(e) => setName(e.target.value)} className="w-52 text-base font-semibold" /><Badge kind="info">{cb.env}</Badge><Badge kind={chK[cb.channel]}>{cb.channel}</Badge><Badge kind={stK[cb.status]}>{cb.status}</Badge><span className="text-xs text-slate-500">생성 {cb.createdBy || "—"} · 수정 {cb.updatedBy || "—"} ({cb.updatedAt || "—"})</span></div>
         <div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={Link2} onClick={runTest}>{test && test.state === "running" ? "테스트 중…" : "연결 테스트"}</Btn><Btn kind="primary" icon={RefreshCw} onClick={save} disabled={!dirty}>설정 저장</Btn><button onClick={() => { if (window.confirm(cb.name + " (" + cb.env + ") 연결을 삭제할까요?")) { removeChatbot(cb.id); toast(cb.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={16} /></button></div>
       </Card>
 
@@ -571,9 +574,10 @@ function ChatbotDetail({ cb, onDirty }) {
               <>
                 <Field label="인증">
                   <Select value={authType} onChange={(e) => setAuthType(e.target.value)}><option>None</option><option>API Key</option><option>Bearer Token</option><option>OAuth 2.0</option></Select>
-                  {authType === "API Key" && <div className="mt-2 grid grid-cols-2 gap-2"><Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="헤더명 (X-API-Key)" /><Input value={tokenVal} onChange={(e) => setTokenVal(e.target.value)} placeholder="키 값 (Secrets 보관)" type="password" /></div>}
-                  {authType === "Bearer Token" && <Input value={tokenVal} onChange={(e) => setTokenVal(e.target.value)} placeholder="토큰 (Secrets 보관)" type="password" className="mt-2" />}
-                  {authType === "OAuth 2.0" && <div className="mt-2 grid grid-cols-2 gap-2"><Input value={oauth.url} onChange={(e) => setOauth({ ...oauth, url: e.target.value })} placeholder="토큰 URL" /><Input value={oauth.scope} onChange={(e) => setOauth({ ...oauth, scope: e.target.value })} placeholder="scope" /><Input value={oauth.id} onChange={(e) => setOauth({ ...oauth, id: e.target.value })} placeholder="client id" /><Input value={oauth.secret} onChange={(e) => setOauth({ ...oauth, secret: e.target.value })} placeholder="client secret" type="password" /></div>}
+                  {authType === "API Key" && <div className="mt-2 space-y-1.5"><Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="헤더명 (X-API-Key)" />{secretRef(tokenVal, setTokenVal, "${api_key}")}</div>}
+                  {authType === "Bearer Token" && <div className="mt-2">{secretRef(tokenVal, setTokenVal, "${stg_tworld_token}")}</div>}
+                  {authType === "OAuth 2.0" && <div className="mt-2 space-y-1.5"><div className="grid grid-cols-2 gap-2"><Input value={oauth.url} onChange={(e) => setOauth({ ...oauth, url: e.target.value })} placeholder="토큰 URL" /><Input value={oauth.scope} onChange={(e) => setOauth({ ...oauth, scope: e.target.value })} placeholder="scope" /><Input value={oauth.id} onChange={(e) => setOauth({ ...oauth, id: e.target.value })} placeholder="client id" /></div>{secretRef(oauth.secret, (val) => setOauth({ ...oauth, secret: val }), "${client_secret}")}</div>}
+                  {authType !== "None" && <div className="mt-1.5 text-xs text-slate-500">시크릿은 공통 <span className="text-slate-300">변수</span> 화면의 값을 <span className="font-mono text-teal-400">{"${키}"}</span>로 참조 · 실행 시 환경 값으로 치환됩니다.</div>}
                 </Field>
                 <Field label="요청 헤더">
                   {headers.map((h, i) => (<div key={i} className="mb-1.5 flex gap-2"><Input value={h.k} onChange={(e) => setH(i, "k", e.target.value)} placeholder="Header" /><Input value={h.v} onChange={(e) => setH(i, "v", e.target.value)} placeholder="Value" /><button onClick={() => setHeaders(headers.filter((_, j) => j !== i))} className="px-1 text-slate-500 hover:text-red-400"><X size={14} /></button></div>))}
@@ -628,7 +632,7 @@ function ChatbotDetail({ cb, onDirty }) {
           </Card>
         </div>
       </div>
-      <div className="text-xs text-slate-500">인증 시크릿은 Secrets 저장소에 암호화 보관되며, 수집 대화는 Judge 호출 전 PII 마스킹됩니다.</div>
+      <div className="text-xs text-slate-500">인증 시크릿은 공통 <span className="text-slate-400">변수</span> 화면에서 관리되며 <span className="font-mono">{"${키}"}</span>로 참조됩니다. 수집 대화는 Judge 호출 전 PII 마스킹됩니다.</div>
     </div>
   );
 }
@@ -828,6 +832,7 @@ export function Plans() {
                 <div><div className="text-lg font-bold text-teal-400">{p.score ?? "—"}</div><div className="text-xs text-slate-500">최근점수</div></div>
               </div>
               <div className="mt-2 text-xs text-slate-500">최근 실행 {p.last} · {p.sched}</div>
+              <div className="mt-0.5 text-xs text-slate-600">수정 {p.updatedBy || "—"} · {p.updatedAt || "—"}</div>
             </div>
           </Card>
         ))}
@@ -837,6 +842,7 @@ export function Plans() {
           <div className="text-base font-semibold text-slate-100">상세 설정 — {cur.name}</div>
           <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><Toggle on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
         </div>
+        <div className="mb-4 flex items-center gap-3 text-xs text-slate-500"><span>생성 <span className="text-slate-400">{cur.createdBy || "—"}</span> · {cur.createdAt || "—"}</span><span className="text-slate-600">·</span><span>수정 <span className="text-slate-400">{cur.updatedBy || "—"}</span> · {cur.updatedAt || "—"}</span></div>
         <div className="grid grid-cols-2 gap-5">
           <div className="space-y-4">
             <Field label="대상 챗봇"><Select value={bot} onChange={(e) => setBot(e.target.value)}>{[...new Set(chatbots.map((c) => c.name))].map((n) => <option key={n}>{n}</option>)}</Select></Field>
@@ -1060,7 +1066,7 @@ export function PlanCasesForm({ close, data }) {
 }
 
 export function Cases() {
-  const { cases, categories, openModal, toast, setCaseStatus } = useApp();
+  const { cases, categories, openModal, toast, setCaseStatus, removeCase } = useApp();
   const [open, setOpen] = useState(null);
   const [qstr, setQstr] = useState("");
   const [catFilter, setCatFilter] = useState("전체");
@@ -1073,6 +1079,7 @@ export function Cases() {
   const allPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id));
   const togglePickAll = () => setPicked(allPicked ? new Set() : new Set(filtered.map((c) => c.id)));
   const bulkSet = (st) => { picked.forEach((id) => setCaseStatus(id, st)); toast(picked.size + "건 " + st + " 처리", "ok"); setPicked(new Set()); };
+  const bulkDel = () => { if (!window.confirm(picked.size + "건을 삭제할까요? 되돌릴 수 없습니다.")) return; picked.forEach((id) => removeCase(id)); toast(picked.size + "건 삭제됨", "ok"); setPicked(new Set()); };
   return (
     <div className="space-y-4">
       <PageToolbar desc="발화·골든 답변을 등록·검토·승인합니다">
@@ -1090,22 +1097,23 @@ export function Cases() {
       {picked.size > 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-teal-700 bg-teal-950 px-3 py-2 text-sm">
           <span className="text-teal-200 flex-1">{picked.size}건 선택됨</span>
-          <Btn kind="primary" icon={CheckCircle2} onClick={() => bulkSet("승인")}>일괄 승인</Btn>
+          <Btn kind="primary" icon={CheckCircle2} onClick={() => bulkSet("승인")}>선택 승인</Btn>
           <Btn onClick={() => bulkSet("검토중")}>검토중으로</Btn>
           <Btn icon={ClipboardList} onClick={() => openModal("newPlan", { preselect: [...picked] })}>평가 계획 만들기</Btn>
+          <Btn kind="danger" icon={Trash2} onClick={bulkDel}>선택 삭제</Btn>
           <Btn onClick={() => setPicked(new Set())}>선택 해제</Btn>
         </div>
       )}
       <Card>
         <table className="w-full text-sm">
-          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 pl-4 pr-2 font-medium"><input type="checkbox" checked={allPicked} onChange={togglePickAll} className="accent-teal-500" /></th><th className="font-medium">ID</th><th className="font-medium">질문 (발화)</th><th className="font-medium">카테고리</th><th className="font-medium">우선순위</th><th className="font-medium">상태</th><th></th></tr></thead>
+          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 pl-4 pr-2 font-medium"><input type="checkbox" checked={allPicked} onChange={togglePickAll} className="accent-teal-500" /></th><th className="font-medium">ID</th><th className="font-medium">질문 (발화)</th><th className="font-medium">카테고리</th><th className="font-medium">우선순위</th><th className="font-medium">상태</th><th className="font-medium">수정</th><th></th></tr></thead>
           <tbody>
             {filtered.map((c) => (
               <tr key={c.id} onClick={() => setOpen(c)} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer text-slate-300">
-                <td className="pl-4 pr-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(c.id)} onChange={() => togglePick(c.id)} className="accent-teal-500" /></td><td className="py-3 pr-4 font-mono text-teal-400">{c.id}</td><td className="max-w-md truncate text-slate-200">{c.q}</td><td>{c.cat}</td><td><Badge kind={priKind[c.pri]}>{c.pri}</Badge></td><td><Badge kind={stKind[c.status] || "active"}>{c.status || "승인"}</Badge></td><td className="pr-4 text-slate-600"><ChevronRight size={16} /></td>
+                <td className="pl-4 pr-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(c.id)} onChange={() => togglePick(c.id)} className="accent-teal-500" /></td><td className="py-3 pr-4 font-mono text-teal-400">{c.id}</td><td className="max-w-md truncate text-slate-200">{c.q}</td><td>{c.cat}</td><td><Badge kind={priKind[c.pri]}>{c.pri}</Badge></td><td><Badge kind={stKind[c.status] || "active"}>{c.status || "승인"}</Badge></td><td className="pr-3 text-xs text-slate-500">{c.updatedBy || "—"} · {c.updatedAt || "—"}</td><td className="pr-4 text-slate-600"><ChevronRight size={16} /></td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={7}><EmptyState icon={Search} title="검색 결과가 없습니다" hint="필터를 조정하거나 테스트케이스를 추가하세요" /></td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={8}><EmptyState icon={Search} title="검색 결과가 없습니다" hint="필터를 조정하거나 테스트케이스를 추가하세요" /></td></tr>}
           </tbody>
         </table>
       </Card>
@@ -1119,6 +1127,7 @@ export function Cases() {
               <div><div className="text-xs text-slate-500 mb-1">기대 응답 (Golden Set)</div><div className="rounded-lg bg-slate-800 p-3 text-slate-300">{open.golden}</div></div>
               {open.source && <div><div className="text-xs text-slate-500 mb-1">출처</div><div className="text-slate-400 text-xs">{open.source}</div></div>}
               <div className="flex flex-wrap gap-2"><Badge kind="info">{open.cat}</Badge><Badge kind={priKind[open.pri]}>{open.pri}</Badge>{open.type && <Badge kind={open.type === "적대적" ? "crit" : "info"}>{open.type}</Badge>}<Badge kind={stKind[open.status] || "active"}>{open.status || "승인"}</Badge></div>
+              <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400 space-y-0.5"><div>생성 <span className="text-slate-300">{open.createdBy || "—"}</span> · {open.createdAt || "—"}</div><div>수정 <span className="text-slate-300">{open.updatedBy || "—"}</span> · {open.updatedAt || "—"}</div></div>
               {(open.status || "승인") !== "승인"
                 ? <div className="flex gap-2"><Btn kind="primary" icon={CheckCircle2} className="flex-1" onClick={() => { setCaseStatus(open.id, "승인"); setOpen({ ...open, status: "승인" }); toast(open.id + " 승인되었습니다", "ok"); }}>승인</Btn><Btn className="flex-1" onClick={() => { setCaseStatus(open.id, "초안"); setOpen({ ...open, status: "초안" }); toast(open.id + " 초안으로 반려됨", "warn"); }}>반려</Btn></div>
                 : <div><Btn className="w-full" onClick={() => { setCaseStatus(open.id, "검토중"); setOpen({ ...open, status: "검토중" }); toast(open.id + " 검토중으로 되돌림", "info"); }}>검토중으로 되돌리기</Btn></div>}
@@ -1347,7 +1356,7 @@ export function Compare() {
   if (sig["점수하락"].length) recs.push("점수 하락 관찰 " + sig["점수하락"].length + "건은 다음 실행에서 재현 여부 확인");
   recs.push("경계 판정(WARN) 케이스는 사람 검토(HITL) 우선 배정");
   const hasDef = (id) => defects.some((d) => d.tc === id && (d.domain || "LQA") === "LQA");
-  const regAllLQA = () => { const tgt = regressed.filter((r) => !hasDef(r.id)); if (!tgt.length) { toast("등록할 신규 회귀 결함이 없습니다", "info"); return; } tgt.forEach((r, i) => addDefect({ key: "TWORLD-" + (1950 + defects.length + i), tc: r.id, sev: "Major", title: "회귀: " + (r.q || r.id), status: "Open", domain: "LQA" })); toast("유의미 회귀 " + tgt.length + "건 결함 등록", "ok"); };
+  const regAllLQA = () => { const tgt = regressed.filter((r) => !hasDef(r.id)); if (!tgt.length) { toast("등록할 신규 회귀 결함이 없습니다", "info"); return; } tgt.forEach((r, i) => addDefect({ key: "DEF-" + (1950 + defects.length + i), tc: r.id, sev: "Major", title: "회귀: " + (r.q || r.id), status: "Open", domain: "LQA" })); toast("유의미 회귀 " + tgt.length + "건 결함 등록", "ok"); };
   return (
     <div className="space-y-4">
       <PageToolbar desc="같은 평가 계획의 두 실행 비교 · 케이스 회귀 분석" />
@@ -1421,13 +1430,14 @@ export function Compare() {
   );
 }
 export function Defects() {
-  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setFqaEditTc } = useApp();
+  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setDefectAssignee, setFqaEditTc, users } = useApp();
   const sev = KIND.severity;
   const st = KIND.issueStatus;
   const domKind = KIND.domain;
   const domLabel = { LQA: "AI 품질", FQA: "기능 QA", NQA: "비기능 QA" };
   const [dom, setDom] = useState(domain || "전체");
   const [stf, setStf] = useState("전체");
+  const [sel, setSel] = useState(null);
   const TRANS = { "Open": [["진행", "In Progress"], ["해결", "Resolved"]], "In Progress": [["해결", "Resolved"], ["보류", "Open"]], "Resolved": [["Reopen", "Open"]] };
   const list = defects.filter((d) => (dom === "전체" || (d.domain || "LQA") === dom) && (stf === "전체" || (d.status || "Open") === stf));
   const openN = list.filter((d) => d.status !== "Resolved").length;
@@ -1449,19 +1459,40 @@ export function Defects() {
       <div className="flex items-center gap-3 text-sm text-slate-400"><span>미해결 <span className="font-semibold text-red-300">{openN}</span></span><span className="text-slate-600">·</span><span>해결 <span className="font-semibold text-emerald-300">{resN}</span></span><span className="text-slate-600">·</span><span className="text-slate-500">총 {list.length}건</span></div>
       <Card>
       <table className="w-full text-sm">
-        <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th></th></tr></thead>
+        <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th className="font-medium">담당자</th><th className="font-medium">보고 / 수정</th><th></th></tr></thead>
         <tbody className="text-slate-300">
           {list.map((d) => (
-            <tr key={d.key} className={"border-b border-slate-800 hover:bg-slate-800 " + (d.status === "Resolved" ? "opacity-60" : "")}>
+            <tr key={d.key} onClick={() => setSel(d)} className={"cursor-pointer border-b border-slate-800 hover:bg-slate-800 " + (d.status === "Resolved" ? "opacity-60" : "")}>
               <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td>
-              <td><div className="flex items-center gap-2"><Badge kind={st[d.status] || "info"}>{d.status || "Open"}</Badge><div className="flex gap-1.5">{(TRANS[d.status || "Open"] || []).map(([label, next]) => <button key={label} onClick={() => setDefectStatus(d.key, next)} className="rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-teal-300">{label}</button>)}</div></div></td>
-              <td className="pr-4"><div className="flex items-center gap-2"><button onClick={() => reverify(d)} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button></div></td>
+              <td><Badge kind={st[d.status] || "info"}>{d.status || "Open"}</Badge></td>
+              <td className="text-slate-400">{d.assignee || <span className="text-slate-600">미지정</span>}</td>
+              <td className="pr-2 text-xs leading-tight text-slate-500"><div>{d.createdBy || "—"} · {d.createdAt || "—"}</div>{d.updatedAt && d.updatedAt !== d.createdAt && <div className="text-slate-400">수정 {d.updatedBy} · {d.updatedAt}</div>}</td>
+              <td className="pr-4" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-2"><button onClick={() => reverify(d)} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button></div></td>
             </tr>
           ))}
-          {list.length === 0 && <tr><td colSpan={7}><EmptyState icon={Bug} title="해당 조건의 결함이 없습니다" hint="평가/실행 실패 시 자동·수동으로 이슈를 등록하세요" /></td></tr>}
+          {list.length === 0 && <tr><td colSpan={8}><EmptyState icon={Bug} title="해당 조건의 결함이 없습니다" hint="평가/실행 실패 시 자동·수동으로 이슈를 등록하세요" /></td></tr>}
         </tbody>
       </table>
       </Card>
+      {sel && (
+        <div className="fixed inset-0 z-30 flex justify-end bg-black bg-opacity-50" onClick={() => setSel(null)}>
+          <div className="h-full w-full max-w-md overflow-y-auto border-l border-slate-800 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between"><span className="font-mono text-teal-400">{sel.key}</span><button onClick={() => setSel(null)} className="text-slate-500 hover:text-slate-300"><X size={20} /></button></div>
+            <div className="space-y-4 text-sm">
+              <div className="text-base text-slate-100">{sel.title}</div>
+              <div className="flex flex-wrap gap-1.5"><Badge kind={domKind[sel.domain || "LQA"] || "info"}>{domLabel[sel.domain || "LQA"]}</Badge><Badge kind={sev[sel.sev]}>{sel.sev}</Badge><Badge kind={st[sel.status] || "info"}>{sel.status || "Open"}</Badge></div>
+              <div><div className="mb-1 text-xs text-slate-500">연결 TC</div><div className="font-mono text-slate-300">{sel.tc}</div></div>
+              <div><div className="mb-1 text-xs text-slate-500">담당자</div><Select value={sel.assignee || ""} onChange={(e) => { setDefectAssignee(sel.key, e.target.value); setSel({ ...sel, assignee: e.target.value }); toast(sel.key + " 담당자: " + (e.target.value || "미지정"), "ok"); }}><option value="">미지정</option>{(users || []).map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</Select></div>
+              <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400 space-y-0.5"><div>보고 <span className="text-slate-300">{sel.createdBy || "—"}</span> · {sel.createdAt || "—"}</div><div>수정 <span className="text-slate-300">{sel.updatedBy || "—"}</span> · {sel.updatedAt || "—"}</div></div>
+              <div>
+                <div className="mb-1.5 text-xs text-slate-500">상태 변경</div>
+                <div className="flex flex-wrap gap-2">{(TRANS[sel.status || "Open"] || []).map(([label, next]) => <Btn key={label} kind={next === "Resolved" ? "primary" : "ghost"} onClick={() => { setDefectStatus(sel.key, next); setSel({ ...sel, status: next }); toast(sel.key + " → " + next, "ok"); }}>{label}</Btn>)}</div>
+              </div>
+              <div className="flex gap-2 border-t border-slate-800 pt-3"><Btn icon={RefreshCw} onClick={() => reverify(sel)}>재검증</Btn><Btn icon={ExternalLink} onClick={() => toast(sel.key + " 이슈 트래커로 이동 (데모)", "info")}>이슈 트래커</Btn></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1473,7 +1504,7 @@ export function Report() {
   const [periodic, setPeriodic] = useState(true);
   const [hist, setHist] = useState([
     { t: "14:36", ch: "Slack", txt: "요금/청구 평가 완료 — PASS율 79% (▲)", ok: true },
-    { t: "14:36", ch: "Jira", txt: "TWORLD-1842 자동 등록 (TC-018 PII)", ok: true },
+    { t: "14:36", ch: "Jira", txt: "DEF-1842 자동 등록 (TC-018 PII)", ok: true },
     { t: "09:25", ch: "Email", txt: "주간 품질 리포트 발송 (수신 6명)", ok: true },
   ]);
   const sendTest = (channel) => {

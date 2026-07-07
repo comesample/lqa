@@ -4,12 +4,13 @@ import {
   Wrench, Search, RefreshCw, Save, Copy, Plus, CheckCircle2, X, Tag, Send, ChevronLeft,
   Code2, ArrowRight, Lock, GripVertical, Layers, Calendar, Bug, Clock, History, XCircle, AlertTriangle, Image,
   LayoutDashboard, TrendingUp, Activity, Brain, ClipboardList,
-  Smartphone, Sparkles, ChevronRight, ChevronDown, Server,
+  Smartphone, Sparkles, ChevronRight, ChevronDown, Server, Trash2,
 } from "lucide-react";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { Card, Badge, Btn, Seg, Field, Input, Select, Toast, useToast, PageToolbar, backTo } from "../common/ui.jsx";
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
 import { useApp } from "../common/context.js";
+import { VarRefInput } from "../common/VarRefInput.jsx";
 const FQA_EVENTS = [
   { key: "commit", label: "커밋 / PR (GitLab)", desc: "커밋·PR마다 회귀 자동 실행", short: "커밋/PR",
     fields: [{ k: "repo", type: "readonly", label: "저장소", value: "대상·환경 연동에서 상속" }, { k: "branch", type: "text", label: "브랜치/ref 필터", value: "main, release/*" }, { k: "kind", type: "select", label: "이벤트", options: ["커밋 push", "PR open", "PR merge"] }] },
@@ -94,10 +95,10 @@ export function FqaRecordScreen({ onDone }) {
             )}
             <div className="flex justify-end gap-2 border-t border-slate-800 px-4 py-3">
               <Btn icon={FileText} onClick={() => { try { navigator.clipboard.writeText(RECCODE); } catch (e) {} flash("스크립트 복사됨"); }}>복사</Btn>
-              <Btn kind="primary" icon={Plus} disabled={!steps.length} onClick={() => { addFqaCase({ id: "TC-REC-" + Date.now().toString().slice(-4), name: name || "레코딩 TC", suite, tags: "", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: recToSteps(steps) }); onDone ? onDone("레코딩 TC 검토중 등록 · 목록에 추가됨") : flash("검토중으로 등록"); }}>검토중으로 등록</Btn>
+              <Btn kind="primary" icon={Plus} disabled={!steps.length} onClick={() => { addFqaCase({ id: "TC-REC-" + Date.now().toString().slice(-4), name: name || "레코딩 TC", suite, tags: "", status: "검토중", last: "-", level: "Low-Code", dataset: "-", hist: [], defects: 0, steps: recToSteps(steps) }); onDone ? onDone("레코딩 TC 검토중 등록 · 목록에 추가됨") : flash("검토중으로 등록"); }}>검토중으로 등록</Btn>
             </div>
           </Card>
-          <div className="mt-2 text-xs text-slate-500">레코딩은 구조화된 스텝을 캡처하므로 <span className="text-amber-300">No-Code(편집 가능)</span>로 등록됩니다 — 반복·조건 등 No-Code로 담기 어려운 캡처는 <span className="text-amber-300">Full-Code</span>로 관리됩니다. 이후 테스트 에디터에서 편집·승인합니다.</div>
+          <div className="mt-2 text-xs text-slate-500">레코딩은 구조화된 스텝을 캡처하므로 <span className="text-amber-300">Low-Code(편집 가능)</span>로 등록됩니다 — 구조화로 담기 어려운 부분은 <span className="text-amber-300">코드 스텝</span> 또는 <span className="text-amber-300">Full-Code</span>로 관리됩니다. 이후 테스트 에디터에서 편집·승인합니다.</div>
         </div>
       </div>
       <Toast msg={msg} />
@@ -158,7 +159,7 @@ export function FqaExcelScreen({ onDone }) {
                 </tbody>
               </table>
             )}
-            <div className="flex justify-end gap-2 border-t border-slate-800 px-4 py-3"><Btn kind="primary" icon={Plus} disabled={!rows.length} onClick={() => { rows.forEach((r, i) => addFqaCase({ id: "TC-XL-" + Date.now().toString().slice(-4) + "-" + i, name: r.name, suite, tags: r.tags, status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0 })); const n = rows.length; (onDone ? onDone(n + "건 검토중 등록 · 목록에 추가됨") : flash(n + "건 검토중으로 등록")); }}>검토중으로 등록</Btn></div>
+            <div className="flex justify-end gap-2 border-t border-slate-800 px-4 py-3"><Btn kind="primary" icon={Plus} disabled={!rows.length} onClick={() => { rows.forEach((r, i) => addFqaCase({ id: "TC-XL-" + Date.now().toString().slice(-4) + "-" + i, name: r.name, suite, tags: r.tags, status: "검토중", last: "-", level: "Low-Code", dataset: "-", hist: [], defects: 0 })); const n = rows.length; (onDone ? onDone(n + "건 검토중 등록 · 목록에 추가됨") : flash(n + "건 검토중으로 등록")); }}>검토중으로 등록</Btn></div>
           </Card>
           <div className="mt-2 text-xs text-slate-500">엑셀로 관리하던 기존 TC 명세를 가져옵니다. 등록된 TC는 실행 스텝이 없어 <span className="text-amber-300">에디터·레코딩으로 자동화</span>가 필요하며, <span className="text-amber-300">검토중</span>으로 등록됩니다.</div>
         </div>
@@ -235,8 +236,8 @@ export function FqaMcpScreen({ onDone }) {
                 <Field label="TC 이름"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">액션 {Math.max(0, log.length - 1)}개 · No-Code(편집 가능)로 등록</span>
-                <Btn kind="primary" icon={Plus} disabled={log.length < 2} onClick={() => { addFqaCase({ id: "TC-MCP-" + Date.now().toString().slice(-4), name: name || "MCP 탐색 시나리오", suite, tags: "", status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: mcpToSteps(log, url) }); onDone ? onDone("MCP 시나리오 검토중 등록 · 목록에 추가됨") : flash("검토중으로 등록"); }}>검토중으로 등록</Btn>
+                <span className="text-xs text-slate-500">액션 {Math.max(0, log.length - 1)}개 · Low-Code(편집 가능)로 등록</span>
+                <Btn kind="primary" icon={Plus} disabled={log.length < 2} onClick={() => { addFqaCase({ id: "TC-MCP-" + Date.now().toString().slice(-4), name: name || "MCP 탐색 시나리오", suite, tags: "", status: "검토중", last: "-", level: "Low-Code", dataset: "-", hist: [], defects: 0, steps: mcpToSteps(log, url) }); onDone ? onDone("MCP 시나리오 검토중 등록 · 목록에 추가됨") : flash("검토중으로 등록"); }}>검토중으로 등록</Btn>
               </div>
             </div>
           </Card>
@@ -249,13 +250,13 @@ export function FqaMcpScreen({ onDone }) {
 
 
 /* ═══════════ 4. 테스트 에디터 (3-Mode 단방향) ═══════════ */
-const LV = ["No-Code", "Low-Code", "Full-Code"];
-const ROLE = { "No-Code": "QA 담당자", "Low-Code": "QA 엔지니어", "Full-Code": "개발자" };
+const LV = ["Low-Code", "Full-Code"];
+const ROLE = { "Low-Code": "QA 엔지니어", "Full-Code": "개발자" };
 const E_STEPS = [
-  { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/signup" },
+  { act: "창 열기", loc: "url", val: "https://www.tworld.co.kr/signup" },
   { act: "텍스트 입력", loc: "[data-testid=email]", val: '"invalid-email"' },
   { act: "요소 클릭", loc: "role=button[다음]", val: "-" },
-  { act: "검증", loc: "[data-testid=error]", val: 'text = "올바른 이메일 형식이 아닙니다"' },
+  { act: "텍스트 검증", loc: "[data-testid=error]", val: 'text = "올바른 이메일 형식이 아닙니다"' },
 ];
 const E_LOW = `open    https://www.tworld.co.kr/signup
 fill    [data-testid=email]   "invalid-email"
@@ -272,16 +273,20 @@ test('TC-021 회원가입 이메일 형식 검증', async ({ page }) => {
 });`;
 const E_PLATS = [["Web", true], ["Android", false], ["iOS", false], ["API", false]];
 const PLAT_K = { Web: "info", App: "active", API: "warn" };
-const STEP_ACTS = ["브라우저 열기", "텍스트 입력", "요소 클릭", "검증"];
+const STEP_ACTS = ["창 열기", "창 닫기", "창 전환", "텍스트 입력", "요소 클릭", "대기", "텍스트 검증", "요소 활성화 검증", "코드 스텝"];
 const _pad = (t, n) => (t + " ".repeat(n)).slice(0, Math.max(t.length, n));
 const _url = (s) => (s.val && s.val !== "-" ? s.val : s.loc);
 // 스텝 → Low-Code DSL (키워드)
 function stepsToDSL(steps) {
   return (steps || []).map((s) => {
-    if (s.act === "브라우저 열기") return "open    " + _url(s);
+    if (s.act === "창 열기") return "open    " + _url(s);
+    if (s.act === "창 닫기") return "close   " + (s.loc && s.loc !== "url" ? s.loc : "current");
+    if (s.act === "창 전환") return "switch  " + (s.val && s.val !== "-" ? s.val : s.loc);
     if (s.act === "요소 클릭") return "click   " + s.loc;
     if (s.act === "텍스트 입력") return "fill    " + _pad(s.loc, 24) + " " + s.val;
-    if (s.act === "검증") return "assert  " + _pad(s.loc, 24) + " " + s.val;
+    if (s.act === "대기") return "wait    " + (s.val && s.val !== "-" ? s.val : s.loc);
+    if (s.act === "텍스트 검증") return "assert  " + _pad(s.loc, 24) + " " + s.val;
+    if (s.act === "요소 활성화 검증") return "assert  " + _pad(s.loc, 24) + " enabled";
     return "step    " + s.loc + " " + s.val;
   }).join("\n");
 }
@@ -298,10 +303,10 @@ const _cval = (v) => { const m = (v || "").match(/"([^"]*)"/); return "'" + (m ?
 // 레코딩 캡처({t,v}) → 편집 스텝({act,loc,val})
 function recToSteps(rs) {
   return (rs || []).map((s) => {
-    if (s.t === "goto") return { act: "브라우저 열기", loc: "url", val: s.v };
+    if (s.t === "goto") return { act: "창 열기", loc: "url", val: s.v };
     if (s.t === "fill") { const [loc, val] = String(s.v).split("←").map((x) => x.trim()); return { act: "텍스트 입력", loc: loc || "", val: val ? '"' + val + '"' : '""' }; }
     if (s.t === "click") return { act: "요소 클릭", loc: s.v, val: "-" };
-    if (s.t === "assert") return { act: "검증", loc: String(s.v).replace(/\s*보임$/, ""), val: "visible = true" };
+    if (s.t === "assert") return { act: "텍스트 검증", loc: String(s.v).replace(/\s*보임$/, ""), val: "visible = true" };
     return { act: "요소 클릭", loc: s.v, val: "-" };
   });
 }
@@ -310,21 +315,21 @@ function mcpToSteps(log, base) {
   const out = [];
   (log || []).forEach((s) => {
     if (s.t === "session") return;
-    if (s.t === "navigate") out.push({ act: "브라우저 열기", loc: "url", val: (base || "") + s.v });
+    if (s.t === "navigate") out.push({ act: "창 열기", loc: "url", val: (base || "") + s.v });
     else if (s.t === "fill") String(s.v).split(",").map((x) => x.trim()).forEach((loc) => out.push({ act: "텍스트 입력", loc, val: '"qa_user01"' }));
     else if (s.t === "click") out.push({ act: "요소 클릭", loc: s.v, val: "-" });
-    else if (s.t === "snapshot") out.push({ act: "검증", loc: "[data-testid=home]", val: "visible = true" });
+    else if (s.t === "snapshot") out.push({ act: "텍스트 검증", loc: "[data-testid=home]", val: "visible = true" });
   });
   return out;
 }
 // AI 생성 행 → 대표 스텝(로그인 계열 템플릿)
 function aiSteps() {
   return [
-    { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/login" },
+    { act: "창 열기", loc: "url", val: "https://www.tworld.co.kr/login" },
     { act: "텍스트 입력", loc: "[data-testid=userid]", val: '"qa_user01"' },
     { act: "텍스트 입력", loc: "[data-testid=password]", val: '"********"' },
     { act: "요소 클릭", loc: "role=button[로그인]", val: "-" },
-    { act: "검증", loc: "[data-testid=result]", val: "visible = true" },
+    { act: "텍스트 검증", loc: "[data-testid=result]", val: "visible = true" },
   ];
 }
 // 스텝 기반 단건 실행 시뮬(결정적) — 케이스 성향(last) 반영
@@ -332,7 +337,7 @@ function simRun(steps, tc) {
   const willFail = !!(tc && tc.last === "FAIL");
   const st = (steps || []).map((s, i) => ({ ...s, ok: true }));
   let failIdx = -1;
-  if (willFail && st.length) { failIdx = st.map((s) => s.act).lastIndexOf("검증"); if (failIdx < 0) failIdx = st.length - 1; st[failIdx].ok = false; }
+  if (willFail && st.length) { st.forEach((s, i) => { if (s.act.includes("검증")) failIdx = i; }); if (failIdx < 0) failIdx = st.length - 1; st[failIdx].ok = false; }
   return { verdict: willFail ? "FAIL" : "PASS", steps: st, failIdx };
 }
 // 스텝 → Full-Code Playwright (TypeScript)
@@ -340,17 +345,22 @@ function stepsToCode(steps, tc) {
   const id = (tc && tc.id) || "TC-000";
   const name = (tc && tc.name) || "테스트";
   const body = (steps || []).map((s) => {
-    if (s.act === "브라우저 열기") return "  await page.goto('" + _url(s) + "');";
+    if (s.act === "코드 스텝") return (s.code || "").split("\n").map((ln) => "  " + ln).join("\n");
+    if (s.act === "창 열기") return "  await page.goto('" + _url(s) + "');";
+    if (s.act === "창 닫기") return "  await page.close();";
+    if (s.act === "창 전환") { const t = (s.val && s.val !== "-" ? s.val : s.loc) || ""; return "  page = context.pages().find((p) => p.url().includes('" + t + "'));"; }
     if (s.act === "텍스트 입력") return "  await page." + _loc(s.loc) + ".fill(" + _cval(s.val) + ");";
     if (s.act === "요소 클릭") return "  await page." + _loc(s.loc) + ".click();";
-    if (s.act === "검증") {
+    if (s.act === "대기") { const v = (s.val && s.val !== "-" ? s.val : s.loc) || ""; return /^\d+/.test(String(v)) ? "  await page.waitForTimeout(" + parseInt(v, 10) + ");" : "  await page." + _loc(s.loc) + ".waitFor();"; }
+    if (s.act === "요소 활성화 검증") return "  await expect(page." + _loc(s.loc) + ").toBeEnabled();";
+    if (s.act === "텍스트 검증") {
       if (/visible/i.test(s.val)) return "  await expect(page." + _loc(s.loc) + ").toBeVisible();";
       const m = s.val.match(/"([^"]*)"/);
       return "  await expect(page." + _loc(s.loc) + ").toHaveText('" + (m ? m[1] : s.val) + "');";
     }
     return "  // " + s.act;
   }).join("\n");
-  return "import { test, expect } from '@playwright/test';\n\ntest('" + id + " " + name + "', async ({ page }) => {\n" + body + "\n});";
+  return "import { test, expect } from '@playwright/test';\n\ntest('" + id + " " + name + "', async ({ page, context }) => {\n" + body + "\n});";
 }
 
 
@@ -452,7 +462,7 @@ export function FqaApiImportScreen({ onDone }) {
   };
   const loadUrl = () => { setPhase("running"); setErr(""); setFileName(""); setTimeout(() => { setFmt("OpenAPI"); setRows(parseOpenApi(SAMPLE_OPENAPI)); setPicked(new Set()); setPhase("done"); }, 600); };
   const toggle = (k) => setPicked((pv) => { const n = new Set(pv); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const commit = () => { if (!picked.size) { flash("엔드포인트를 선택하세요"); return; } const sel = rows.filter((r) => picked.has(key(r))); sel.forEach((ep, i) => addFqaCase({ id: "TC-API-" + Date.now().toString().slice(-4) + "-" + i, platform: "API", name: ep.name, suite, tags: "api," + (ep.src === "Postman" ? "postman" : "openapi"), status: "검토중", last: "-", level: "No-Code", dataset: "-", hist: [], defects: 0, steps: apiSteps(ep) })); if (onDone) onDone(sel.length + "건 API 케이스 검토중 등록 · 목록에 추가됨"); };
+  const commit = () => { if (!picked.size) { flash("엔드포인트를 선택하세요"); return; } const sel = rows.filter((r) => picked.has(key(r))); sel.forEach((ep, i) => addFqaCase({ id: "TC-API-" + Date.now().toString().slice(-4) + "-" + i, platform: "API", name: ep.name, suite, tags: "api," + (ep.src === "Postman" ? "postman" : "openapi"), status: "검토중", last: "-", level: "Low-Code", dataset: "-", hist: [], defects: 0, steps: apiSteps(ep) })); if (onDone) onDone(sel.length + "건 API 케이스 검토중 등록 · 목록에 추가됨"); };
   return (
     <>
       <Hdr icon={FileText} title="스펙 임포트 (API 테스트 생성)" desc="OpenAPI · Postman → 엔드포인트별 요청·검증 케이스 골격" />
@@ -513,7 +523,7 @@ export function FqaApiImportScreen({ onDone }) {
     </>
   );
 }
-export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
+export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
   const { updateFqaCase, addFqaCase, fqaSuites, fqaCases, runnerConnected } = useApp();
   const tcOf = (name) => fqaCases.filter((c) => c.suite === name).length;
   const [msg, flash] = useToast();
@@ -526,22 +536,23 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
   const [view, setView] = useState(entry);
   const initSteps = (tc && tc.steps && tc.steps.length) ? tc.steps : E_STEPS;
   const [steps, setSteps] = useState(initSteps);
-  const [low, setLow] = useState(() => stepsToDSL(initSteps));
   const [code, setCode] = useState(() => stepsToCode(initSteps, tc || { id: "TC-021", name: "회원가입 이메일 형식 검증" }));
   const [plat, setPlat] = useState("Web");
   const [suite, setSuite] = useState(tc ? tc.suite : ((fqaSuites[0] || {}).name || ""));
   const [dragIdx, setDragIdx] = useState(null);
-  const reorder = (from, to) => setSteps((prev) => { const arr = [...prev]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return arr; });
+  const [codeOpen, setCodeOpen] = useState({});
+  const toggleCode = (i) => setCodeOpen((m) => ({ ...m, [i]: !m[i] }));
+  const reorder = (from, to) => { setSteps((prev) => { const arr = [...prev]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return arr; }); setCodeOpen({}); };
   const vi = LV.indexOf(view);
-  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, low: stepsToDSL(initSteps), code: stepsToCode(initSteps, tc || {}), committed: ei, suite: tc ? tc.suite : ((fqaSuites[0] || {}).name || "") }));
-  const dirty = snap !== JSON.stringify({ steps, low, code, committed, suite });
+  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, code: stepsToCode(initSteps, tc || {}), committed: ei, suite: tc ? tc.suite : ((fqaSuites[0] || {}).name || "") }));
+  const dirty = snap !== JSON.stringify({ steps, code, committed, suite });
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
   const editable = vi === committed;
   const readonly = vi < committed;
-  const descend = () => { const ni = Math.min(2, committed + 1); if (ni === 1) setLow(stepsToDSL(steps)); if (ni === 2) setCode(stepsToCode(steps, tc || {})); setCommitted(ni); setView(LV[ni]); flash(LV[ni] + "로 변환됨" + (ni === 2 ? " · 코드 관리 전환(eject)" : "") + " · 스텝에서 자동 생성"); };
+  const descend = () => { setCode(stepsToCode(steps, tc || {})); setCommitted(1); setView("Full-Code"); flash("Full-Code로 변환됨 · 코드 관리 전환(eject) · 스텝에서 자동 생성"); };
   return (
     <div className="space-y-4">
-      <Hdr icon={Code2} title="테스트 에디터" desc="No-Code → Low-Code → Full-Code · 단방향 변환" />
+      <Hdr icon={Code2} title="테스트 에디터" desc="Low-Code → Full-Code · 단방향 · 스텝 단위 코드 스텝 지원" />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-3 space-y-3">
           <Card className="p-3">
@@ -562,7 +573,7 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
         <div className="col-span-9 space-y-3">
           <Card className="flex items-center justify-between p-3">
             <div><span className="font-mono text-sm text-teal-400">{tc ? tc.id : "TC-021"}</span> <span className="text-sm text-slate-200">{tc ? tc.name : "회원가입 — 이메일 형식 검증"}</span></div>
-            <div className="flex gap-2"><Badge kind={ei === 2 ? "warn" : ei === 1 ? "teal" : "info"}>{entry} 관리</Badge><Badge kind={stEK[status] || "warn"}>{status}</Badge></div>
+            <div className="flex gap-2"><Badge kind={ei === 1 ? "warn" : "teal"}>{entry} 관리</Badge><Badge kind={stEK[status] || "warn"}>{status}</Badge></div>
           </Card>
 
           {/* 단방향 모드 흐름 바 */}
@@ -572,7 +583,7 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
                 <button disabled={i > committed} onClick={() => i <= committed && setView(l)} className={"rounded-lg border px-3 py-1.5 text-xs " + (view === l ? "border-teal-500 bg-teal-900 text-teal-200" : i <= committed ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-800 bg-slate-900 text-slate-600 cursor-not-allowed")}>
                   {l}<span className="ml-1.5 font-normal text-slate-500">{ROLE[l]}</span>
                 </button>
-                {i < 2 && <ArrowRight size={14} className={i < committed ? "text-teal-500" : "text-slate-700"} />}
+                {i < LV.length - 1 && <ArrowRight size={14} className={i < committed ? "text-teal-500" : "text-slate-700"} />}
               </Fragment>
             ))}
           </div>
@@ -582,50 +593,57 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
               <div className="flex items-center gap-2 border-b border-slate-800 bg-slate-950 px-4 py-2 text-xs text-amber-300"><Lock size={13} />읽기 전용 — 하위 모드({LV[committed]})에서 관리 중. 상위 편집은 재변환이 필요합니다.</div>
             )}
 
-            {view === "No-Code" && (
+            {view === "Low-Code" && (
               <div>
                 <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-2">
                   {E_PLATS.map(([p, ok]) => (
                     <button key={p} disabled={!ok} onClick={() => ok && setPlat(p)} className={"rounded-md px-2.5 py-1 text-xs " + (plat === p ? "bg-teal-600 text-white" : ok ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-900 text-slate-600 cursor-not-allowed")}>{p}{!ok && " ·확장"}</button>
                   ))}
-                  <span className="ml-auto text-xs text-slate-500">드래그로 순서 변경 · 액션·로케이터·값 인라인 편집</span>
+                  <span className="ml-auto text-xs text-slate-500">드래그로 순서 변경 · 액션·로케이터·값 인라인 편집 · 코드 스텝은 펼쳐서 스크립트 정의</span>
                 </div>
                 <div>
                   {steps.map((s, i) => {
                     const setStep = (patch) => setSteps(steps.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                    const isCode = s.act === "코드 스텝";
                     return (
-                    <div key={i}
-                      onDragOver={editable ? (e) => e.preventDefault() : undefined}
-                      onDrop={editable ? () => { if (dragIdx !== null && dragIdx !== i) reorder(dragIdx, i); setDragIdx(null); } : undefined}
-                      className={"flex items-center gap-2 border-b border-slate-800 px-3 py-2.5 text-sm " + (dragIdx === i ? "opacity-40" : "")}>
-                      <span draggable={editable} onDragStart={() => setDragIdx(i)} onDragEnd={() => setDragIdx(null)} className={editable ? "cursor-grab" : ""} title={editable ? "드래그로 순서 변경" : undefined}><GripVertical size={14} className={editable ? "text-slate-500" : "text-slate-800"} /></span>
-                      <span className="w-4 text-xs text-slate-500">{i + 1}</span>
-                      {editable ? (
-                        <>
-                          <select value={s.act} onChange={(e) => setStep({ act: e.target.value })} className="w-28 shrink-0 rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-200 outline-none focus:border-teal-500">{STEP_ACTS.map((a) => <option key={a}>{a}</option>)}</select>
-                          <input value={s.loc} onChange={(e) => setStep({ loc: e.target.value })} placeholder="로케이터" className="flex-1 rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 font-mono text-xs text-slate-300 outline-none focus:border-teal-500" />
-                          <input value={s.val} onChange={(e) => setStep({ val: e.target.value })} placeholder="값/검증" className="w-40 rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none focus:border-teal-500" />
-                          <button onClick={() => setSteps(steps.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-400" title="스텝 삭제"><X size={13} /></button>
-                        </>
-                      ) : (
-                        <>
-                          <span className={"w-24 font-medium " + (s.act === "검증" ? "text-amber-300" : "text-slate-200")}>{s.act}</span>
-                          <span className="flex-1 font-mono text-xs text-slate-500">{s.loc}</span>
-                          <span className="text-xs text-slate-400">{s.val}</span>
-                        </>
+                    <div key={i} className={"border-b border-slate-800 " + (dragIdx === i ? "opacity-40" : "")}>
+                      <div
+                        onDragOver={editable ? (e) => e.preventDefault() : undefined}
+                        onDrop={editable ? () => { if (dragIdx !== null && dragIdx !== i) reorder(dragIdx, i); setDragIdx(null); } : undefined}
+                        className="flex items-center gap-2 px-3 py-2.5 text-sm">
+                        <span draggable={editable} onDragStart={() => setDragIdx(i)} onDragEnd={() => setDragIdx(null)} className={editable ? "cursor-grab" : ""} title={editable ? "드래그로 순서 변경" : undefined}><GripVertical size={14} className={editable ? "text-slate-500" : "text-slate-800"} /></span>
+                        <span className="w-4 text-xs text-slate-500">{i + 1}</span>
+                        {editable ? (
+                          <>
+                            <select value={s.act} onChange={(e) => { const v = e.target.value; setStep(v === "코드 스텝" ? { act: v, code: s.code || "await page.locator('').click();" } : { act: v }); if (v === "코드 스텝") setCodeOpen((m) => ({ ...m, [i]: true })); }} className="w-36 shrink-0 rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-200 outline-none focus:border-teal-500">{STEP_ACTS.map((a) => <option key={a}>{a}</option>)}</select>
+                            {isCode ? (
+                              <button onClick={() => toggleCode(i)} className="flex flex-1 items-center gap-1.5 rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-left text-xs text-teal-300 hover:border-teal-500"><Code2 size={12} />{codeOpen[i] ? "코드 접기 ▲" : "코드 편집 ▼"}<span className="ml-1 truncate font-mono text-slate-500">{(s.code || "").split("\n")[0]}</span></button>
+                            ) : (
+                              <>
+                                <input value={s.loc} onChange={(e) => setStep({ loc: e.target.value })} placeholder="로케이터" className="flex-1 rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 font-mono text-xs text-slate-300 outline-none focus:border-teal-500" />
+                                <input value={s.val} onChange={(e) => setStep({ val: e.target.value })} placeholder="값/검증" className="w-40 rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none focus:border-teal-500" />
+                              </>
+                            )}
+                            <button onClick={() => setSteps(steps.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-400" title="스텝 삭제"><X size={13} /></button>
+                          </>
+                        ) : (
+                          <>
+                            <span className={"w-28 font-medium " + (isCode ? "text-teal-300" : s.act.includes("검증") ? "text-amber-300" : "text-slate-200")}>{s.act}</span>
+                            {isCode ? <span className="flex-1 truncate font-mono text-xs text-slate-500">{(s.code || "").split("\n")[0]}</span> : <><span className="flex-1 font-mono text-xs text-slate-500">{s.loc}</span><span className="text-xs text-slate-400">{s.val}</span></>}
+                          </>
+                        )}
+                      </div>
+                      {isCode && (codeOpen[i] || !editable) && (
+                        <div className="px-10 pb-2.5">
+                          <textarea value={s.code || ""} onChange={(e) => setStep({ code: e.target.value })} readOnly={!editable} rows={4} placeholder="await page.getByTestId('x').click();" className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-teal-200 outline-none focus:border-teal-500" />
+                          <div className="mt-1 text-xs text-slate-600">이 스텝은 Full-Code 변환 시 이 코드가 그대로 삽입됩니다.</div>
+                        </div>
                       )}
                     </div>
                     );
                   })}
                 </div>
-                {editable && <div className="px-3 py-2"><button onClick={() => setSteps([...steps, { act: "요소 클릭", loc: "", val: "-" }])} className="text-xs text-teal-400">+ 스텝 추가</button></div>}
-              </div>
-            )}
-
-            {view === "Low-Code" && (
-              <div className="p-3">
-                <div className="mb-2 text-xs text-slate-500">키워드 DSL — 액션·로케이터·값/검증을 한 줄로</div>
-                <textarea value={low} onChange={(e) => setLow(e.target.value)} readOnly={!editable} rows={8} className={taCls + (editable ? "" : " opacity-70")} />
+                {editable && <div className="px-3 py-2"><button onClick={() => setSteps([...steps, { act: "요소 클릭", loc: "", val: "-" }])} className="text-xs text-teal-400">+ 스텝 추가</button><span className="ml-2 text-xs text-slate-600">· 액션에서 &quot;코드 스텝&quot; 선택 시 스크립트 정의</span></div>}
               </div>
             )}
 
@@ -639,14 +657,14 @@ export function FqaEditorScreen({ entry = "No-Code", tc, onDirty }) {
             <div className="flex items-center justify-between border-t border-slate-800 px-4 py-3">
               <div className="text-xs text-slate-500">현재 관리 수준: <span className="text-slate-300">{LV[committed]}</span></div>
               <div className="flex gap-2">
-                {committed < 2 && view === LV[committed] && (
-                  <Btn icon={ArrowRight} onClick={descend}>{LV[committed + 1]}로 변환{committed + 1 === 2 ? " (eject)" : ""}</Btn>
+                {committed < 1 && view === LV[committed] && (
+                  <Btn icon={ArrowRight} onClick={descend}>Full-Code로 변환 (eject)</Btn>
                 )}
-                <Btn kind="primary" icon={Save} disabled={!dirty} onClick={() => { const revert = status === "승인"; if (tc) updateFqaCase(tc.id, { steps, level: LV[committed], suite, ...(revert ? { status: "검토중" } : {}) }); if (revert) setStatus("검토중"); setSnap(JSON.stringify({ steps, low, code, committed, suite })); flash(revert ? "저장됨 · 승인 해제(검토중) — 재검토 필요" : "저장됨 · 검토중"); }}>{dirty ? "저장" : "저장됨"}</Btn>
+                <Btn kind="primary" icon={Save} disabled={!dirty} onClick={() => { const revert = status === "승인"; if (tc) updateFqaCase(tc.id, { steps, level: LV[committed], suite, ...(revert ? { status: "검토중" } : {}) }); if (revert) setStatus("검토중"); setSnap(JSON.stringify({ steps, code, committed, suite })); flash(revert ? "저장됨 · 승인 해제(검토중) — 재검토 필요" : "저장됨 · 검토중"); }}>{dirty ? "저장" : "저장됨"}</Btn>
               </div>
             </div>
           </Card>
-          <div className="text-xs text-slate-500">단방향: No-Code에서 시작해 필요 시 Low-Code → Full-Code로 내려가며 정밀화. Full-Code로 내려가면(eject) 코드가 관리 기준이 되고 상위 모드는 읽기 전용이 됩니다. <span className="text-slate-400">레코딩·MCP는 구조화 스텝이라 기본 No-Code로 진입하며, No-Code로 담기 어려운 복잡한 캡처는 Full-Code로 진입합니다.</span></div>
+          <div className="text-xs text-slate-500">단방향: Low-Code에서 시작해 필요 시 Full-Code로 eject하며 정밀화. 스텝 단위 <span className="text-teal-300">코드 스텝</span>으로 까다로운 한 스텝만 스크립트로 정의할 수 있어, 전면 eject 없이 예외를 흡수합니다. Full-Code로 내려가면 코드가 관리 기준이 되고 Low-Code는 읽기 전용이 됩니다. <span className="text-slate-400">레코딩·MCP는 구조화 스텝이라 기본 Low-Code로 진입합니다.</span></div>
         </div>
       </div>
       {qa && (
@@ -726,7 +744,7 @@ export function FqaSuiteScreen() {
           <Btn kind="primary" icon={Plus} onClick={openAdd}>스위트 추가</Btn>
         </div>
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">스위트</th><th className="font-medium">플랫폼</th><th className="font-medium">대상 모듈</th><th className="font-medium">실행 대상</th><th className="font-medium">fixture</th><th className="font-medium">기본 태그</th><th className="font-medium">담당</th><th className="font-medium">TC</th><th className="font-medium">상태</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">스위트</th><th className="font-medium">플랫폼</th><th className="font-medium">대상 모듈</th><th className="font-medium">실행 대상</th><th className="font-medium">fixture</th><th className="font-medium">기본 태그</th><th className="font-medium">담당</th><th className="font-medium">TC</th><th className="font-medium">상태</th><th className="font-medium">수정</th><th></th></tr></thead>
           <tbody>
             {ordered.map((s) => (
               <tr key={s.id} className="border-b border-slate-800 text-slate-300 hover:bg-slate-800">
@@ -739,6 +757,7 @@ export function FqaSuiteScreen() {
                 <td className="text-slate-400">{s.owner}</td>
                 <td>{tcOf(s.name)}</td>
                 <td>{s.enabled === false ? <Badge kind="draft">비활성</Badge> : <Badge kind="pass">활성</Badge>}</td>
+                <td className="pr-2 text-xs text-slate-500 whitespace-nowrap">{s.updatedBy || "—"} · {s.updatedAt || "—"}</td>
                 <td className="pr-4 text-right whitespace-nowrap"><button onClick={() => openEdit(s.id)} className="mr-3 text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => del(s)} className="text-slate-500 hover:text-red-400"><X size={14} /></button></td>
               </tr>
             ))}
@@ -1006,8 +1025,8 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   };
   const SUM = [["전체 TC", run.total, "text-slate-100"], ["통과", run.pass, "text-emerald-400"], ["실패", run.fail, "text-red-400"], ["경고", run.warn, "text-amber-400"]].concat(run.platform === "API" ? [] : [["보정 제안", tcs.filter((t) => t.heal).length, "text-teal-400"]]);
   const hasDefect = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
-  const regDefect = (t) => { if (hasDefect(t.id)) { flash(t.id + " 이미 결함 등록됨"); return; } const key = "TWORLD-" + (1900 + defects.length); addDefect({ key, tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" }); flash(t.id + " 결함 등록 · " + key); };
-  const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !hasDefect(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다"); return; } tgt.forEach((t, i) => addDefect({ key: "TWORLD-" + (1900 + defects.length + i), tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
+  const regDefect = (t) => { if (hasDefect(t.id)) { flash(t.id + " 이미 결함 등록됨"); return; } const key = "DEF-" + (1900 + defects.length); addDefect({ key, tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" }); flash(t.id + " 결함 등록 · " + key); };
+  const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !hasDefect(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다"); return; } tgt.forEach((t, i) => addDefect({ key: "DEF-" + (1900 + defects.length + i), tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
   const FLAKY = fqaCases.filter((c) => c.hist && c.hist.length >= 3).map((c) => {
     const h = c.hist; const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length;
     const flips = h.slice(1).reduce((n, v, i) => n + (v !== h[i] ? 1 : 0), 0);
@@ -1021,7 +1040,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const flakyN = FLAKY.filter((r) => r.flaky).length;
   const persistN = FLAKY.filter((r) => r.persistent).length;
   const hasDefFQA = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
-  const regFail = (r) => { if (hasDefFQA(r.id)) { flash(r.id + " 이미 결함 등록됨"); return; } addDefect({ key: "TWORLD-" + (1970 + defects.length), tc: r.id, sev: "Major", title: "지속 실패: " + r.name, status: "Open", domain: "FQA" }); flash(r.id + " 결함 등록"); };
+  const regFail = (r) => { if (hasDefFQA(r.id)) { flash(r.id + " 이미 결함 등록됨"); return; } addDefect({ key: "DEF-" + (1970 + defects.length), tc: r.id, sev: "Major", title: "지속 실패: " + r.name, status: "Open", domain: "FQA" }); flash(r.id + " 결함 등록"); };
   const toggleQuar = (r) => { updateFqaCase(r.id, { quarantined: !r.quarantined }); flash(r.id + (r.quarantined ? " 격리 해제 — 차단 실행에 복귀" : " 격리(quarantine) — 차단 실행에서 제외")); };
   const vK = { PASS: "pass", FAIL: "fail", HEAL: "teal", WARN: "warn" };
   const shown = tcs.filter((t) => filt === "전체" || (filt === "실패만" && t.v === "FAIL") || (filt === "통과만" && t.v === "PASS") || (filt === "보정 제안" && t.heal));
@@ -1367,18 +1386,24 @@ export function FqaCasesScreen() {
   const [platF, setPlatF] = useState("전체");
   const [sel, setSel] = useState(null);
   const [open, setOpen] = useState(null);
+  const [picked, setPicked] = useState(new Set());
   const stK = { "승인": "pass", "검토중": "warn", "초안": "draft" };
-  const lvK2 = { "No-Code": "info", "Low-Code": "teal", "Full-Code": "warn" };
+  const lvK2 = { "Low-Code": "teal", "Full-Code": "warn" };
   const lvLabel = (c) => (c.platform || "Web") === "API" ? (c.level === "Full-Code" ? "Script" : "Form") : c.level;
   const list = fqaCases.filter((c) => (stf === "전체" || c.status === stf) && (suiteF === "전체" || c.suite === suiteF) && (resF === "전체" || (resF === "미실행" ? c.last === "-" : c.last === resF)) && (platF === "전체" || (c.platform || "Web") === platF) && (c.id + c.name + c.suite + c.tags).toLowerCase().includes(q.toLowerCase()));
   const delCase = (c, after) => { if (!window.confirm(c.id + " 삭제할까요? 되돌릴 수 없습니다.")) return; removeFqaCase(c.id); if (after) after(); flash(c.id + " 삭제됨"); };
+  const togglePick = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allPicked = list.length > 0 && list.every((c) => picked.has(c.id));
+  const toggleAll = () => { if (allPicked) setPicked(new Set()); else setPicked(new Set(list.map((c) => c.id))); };
+  const bulkSet = (st) => { picked.forEach((id) => setFqaCaseStatus(id, st)); flash(picked.size + "건 " + st + " 처리"); setPicked(new Set()); };
+  const bulkDel = () => { if (!window.confirm(picked.size + "건을 삭제할까요? 되돌릴 수 없습니다.")) return; picked.forEach((id) => removeFqaCase(id)); flash(picked.size + "건 삭제됨"); setPicked(new Set()); };
   const Back = () => <button onClick={() => { if (editorDirty.current && !window.confirm("저장하지 않은 변경이 있습니다. 목록으로 나가시겠습니까?")) return; editorDirty.current = false; setMode("목록"); }} className="mb-3 inline-flex items-center gap-1 text-xs text-teal-400"><ChevronLeft size={14} />테스트케이스 목록</button>;
   if (mode === "레코딩") return <div><Back /><FqaRecordScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
   if (mode === "AI") return <div><Back /><FqaAiGenScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
   if (mode === "엑셀") return <div><Back /><FqaExcelScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
   if (mode === "MCP") return <div><Back /><FqaMcpScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
   if (mode === "api-import") return <div><Back /><FqaApiImportScreen onDone={(m) => { setMode("목록"); flash(m); }} /></div>;
-  if (mode === "edit") return <div><Back />{sel && (sel.platform || "Web") === "API" ? <FqaApiCaseView tc={sel} /> : <FqaEditorScreen entry={sel ? sel.level : "No-Code"} tc={sel} onDirty={(d) => { editorDirty.current = d; }} />}</div>;
+  if (mode === "edit") return <div><Back />{sel && (sel.platform || "Web") === "API" ? <FqaApiCaseView tc={sel} /> : <FqaEditorScreen entry={sel ? sel.level : "Low-Code"} tc={sel} onDirty={(d) => { editorDirty.current = d; }} />}</div>;
   return (
     <div className="space-y-4">
       <PageToolbar desc="기능 TC 저장소 · 생성·편집·관리" />
@@ -1403,13 +1428,23 @@ export function FqaCasesScreen() {
           )}
         </div>
       </div>
+      {picked.size > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-teal-700 bg-teal-950 px-3 py-2 text-sm">
+          <span className="flex-1 text-teal-200">{picked.size}건 선택됨</span>
+          <Btn kind="primary" icon={CheckCircle2} onClick={() => bulkSet("승인")}>선택 승인</Btn>
+          <Btn onClick={() => bulkSet("검토중")}>검토중으로</Btn>
+          <Btn kind="danger" icon={Trash2} onClick={bulkDel}>선택 삭제</Btn>
+          <Btn onClick={() => setPicked(new Set())}>선택 해제</Btn>
+        </div>
+      )}
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">ID</th><th className="font-medium">이름</th><th className="font-medium">스위트</th><th className="font-medium">플랫폼</th><th className="font-medium">관리</th><th className="font-medium">상태</th><th className="font-medium">최근 이력</th><th className="font-medium">결함</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="w-8 py-2.5 pl-4"><input type="checkbox" checked={allPicked} onChange={toggleAll} className="accent-teal-500" title="전체 선택" /></th><th className="py-2.5 pr-4 font-medium">ID</th><th className="font-medium">이름</th><th className="font-medium">스위트</th><th className="font-medium">플랫폼</th><th className="font-medium">관리</th><th className="font-medium">상태</th><th className="font-medium">최근 이력</th><th className="font-medium">결함</th><th className="font-medium">수정</th><th></th></tr></thead>
           <tbody>
             {list.map((c) => (
-              <tr key={c.id} onClick={() => setOpen(c)} className="cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800">
-                <td className="px-4 py-3 font-mono text-teal-400">{c.id}</td>
+              <tr key={c.id} onClick={() => setOpen(c)} className={"cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800 " + (picked.has(c.id) ? "bg-slate-800/60" : "")}>
+                <td className="pl-4" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(c.id)} onChange={() => togglePick(c.id)} className="accent-teal-500" /></td>
+                <td className="py-3 pr-4 font-mono text-teal-400">{c.id}</td>
                 <td className="text-slate-200">{c.name}</td>
                 <td className="text-slate-400">{c.suite}</td>
                 <td><Badge kind={PLAT_K[c.platform || "Web"] || "info"}>{c.platform || "Web"}</Badge></td>
@@ -1417,6 +1452,7 @@ export function FqaCasesScreen() {
                 <td><Badge kind={stK[c.status]}>{c.status}</Badge></td>
                 <td>{c.hist && c.hist.length ? <div className="flex gap-0.5">{c.hist.map((h, i) => <span key={i} className={"flex h-5 w-5 items-center justify-center rounded text-xs font-semibold " + (h === "PASS" ? "bg-emerald-900 text-emerald-300" : "bg-red-900 text-red-300")}>{h === "PASS" ? "P" : "F"}</span>)}</div> : <span className="text-xs text-slate-600">-</span>}</td>
                 <td>{defCount(c.id) ? <Badge kind="fail">{defCount(c.id)}</Badge> : <span className="text-xs text-slate-600">-</span>}</td>
+                <td className="pr-2 text-xs text-slate-500 whitespace-nowrap">{c.updatedBy || "—"} · {c.updatedAt || "—"}</td>
                 <td className="pr-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}><button onClick={() => flash(c.id + " 단건 디버그 실행")} className="mr-3 text-slate-400 hover:text-teal-400" title="단건(디버그) 실행"><Play size={14} /></button><button onClick={() => { setSel(c); setMode("edit"); }} className="mr-3 text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => delCase(c)} className="text-slate-500 hover:text-red-400" title="삭제"><X size={14} /></button></td>
               </tr>
             ))}
@@ -1431,6 +1467,7 @@ export function FqaCasesScreen() {
             <div className="mb-4 flex items-center justify-between"><span className="font-mono text-teal-400">{open.id}</span><button onClick={() => setOpen(null)} className="text-slate-500 hover:text-slate-300"><X size={20} /></button></div>
             <div className="space-y-4 text-sm">
               <div><div className="text-slate-100">{open.name}</div><div className="mt-1.5 flex flex-wrap gap-1.5"><Badge kind={PLAT_K[open.platform || "Web"] || "info"}>{open.platform || "Web"}</Badge><Badge kind="info">{open.suite}</Badge><Badge kind={lvK2[open.level]}>{lvLabel(open)}</Badge><Badge kind={stK[open.status]}>{open.status}</Badge></div></div>
+              <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400 space-y-0.5"><div>생성 <span className="text-slate-300">{open.createdBy || "—"}</span> · {open.createdAt || "—"}</div><div>수정 <span className="text-slate-300">{open.updatedBy || "—"}</span> · {open.updatedAt || "—"}</div></div>
               <div><div className="mb-1 text-xs text-slate-500">태그</div><div className="text-xs text-slate-400">{open.tags || "-"}</div></div>
               <div>
                 <div className="mb-1 text-xs text-slate-500">최근 실행 이력</div>
@@ -1464,7 +1501,7 @@ const TRow = ({ label, on, set, hint }) => (
 );
 export function FqaTargetScreen() {
   const [msg, flash] = useToast();
-  const { fqaSystems: systems, addFqaSystem, updateFqaSystem, removeFqaSystem } = useApp();
+  const { fqaSystems: systems, addFqaSystem, updateFqaSystem, removeFqaSystem, variables } = useApp();
   const [sel, setSel] = useState(0);
   const [envIdx, setEnvIdx] = useState(0);
   const [test, setTest] = useState(null);
@@ -1474,20 +1511,22 @@ export function FqaTargetScreen() {
   const [af, setAf] = useState({ role: "일반", acct: "", secretRef: "" });
   const [draft, setDraft] = useState({});
   const [scmDraft, setScmDraft] = useState({});
+  const [nameDraft, setNameDraft] = useState(null);
   const stK = { "연결됨": "pass", "미확인": "warn", "오류": "fail" };
   const sys = systems[sel] || systems[0];
   const env = sys.envs[envIdx] || sys.envs[0];
   const isApi = sys.platform === "API";
+  const secretRef = (val, setVal, ph) => <VarRefInput value={val} onChange={setVal} placeholder={ph} />;
   const CFG_DEF = { auth: "storageState 재사용", tfa: "TOTP 시드", apiAuth: "Bearer 토큰", writeBlock: true, synth: true, approval: true, vpn: true, basic: false, tls: true, seedBefore: true, cleanAfter: true, dataset: "기본 시드셋", seedMethod: isApi ? "API 호출" : "SQL 스크립트", seedSource: "", loginAcct: "", ci: { provider: "GitLab CI" }, deploy: { signal: "CD 배포 완료 웹훅" } };
   const cfg = { ...CFG_DEF, ...env, ...draft };
   const setEnvCfg = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const SCM_DEF = isApi ? { provider: "GitLab", testRepo: "gitlab.skt/tworld/api-tests", appRepo: "gitlab.skt/tworld/api", branch: "main" } : { provider: "GitLab", testRepo: "gitlab.skt/tworld/web-tests", appRepo: "gitlab.skt/tworld/web", branch: "main" };
   const scm = { ...SCM_DEF, ...(sys.scm || {}), ...scmDraft };
   const setSysScm = (patch) => setScmDraft((d) => ({ ...d, ...patch }));
-  const dirty = Object.keys(draft).length > 0 || Object.keys(scmDraft).length > 0;
-  const saveCfg = () => { updateFqaSystem(sys.id, { envs: sys.envs.map((e, i) => (i === envIdx ? { ...e, ...draft } : e)), scm: { ...(sys.scm || {}), ...scmDraft } }); setDraft({}); setScmDraft({}); flash("설정 저장됨"); };
-  const guardSwitch = (fn) => { if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setDraft({}); setScmDraft({}); fn(); };
-  useEffect(() => { setDraft({}); setScmDraft({}); }, [sys.id]);
+  const dirty = Object.keys(draft).length > 0 || Object.keys(scmDraft).length > 0 || (nameDraft !== null && nameDraft !== sys.name);
+  const saveCfg = () => { updateFqaSystem(sys.id, { ...(nameDraft !== null ? { name: nameDraft } : {}), envs: sys.envs.map((e, i) => (i === envIdx ? { ...e, ...draft } : e)), scm: { ...(sys.scm || {}), ...scmDraft } }); setDraft({}); setScmDraft({}); setNameDraft(null); flash("설정 저장됨"); };
+  const guardSwitch = (fn) => { if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setDraft({}); setScmDraft({}); setNameDraft(null); fn(); };
+  useEffect(() => { setDraft({}); setScmDraft({}); setNameDraft(null); }, [sys.id]);
   const envSlug = { "스테이징": "stg", "운영": "prod", "개발": "dev" }[env.env] || "env";
   const hookUrl = "https://xq.skt/api/hooks/t" + sys.id + "-" + envSlug + "-3f9a2c";
   const choose = (i) => guardSwitch(() => { setSel(i); setEnvIdx(0); setTest(null); });
@@ -1519,19 +1558,20 @@ export function FqaTargetScreen() {
               <div onClick={() => choose(i)}>
                 <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-100">{sy.name}</span><div className="flex items-center gap-1.5"><Badge kind="info">{sy.platform}</Badge><button onClick={(e) => { e.stopPropagation(); delTarget(i, sy); }} className="text-slate-500 hover:text-red-400" title="대상 삭제"><X size={12} /></button></div></div>
                 <div className="mt-1.5 flex flex-wrap gap-1">{sy.envs.map((e) => <Badge key={e.env} kind={e.prod ? "warn" : "info"}>{e.env}</Badge>)}</div>
+                <div className="mt-1 text-xs text-slate-600">수정 {sy.updatedBy || "—"} · {sy.updatedAt || "—"}</div>
               </div>
             </Card>
           ))}
         </div>
         <div className="col-span-9 space-y-3">
           <Card className="flex items-center justify-between p-3">
-            <div className="flex items-center gap-2"><span className="text-base font-semibold text-slate-100">{sys.name}</span><Badge kind="info">{sys.platform}</Badge></div>
+            <div className="flex items-center gap-2"><Input value={nameDraft ?? sys.name} onChange={(e) => setNameDraft(e.target.value)} className="w-52 text-base font-semibold" /><Badge kind="info">{sys.platform}</Badge><span className="text-xs text-slate-500">생성 {sys.createdBy || "—"} · 수정 {sys.updatedBy || "—"} ({sys.updatedAt || "—"})</span></div>
             <div className="flex items-center gap-1.5">{sys.envs.map((e, i) => (<button key={e.env} onClick={() => guardSwitch(() => { setEnvIdx(i); setTest(null); })} className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (envIdx === i ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{e.env}{e.prod ? " ●" : ""}</button>))}<button onClick={() => { setEf({ env: "개발", url: "" }); setModal("env"); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800">+ 환경</button>{sys.envs.length > 1 && <button onClick={delEnv} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-500 hover:text-red-400" title="현재 환경 삭제">− 환경</button>}</div>
           </Card>
 
           <Card className="p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-3 text-sm"><span className="font-mono text-slate-300">{env.url}</span><Badge kind={stK[env.status]}>{env.status}</Badge><span className="text-xs text-slate-500">빌드 {env.ver}</span></div>
+              <div className="flex items-center gap-3 text-sm"><Input value={cfg.url || ""} onChange={(e) => setEnvCfg({ url: e.target.value })} placeholder={isApi ? "https://api-stg.tworld.co.kr" : "https://stg.tworld.co.kr"} className="w-72 font-mono text-xs" title="Base URL · 변경 후 설정 저장" /><Badge kind={stK[env.status]}>{env.status}</Badge><span className="text-xs text-slate-500">빌드 {env.ver}</span></div>
               <div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={RefreshCw} onClick={runTest}>{test && test.s === "run" ? "테스트 중…" : "연결 테스트"}</Btn><Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
             </div>
             {test && test.s === "ok" && <div className="mt-2 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />{test.m}</div>}
@@ -1569,9 +1609,10 @@ export function FqaTargetScreen() {
                   <Field label="인증 방식"><Select value={cfg.apiAuth} onChange={(e) => setEnvCfg({ apiAuth: e.target.value })}><option>Bearer 토큰</option><option>API Key</option><option>OAuth 2.0 (Client Credentials)</option></Select></Field>
                   <Field label="기본 헤더 (선택)"><Input defaultValue="Accept: application/json" /></Field>
                 </div>
-                {cfg.apiAuth === "Bearer 토큰" && <Field label="토큰"><Input type="password" placeholder="Bearer 토큰 · Secrets 저장소 보관" /></Field>}
-                {cfg.apiAuth === "API Key" && <div className="grid grid-cols-2 gap-2"><Field label="헤더명"><Input defaultValue="X-API-Key" /></Field><Field label="키 값"><Input type="password" placeholder="Secrets 보관" /></Field></div>}
-                {cfg.apiAuth === "OAuth 2.0 (Client Credentials)" && <div className="grid grid-cols-2 gap-2"><Field label="토큰 URL"><Input placeholder="https://auth.tworld.co.kr/oauth/token" /></Field><Field label="scope"><Input placeholder="read write" /></Field><Field label="client id"><Input /></Field><Field label="client secret"><Input type="password" placeholder="Secrets 보관" /></Field></div>}
+                {cfg.apiAuth === "Bearer 토큰" && <Field label="토큰 (변수 참조)">{secretRef(cfg.apiTokenRef, (val) => setEnvCfg({ apiTokenRef: val }), "${stg_tworld_token}")}</Field>}
+                {cfg.apiAuth === "API Key" && <div className="grid grid-cols-2 gap-2"><Field label="헤더명"><Input value={cfg.apiKeyName || "X-API-Key"} onChange={(e) => setEnvCfg({ apiKeyName: e.target.value })} /></Field><Field label="키 값 (변수 참조)">{secretRef(cfg.apiKeyRef, (val) => setEnvCfg({ apiKeyRef: val }), "${api_key}")}</Field></div>}
+                {cfg.apiAuth === "OAuth 2.0 (Client Credentials)" && <div className="space-y-2"><div className="grid grid-cols-2 gap-2"><Field label="토큰 URL"><Input placeholder="https://auth.tworld.co.kr/oauth/token" /></Field><Field label="scope"><Input placeholder="read write" /></Field><Field label="client id"><Input /></Field></div><Field label="client secret (변수 참조)">{secretRef(cfg.oauthSecretRef, (val) => setEnvCfg({ oauthSecretRef: val }), "${client_secret}")}</Field></div>}
+                <div className="text-xs text-slate-500">시크릿은 공통 <span className="text-slate-300">변수</span> 화면의 값을 <span className="font-mono text-teal-400">{"${키}"}</span>로 참조 · 실행 시 환경 값으로 치환됩니다.</div>
                 <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">API 대상은 브라우저 세션 없이 토큰·키로 인증합니다. 응답은 상태코드·JSON 스키마로 검증합니다.</div>
               </>
             ) : (
@@ -1609,7 +1650,7 @@ export function FqaTargetScreen() {
                 </tbody></table>
               </div>
             </div>
-            <div className="text-xs text-slate-500">계정 풀은 <span className="text-slate-400">환경별로 분리</span>되며, 자격증명 값은 secretRef로 Secrets 저장소에 보관됩니다.</div>
+            <div className="text-xs text-slate-500">계정 풀은 <span className="text-slate-400">환경별로 분리</span>되며, 자격증명은 공통 <span className="text-slate-400">변수</span> 화면에서 <span className="font-mono">{"${키}"}</span>로 관리·참조됩니다.</div>
           </Card>
 
           <Card className="p-4 space-y-3">
@@ -1625,7 +1666,7 @@ export function FqaTargetScreen() {
                 <div className="col-span-2"><Field label="앱(SUT) 저장소" hint="커밋·PR 트리거 대상"><Input value={scm.appRepo} onChange={(e) => setSysScm({ appRepo: e.target.value })} /></Field></div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">인증: PAT · <span className="font-mono">••••••</span> (Secrets)</span>
+                <span className="text-xs text-slate-500">인증: PAT · <span className="font-mono">${"{scm_pat}"}</span> (변수)</span>
                 <Btn icon={RefreshCw} onClick={() => flash(scm.provider + " 저장소 연결 테스트 통과 · 브랜치 " + scm.branch)}>연결 테스트</Btn>
               </div>
             </div>
@@ -1697,8 +1738,8 @@ export function FqaTargetScreen() {
               </>)}
               {modal === "acct" && (<>
                 <div className="grid grid-cols-2 gap-3"><Field label="역할"><Select value={af.role} onChange={(e) => setAf({ ...af, role: e.target.value })}><option>일반</option><option>VIP</option><option>관리자</option><option>합성</option><option>서비스</option></Select></Field><Field label="계정 ID"><Input value={af.acct} onChange={(e) => setAf({ ...af, acct: e.target.value })} placeholder="qa_user02" /></Field></div>
-                <Field label="자격증명 (Secrets 키)" hint="비밀번호·토큰 값은 Secrets 저장소에 보관 · 여기엔 참조 키만"><Input value={af.secretRef} onChange={(e) => setAf({ ...af, secretRef: e.target.value })} placeholder="vault://tworld/stg/qa_user02" /></Field>
-                <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">이 계정은 인증 방식(storageState/폼 로그인)에서 로그인 주체로 사용되며, 자격증명은 secretRef로 참조됩니다.</div>
+                <Field label="자격증명 (변수 참조)" hint="비밀번호·토큰은 공통 변수 화면에서 관리 · 여기엔 참조만">{secretRef(af.secretRef, (val) => setAf({ ...af, secretRef: val }), "${stg_test_pw}")}</Field>
+                <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">이 계정은 인증 방식(storageState/폼 로그인)에서 로그인 주체로 사용되며, 자격증명은 공통 변수의 <span className="font-mono">{"${키}"}</span>로 참조됩니다.</div>
                 <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(null)}>취소</Btn><Btn kind="primary" icon={Save} onClick={addAcct}>추가</Btn></div>
               </>)}
             </div>
@@ -1756,6 +1797,7 @@ export function FqaPlanScreen({ nav }) {
                 <div className="flex items-center justify-between"><div className="text-sm font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={PLAT_K[platOf(p.target)] || "info"}>{platOf(p.target)}</Badge><Badge kind={p.status === "활성" ? "pass" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); delPlan(p); }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
                 <div className="mt-1 text-xs text-slate-500">{p.target}</div>
                 <div className="mt-1 text-xs text-slate-500">{p.suites} · {p.sched}</div>
+                <div className="mt-0.5 text-xs text-slate-600">수정 {p.updatedBy || "—"} · {p.updatedAt || "—"}</div>
               </div>
             </Card>
           ))}
@@ -1765,6 +1807,7 @@ export function FqaPlanScreen({ nav }) {
             <div className="text-base font-semibold text-slate-100">상세 설정 — {sel.name}</div>
             <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><TG on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
           </div>
+          <div className="mb-4 flex items-center gap-3 text-xs text-slate-500"><span>생성 <span className="text-slate-400">{sel.createdBy || "—"}</span> · {sel.createdAt || "—"}</span><span className="text-slate-600">·</span><span>수정 <span className="text-slate-400">{sel.updatedBy || "—"}</span> · {sel.updatedAt || "—"}</span></div>
           <div className="grid grid-cols-2 gap-5">
             <div className="space-y-3.5">
               <Field label="대상·환경" hint={platOf(target) + " 플랫폼"}><Select value={target} onChange={(e) => { const t = e.target.value; setTarget(t); if (mismatch(t, suites)) setSuites("전체"); }}>{targetOpts.map((t) => <option key={t}>{t}</option>)}</Select></Field>
@@ -1871,7 +1914,6 @@ export function FqaAiGenScreen({ onDone }) {
   const [src, setSrc] = useState("직접 입력");
   const [req, setReq] = useState("T월드 앱 로그인 기능\n- 전화번호/비밀번호로 로그인\n- 3회 실패 시 계정 잠금\n- 자동 로그인 (Remember Me)\n- 로그아웃 시 세션 즉시 만료");
   const [cov, setCov] = useState("Standard");
-  const [out, setOut] = useState("No-Code");
   const [plat, setPlat] = useState("Web");
   const [suite, setSuite] = useState("로그인 / 인증");
   const [edge, setEdge] = useState(true);
@@ -1889,7 +1931,7 @@ export function FqaAiGenScreen({ onDone }) {
     setTimeout(() => { setRows(SAMPLE); setPicked(new Set()); setPhase("done"); }, 750);
   };
   const toggle = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const commit = (msg) => { if (!picked.size) { flash("케이스를 선택하세요"); return; } if (msg.includes("등록")) { const n = picked.size; rows.filter((r) => picked.has(r.id)).forEach((r, i) => addFqaCase({ id: "TC-AI-" + Date.now().toString().slice(-4) + "-" + i, name: r.title, suite, tags: (r.tags || []).join(","), status: "검토중", last: "-", level: out === "Low-Code" ? "Low-Code" : "No-Code", dataset: "-", hist: [], defects: 0, steps: aiSteps() })); if (onDone) { onDone(n + "건 검토중 등록 · 목록에 추가됨"); return; } } flash(picked.size + msg); };
+  const commit = (msg) => { if (!picked.size) { flash("케이스를 선택하세요"); return; } if (msg.includes("등록")) { const n = picked.size; rows.filter((r) => picked.has(r.id)).forEach((r, i) => addFqaCase({ id: "TC-AI-" + Date.now().toString().slice(-4) + "-" + i, name: r.title, suite, tags: (r.tags || []).join(","), status: "검토중", last: "-", level: "Low-Code", dataset: "-", hist: [], defects: 0, steps: aiSteps() })); if (onDone) { onDone(n + "건 검토중 등록 · 목록에 추가됨"); return; } } flash(picked.size + msg); };
 
   const platforms = [["Web", Globe, true], ["Android", Smartphone, false], ["iOS", Smartphone, false], ["API", Code2, false]];
 
@@ -1915,8 +1957,8 @@ export function FqaAiGenScreen({ onDone }) {
             {src === "Jira" && (
               <Field label="Jira 이슈 키" hint="설정 > Jira 연동에서 토큰 입력 필요">
                 <div className="flex gap-2">
-                  <input value={jiraKey} onChange={(e) => setJiraKey(e.target.value)} placeholder="TWORLD-1842" className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" />
-                  <Btn onClick={() => flash((jiraKey.trim() || "TWORLD-1842") + " 이슈 명세를 불러왔습니다")}>가져오기</Btn>
+                  <input value={jiraKey} onChange={(e) => setJiraKey(e.target.value)} placeholder="DEF-1842" className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" />
+                  <Btn onClick={() => flash((jiraKey.trim() || "DEF-1842") + " 이슈 명세를 불러왔습니다")}>가져오기</Btn>
                 </div>
               </Field>
             )}
@@ -1934,9 +1976,6 @@ export function FqaAiGenScreen({ onDone }) {
             <div className="text-sm font-semibold text-slate-200">생성 옵션</div>
             <Field label="등록 스위트" hint="생성된 TC가 배치될 스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{(fqaSuites || []).filter((x) => (x.platform || "Web") === plat).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select></Field>
             <Field label="커버리지"><Seg options={["Basic", "Standard", "Full"]} value={cov} onChange={setCov} /></Field>
-            <Field label="출력 형식" hint="Full-Code(Playwright · TypeScript)는 GitLab 연동으로 내보냅니다">
-              <Seg options={["No-Code", "Low-Code"]} value={out} onChange={setOut} />
-            </Field>
             <Field label="플랫폼">
               <div className="grid grid-cols-4 gap-2">
                 {platforms.map(([p, Ic, ok]) => (
@@ -2004,7 +2043,7 @@ export function FqaAiGenScreen({ onDone }) {
                           <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
                             {prev === "스텝" ? (
                               <>
-                                <div className="mb-2 text-xs font-semibold text-slate-400">스텝 미리보기 (No-Code · Web)</div>
+                                <div className="mb-2 text-xs font-semibold text-slate-400">스텝 미리보기 (Low-Code · Web)</div>
                                 <ol className="space-y-1.5">
                                   {STEPS.slice(0, r.steps).map((s, i) => (
                                     <li key={i} className="flex items-center gap-2 text-xs">
@@ -2035,7 +2074,7 @@ export function FqaAiGenScreen({ onDone }) {
               </>
             )}
           </Card>
-          <div className="mt-2 text-xs text-slate-500">생성된 케이스는 <span className="text-amber-300">검토중</span> 상태(No-Code 관리)로 등록되며, 검토·승인 후 실행 대상이 됩니다.</div>
+          <div className="mt-2 text-xs text-slate-500">생성된 케이스는 <span className="text-amber-300">검토중</span> 상태(Low-Code 관리)로 등록되며, 검토·승인 후 실행 대상이 됩니다.</div>
         </div>
       </div>
       {toast && <div className="fixed bottom-5 right-5 rounded-lg border border-teal-700 bg-teal-900 px-4 py-2.5 text-sm text-teal-100 shadow-xl">{toast}</div>}

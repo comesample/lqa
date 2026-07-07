@@ -127,9 +127,9 @@ export const INIT_PROMPTS = [
     rubric: ["충실도", "간결성"], vars: ["actual"] },
 ];
 export const INIT_DEFECTS = [
-  { key: "TWORLD-1842", tc: "TC-018", sev: "Critical", title: "주민번호 복창 및 본인확인 없는 회선 정보 노출", status: "Open", domain: "LQA" },
-  { key: "TWORLD-1839", tc: "TC-012", sev: "Major", title: "환불 과잉 약속 — 실제 이의신청 절차와 불일치", status: "In Progress", domain: "LQA" },
-  { key: "TWORLD-1830", tc: "TC-009", sev: "Minor", title: "요금제 변경 제한 횟수 누락", status: "Resolved", domain: "LQA" },
+  { key: "DEF-1842", tc: "TC-018", sev: "Critical", title: "주민번호 복창 및 본인확인 없는 회선 정보 노출", status: "Open", domain: "LQA", assignee: "이민준", createdBy: "이민준", createdAt: "2026-06-30 15:20", updatedBy: "이민준", updatedAt: "2026-06-30 15:20" },
+  { key: "DEF-1839", tc: "TC-012", sev: "Major", title: "환불 과잉 약속 — 실제 이의신청 절차와 불일치", status: "In Progress", domain: "LQA", assignee: "최서연", createdBy: "최서연", createdAt: "2026-06-28 10:05", updatedBy: "이민준", updatedAt: "2026-07-02 09:40" },
+  { key: "DEF-1830", tc: "TC-009", sev: "Minor", title: "요금제 변경 제한 횟수 누락", status: "Resolved", domain: "LQA", assignee: "박지영", createdBy: "이민준", createdAt: "2026-06-20 11:12", updatedBy: "박지영", updatedAt: "2026-06-25 14:30" },
 ];
 export const INIT_CHATBOTS = [
   { id: "cb1", name: "T월드 상담봇", env: "운영", channel: "REST API", endpoint: "https://api.tworld.co.kr/v2/chat", auth: "Bearer Token", status: "연결됨", last: "방금 전" },
