@@ -810,16 +810,17 @@ export function FqaSuiteScreen() {
                   {form.mapOverride && form.mapVal && <div className="text-xs text-amber-300">＊ 재정의 시 소속({tcOf(form.name)}건)과 매핑이 잡는 대상이 다를 수 있습니다.</div>}
                 </div>
               </Field>
-              <Field label="Setup / Teardown (fixture)">
+              <Field label="준비 · 되돌리기 (대상·환경 상속)">
                 <div className="space-y-2 rounded-lg bg-slate-800 p-3">
-                  <div className="flex items-center justify-between text-sm text-slate-300"><span>대상·환경 설정 상속 <span className="text-xs text-slate-500">· 인증·시드·정리</span></span><TG on={!form.fxOverride} onClick={() => setForm({ ...form, fxOverride: !form.fxOverride })} /></div>
+                  <div className="flex items-center justify-between text-sm text-slate-300"><span>대상·환경 설정 상속 <span className="text-xs text-slate-500">· 인증·시작 상태·되돌리기</span></span><TG on={!form.fxOverride} onClick={() => setForm({ ...form, fxOverride: !form.fxOverride })} /></div>
                   {!form.fxOverride ? (
-                    <div className="text-xs text-slate-500">환경(대상·환경)에서 정의한 {(form.platform || "Web") === "API" ? "인증 토큰" : "storageState"}·데이터 시드·teardown을 그대로 사용합니다.</div>
+                    <div className="text-xs text-slate-500">대상·환경에서 정한 {(form.platform || "Web") === "API" ? "인증 토큰" : "로그인 세션"}·시작 상태·되돌리기를 그대로 사용합니다.</div>
                   ) : (
                     <div className="space-y-2 pt-1">
                       <Field label={(form.platform || "Web") === "API" ? "인증 토큰(auth)" : "로그인 세션(storageState)"}><Select value={form.ssMode} onChange={(e) => setForm({ ...form, ssMode: e.target.value })}><option value="inherit">{(form.platform || "Web") === "API" ? "환경 토큰 사용" : "환경 세션 사용"}</option><option value="role">{(form.platform || "Web") === "API" ? "다른 역할 토큰" : "다른 역할 계정"}</option><option value="none">사용 안 함</option></Select></Field>
-                      <div className="flex items-center justify-between text-sm text-slate-300"><span>이 스위트 추가 데이터 시드</span><TG on={!!form.seedExtra} onClick={() => setForm({ ...form, seedExtra: !form.seedExtra })} /></div>
-                      <div className="flex items-center justify-between text-sm text-slate-300"><span>이 스위트 추가 정리(teardown)</span><TG on={!!form.cleanExtra} onClick={() => setForm({ ...form, cleanExtra: !form.cleanExtra })} /></div>
+                      <div className="flex items-center justify-between text-sm text-slate-300"><span>이 스위트만의 시작 상태 추가</span><TG on={!!form.seedExtra} onClick={() => setForm({ ...form, seedExtra: !form.seedExtra })} /></div>
+                      <div className="flex items-center justify-between text-sm text-slate-300"><span>이 스위트만의 되돌리기 추가</span><TG on={!!form.cleanExtra} onClick={() => setForm({ ...form, cleanExtra: !form.cleanExtra })} /></div>
+                      <div className="text-xs text-slate-500">추가 준비·되돌리기는 이 대상 담당 팀이 준비합니다 — 대부분 상속으로 충분합니다.</div>
                     </div>
                   )}
                 </div>
@@ -1528,7 +1529,7 @@ export function FqaTargetScreen() {
   const env = sys.envs[envIdx] || sys.envs[0];
   const isApi = sys.platform === "API";
   const secretRef = (val, setVal, ph) => <VarRefInput value={val} onChange={setVal} placeholder={ph} />;
-  const CFG_DEF = { auth: "storageState 재사용", tfa: "TOTP 시드", apiAuth: "Bearer 토큰", writeBlock: true, synth: true, approval: true, vpn: true, basic: false, tls: true, seedBefore: true, cleanAfter: true, dataset: "기본 시드셋", seedMethod: isApi ? "API 호출" : "SQL 스크립트", seedSource: "", loginAcct: "", ci: { provider: "GitLab CI" }, deploy: { signal: "CD 배포 완료 웹훅" } };
+  const CFG_DEF = { auth: "storageState 재사용", tfa: "TOTP 시드", apiAuth: "Bearer 토큰", writeBlock: true, synth: true, approval: true, vpn: true, basic: false, tls: true, seedProfile: "손대지 않음", cleanAfter: true, loginAcct: "", ci: { provider: "GitLab CI" }, deploy: { signal: "CD 배포 완료 웹훅" } };
   const cfg = { ...CFG_DEF, ...env, ...draft };
   const setEnvCfg = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const SCM_DEF = isApi ? { provider: "GitLab", testRepo: "gitlab.skt/tworld/api-tests", appRepo: "gitlab.skt/tworld/api", branch: "main" } : { provider: "GitLab", testRepo: "gitlab.skt/tworld/web-tests", appRepo: "gitlab.skt/tworld/web", branch: "main" };
@@ -1544,6 +1545,8 @@ export function FqaTargetScreen() {
   const delTarget = (i, sy) => { if (systems.length <= 1) { flash("최소 1개 대상은 유지해야 합니다"); return; } if (!window.confirm(sy.name + " 대상을 삭제할까요?")) return; guardSwitch(() => { removeFqaSystem(sy.id); setSel(0); setEnvIdx(0); setTest(null); flash(sy.name + " 삭제됨"); }); };
   const delEnv = () => { if (sys.envs.length <= 1) { flash("최소 1개 환경은 유지해야 합니다"); return; } if (!window.confirm(env.env + " 환경을 삭제할까요?")) return; guardSwitch(() => { updateFqaSystem(sys.id, { envs: sys.envs.filter((_, i) => i !== envIdx) }); setEnvIdx(0); flash(env.env + " 환경 삭제됨"); }); };
   const delAcct = (idx) => { setEnvCfg({ accts: (cfg.accts || []).filter((_, j) => j !== idx) }); flash("계정 삭제됨"); };
+  const updAcct = (idx, patch) => setEnvCfg({ accts: (cfg.accts || []).map((a, j) => (j === idx ? { ...a, ...patch } : a)) });
+  const appendAcct = () => setEnvCfg({ accts: [...(cfg.accts || []), { role: "일반", acct: "", secretRef: "", st: "활성" }] });
   const runTest = () => { setTest({ s: "run" }); setTimeout(() => setTest({ s: "ok", m: "연결 성공 · 200 OK · " + (env.ver !== "-" ? (isApi ? "버전 " : "빌드 ") + env.ver : "미배포") + (isApi ? " · 인증 토큰 유효" : " · 로그인 가능") }), 800); };
   const addTarget = () => {
     if (!tf.name.trim() || !tf.url.trim()) { flash("이름과 Base URL을 입력하세요"); return; }
@@ -1654,12 +1657,18 @@ export function FqaTargetScreen() {
               </>
             )}
             <div>
-              <div className="mb-1 flex items-center justify-between"><span className="text-xs font-semibold text-slate-400">{isApi ? "자격증명 풀 (역할별 · 토큰)" : "계정 풀 (역할별)"}</span><button onClick={() => { setAf({ role: "일반", acct: "", secretRef: "" }); setModal("acct"); }} className="text-xs text-teal-400">+ 계정</button></div>
-              <div className="overflow-hidden rounded-lg border border-slate-800">
-                <table className="w-full text-sm"><tbody>
-                  {(cfg.accts || []).map((aR, i) => (<tr key={i} className="border-b border-slate-800 last:border-0"><td className="px-3 py-1.5"><Badge kind="info">{aR.role}</Badge></td><td className="font-mono text-xs text-slate-300">{aR.acct}</td><td className="font-mono text-xs text-slate-500">{aR.secretRef}</td><td className="px-3 text-right"><div className="flex items-center justify-end gap-2"><Badge kind="pass">{aR.st}</Badge><button onClick={() => delAcct(i)} className="text-slate-500 hover:text-red-400" title="계정 삭제"><X size={12} /></button></div></td></tr>))}
-                  {(!cfg.accts || cfg.accts.length === 0) && <tr><td colSpan={4} className="px-3 py-2 text-xs text-slate-600">이 환경의 계정이 없습니다 — + 계정으로 추가</td></tr>}
-                </tbody></table>
+              <div className="mb-1 flex items-center justify-between"><span className="text-xs font-semibold text-slate-400">{isApi ? "자격증명 풀 (역할별 · 토큰)" : "계정 풀 (역할별)"}</span><button onClick={appendAcct} className="text-xs text-teal-400">+ 계정</button></div>
+              <div className="space-y-1.5">
+                {(cfg.accts || []).map((aR, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="w-24 shrink-0"><Select value={aR.role} onChange={(e) => updAcct(i, { role: e.target.value })}><option>일반</option><option>VIP</option><option>관리자</option><option>합성</option><option>서비스</option></Select></div>
+                    <div className="w-36 shrink-0"><Input value={aR.acct} onChange={(e) => updAcct(i, { acct: e.target.value })} placeholder="qa_user02" className="font-mono text-xs" /></div>
+                    <div className="min-w-0 flex-1">{secretRef(aR.secretRef, (val) => updAcct(i, { secretRef: val }), "${stg_test_pw}")}</div>
+                    <button onClick={() => updAcct(i, { st: aR.st === "활성" ? "비활성" : "활성" })} className="shrink-0" title="활성/비활성 전환"><Badge kind={aR.st === "활성" ? "pass" : "draft"}>{aR.st || "활성"}</Badge></button>
+                    <button onClick={() => delAcct(i)} className="shrink-0 text-slate-500 hover:text-red-400" title="계정 삭제"><X size={12} /></button>
+                  </div>
+                ))}
+                {(!cfg.accts || cfg.accts.length === 0) && <div className="px-1 py-2 text-xs text-slate-600">이 환경의 계정이 없습니다 — + 계정으로 추가</div>}
               </div>
             </div>
             <div className="text-xs text-slate-500">계정 풀은 <span className="text-slate-400">환경별로 분리</span>되며, 자격증명은 공통 <span className="text-slate-400">변수</span> 화면에서 <span className="font-mono">{"${키}"}</span>로 관리·참조됩니다.</div>
@@ -1716,16 +1725,15 @@ export function FqaTargetScreen() {
               <Field label="프록시 (선택)"><Input placeholder="http://proxy:8080" /></Field>
             </Card>
             <Card className="p-4 space-y-2">
-              <div className="text-sm font-semibold text-slate-200">테스트 데이터</div>
-              <Field label="테스트 데이터셋"><Select value={cfg.dataset} onChange={(e) => setEnvCfg({ dataset: e.target.value })}><option>기본 시드셋</option><option>회귀용 시드셋</option><option>없음</option></Select></Field>
-              {cfg.dataset !== "없음" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="시드 방법"><Select value={cfg.seedMethod} onChange={(e) => setEnvCfg({ seedMethod: e.target.value })}><option>SQL 스크립트</option><option>API 호출</option><option>픽스처 파일</option></Select></Field>
-                  <Field label="시드 소스"><Input value={cfg.seedSource} onChange={(e) => setEnvCfg({ seedSource: e.target.value })} placeholder={cfg.seedMethod === "API 호출" ? "POST /seed/regression" : cfg.seedMethod === "픽스처 파일" ? "fixtures/regression.json" : "db/seed/regression.sql"} /></Field>
+              <div className="text-sm font-semibold text-slate-200">시작 상태 <span className="font-normal text-slate-500">· 선택 사항 · 이 대상 담당 팀이 준비 (표 데이터는 공통 &quot;데이터셋&quot;)</span></div>
+              <Field label="어떤 상태로 시작할까요?"><Select value={cfg.seedProfile} onChange={(e) => setEnvCfg({ seedProfile: e.target.value })}><option>손대지 않음</option><option>기본 상태</option><option>회귀 테스트용</option><option>비어 있는 상태</option></Select></Field>
+              {cfg.seedProfile !== "손대지 않음" && (
+                <div className="space-y-2">
+                  <div className="rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-400">이 상태 세트는 대상 담당 팀이 준비합니다 — 리포지토리 시드 스크립트 또는 대상의 시드 API. 플랫폼은 실행 시 이를 호출합니다.</div>
+                  <TRow label="테스트가 끝나면 원래대로 되돌리기" on={cfg.cleanAfter} set={(v) => setEnvCfg({ cleanAfter: v })} />
                 </div>
               )}
-              <TRow label="실행 전 데이터 시드" on={cfg.seedBefore} set={(v) => setEnvCfg({ seedBefore: v })} />
-              <TRow label="실행 후 정리(teardown)" on={cfg.cleanAfter} set={(v) => setEnvCfg({ cleanAfter: v })} />
+              <div className="text-xs text-slate-500">대부분의 케이스는 필요한 데이터를 사전 조건에서 스스로 만들어, 상태 세트 없이 &quot;손대지 않음&quot;으로 둡니다.</div>
             </Card>
           </div>
           <div className="text-xs text-slate-500">대상·환경 설정은 실행 계획·실행의 기준이 되며, 빌드 버전은 결과 스냅샷에 기록되어 재현성을 보장합니다.</div>
@@ -1747,12 +1755,6 @@ export function FqaTargetScreen() {
                 <Field label="환경"><Select value={ef.env} onChange={(e) => setEf({ ...ef, env: e.target.value })}><option>스테이징</option><option>운영</option><option>개발</option></Select></Field>
                 <Field label={isApi ? "API Base URL" : "Base URL"}><Input value={ef.url} onChange={(e) => setEf({ ...ef, url: e.target.value })} placeholder={isApi ? "https://api-stg.tworld.co.kr" : "https://stg.tworld.co.kr"} /></Field>
                 <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(null)}>취소</Btn><Btn kind="primary" icon={Save} onClick={addEnv}>추가</Btn></div>
-              </>)}
-              {modal === "acct" && (<>
-                <div className="grid grid-cols-2 gap-3"><Field label="역할"><Select value={af.role} onChange={(e) => setAf({ ...af, role: e.target.value })}><option>일반</option><option>VIP</option><option>관리자</option><option>합성</option><option>서비스</option></Select></Field><Field label="계정 ID"><Input value={af.acct} onChange={(e) => setAf({ ...af, acct: e.target.value })} placeholder="qa_user02" /></Field></div>
-                <Field label="자격증명 (변수 참조)" hint="비밀번호·토큰은 공통 변수 화면에서 관리 · 여기엔 참조만">{secretRef(af.secretRef, (val) => setAf({ ...af, secretRef: val }), "${stg_test_pw}")}</Field>
-                <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">이 계정은 인증 방식(storageState/폼 로그인)에서 로그인 주체로 사용되며, 자격증명은 공통 변수의 <span className="font-mono">{"${키}"}</span>로 참조됩니다.</div>
-                <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(null)}>취소</Btn><Btn kind="primary" icon={Save} onClick={addAcct}>추가</Btn></div>
               </>)}
             </div>
           </div>
