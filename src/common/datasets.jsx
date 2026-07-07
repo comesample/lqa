@@ -15,7 +15,7 @@ const toCsv = (d) => (d.columns || []).join(",") + "\n" + (d.rows || []).map((r)
 
 /* 테스트 데이터셋 (공통) — 명명된 표 데이터. NQA 피드/FQA 데이터 드리븐이 이름으로 참조. */
 export function DatasetsScreen() {
-  const { datasets, addDataset, updateDataset, removeDataset, nqaSystems } = useApp();
+  const { datasets, addDataset, updateDataset, removeDataset, nqaSystems, fqaCases } = useApp();
   const [msg, flash] = useToast();
   const list = datasets || [];
   const [q, setQ] = useState("");
@@ -24,7 +24,7 @@ export function DatasetsScreen() {
   const [df, setDf] = useState({ name: "", desc: "", text: "", uploaded: false });
   const ql = q.trim().toLowerCase();
   const shown = !ql ? list : list.filter((d) => d.name.toLowerCase().includes(ql) || (d.desc || "").toLowerCase().includes(ql));
-  const refCount = (name) => (nqaSystems || []).filter((s) => (s.auth || {}).dataset === name).length;
+  const refCount = (name) => (nqaSystems || []).filter((s) => (s.auth || {}).dataset === name).length + (fqaCases || []).filter((c) => c.dataset === name).length;
   const rowN = (d) => (d.rowCount != null ? d.rowCount : (d.rows || []).length);
   const openAdd = () => { setEditId(null); setDf({ name: "", desc: "", text: "phone,pw\n", uploaded: false }); setModal(true); };
   const openEdit = (d) => { setEditId(d.id); setDf({ name: d.name, desc: d.desc || "", text: toCsv(d), uploaded: false }); setModal(true); };

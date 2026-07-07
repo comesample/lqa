@@ -127,6 +127,14 @@ export const INIT_NQA_SCENARIOS = [
   { id: 3, name: "T다이렉트 스파이크", sutId: 2, mode: "믹스 재사용", unit: "가상 사용자(VU)", shape: "스파이크", peak: 400, rampUp: 1, sustain: 5, rampDown: 1, thinkTime: 2, status: "초안", journey: [] },
 ];
 
+/* 측정 계획 — 측정 시나리오 참조 + SLA 판정 임계(합격/불합격) + baseline 대비(회귀) + 실행 트리거. 대상(SUT)은 시나리오에서 파생. */
+export const NQA_PLAN_TRIGGERS = ["수동 실행", "야간 배치", "릴리스 후 자동"];
+export const NQA_BASELINE_MODES = ["없음", "직전 통과 회차", "고정 회차"];
+export const INIT_NQA_PLANS = [
+  { id: 1, name: "로그인 저니 부하 · 릴리스 게이트", scenarioId: 1, status: "활성", sla: { p95: 1500, p99: 2500, errRate: 1.0, minRps: 600 }, baseline: { mode: "직전 통과 회차", runId: "", tolerance: 10 }, trigger: "릴리스 후 자동" },
+  { id: 2, name: "조회 믹스 기준 성능", scenarioId: 2, status: "초안", sla: { p95: 800, p99: 1500, errRate: 0.5, minRps: 1200 }, baseline: { mode: "없음", runId: "", tolerance: 10 }, trigger: "수동 실행" },
+];
+
 /* 측정 대상(앱) 시드 — 앱 + 단말 인벤토리 + 측정 도구 + 측정 조건. 단말×조건 조합은 측정 계획에서. */
 export const INIT_NQA_SYSTEMS = [
   { id: 1, name: "T월드 API 부하", subtype: "load", baseUrl: "https://api-stg.tworld.co.kr", protocol: "HTTP/HTTPS", env: "스테이징", endpoints: [{ method: "GET", path: "/v1/plans", weight: 50, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v1/auth/login", weight: 30, headers: [{ k: "Content-Type", v: "application/json" }], body: '{ "phone": "${row.phone}", "pw": "${row.pw}" }', expect: 200, extracts: [{ var: "token", path: "$.data.token" }] }, { method: "GET", path: "/v1/users/{id}", weight: 20, headers: [{ k: "Authorization", v: "Bearer ${token}" }], body: "", expect: 200, extracts: [] }], apm: { provider: "Jennifer", servers: [{ name: "was-01", tier: "WAS" }, { name: "was-02", tier: "WAS" }, { name: "tworld-db-01", tier: "DB" }] }, loadgen: { tool: "JMeter", agents: 3 }, auth: { type: "로그인 플로우", loginPath: "/v1/auth/login", ref: "${stg_tworld_token}", dataset: "accounts_10k", correlate: true }, guard: { blockProd: true, approval: false, maxRps: 2000, maxVu: 1000, maxDur: 30, autoErr: 5, autoP95: 2000, autoCpu: 90, autoMem: 85 } },

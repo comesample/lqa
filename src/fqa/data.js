@@ -31,7 +31,7 @@ export const INIT_FQA_CASES = [
     { act: "검증", loc: "상태코드", val: "200" },
     { act: "검증", loc: "응답 스키마", val: "OpenAPI 계약 준수" },
   ] },
-  { id: "TC-API-102", platform: "API", name: "사용자 생성", suite: "API 연동", tags: "api", status: "승인", last: "PASS", level: "Low-Code", dataset: "가입 데이터 ×3", hist: ["PASS", "PASS", "PASS"], defects: 0, steps: [
+  { id: "TC-API-102", platform: "API", name: "사용자 생성", suite: "API 연동", tags: "api", status: "승인", last: "PASS", level: "Low-Code", dataset: "signup_emails", hist: ["PASS", "PASS", "PASS"], defects: 0, steps: [
     { act: "요청", loc: "POST /v1/users", val: "바디: { name, phone }" },
     { act: "검증", loc: "상태코드", val: "201" },
     { act: "검증", loc: "응답 헤더", val: "Location 존재" },
@@ -50,14 +50,14 @@ export const INIT_FQA_CASES = [
     { act: "요청", loc: "DELETE /v1/users/{id}", val: "헤더: Authorization: Bearer" },
     { act: "검증", loc: "상태코드", val: "204" },
   ] },
-  { id: "TC-031", platform: "Web", name: "로그인 성공", suite: "로그인 / 인증", tags: "smoke,login", status: "승인", last: "PASS", level: "Low-Code", dataset: "계정 풀 ×3", hist: ["PASS", "PASS", "PASS", "PASS"], defects: 0, steps: [
+  { id: "TC-031", platform: "Web", name: "로그인 성공", suite: "로그인 / 인증", tags: "smoke,login", status: "승인", last: "PASS", level: "Low-Code", dataset: "accounts_10k", hist: ["PASS", "PASS", "PASS", "PASS"], defects: 0, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/login" },
     { act: "텍스트 입력", loc: "[data-testid=userid]", val: '"qa_user01"' },
     { act: "텍스트 입력", loc: "[data-testid=password]", val: '"********"' },
     { act: "요소 클릭", loc: "role=button[로그인]", val: "-" },
     { act: "검증", loc: "[data-testid=welcome]", val: 'text = "환영합니다"' },
   ] },
-  { id: "TC-021", platform: "Web", name: "회원가입 이메일 형식 검증", suite: "회원가입", tags: "signup", status: "승인", last: "PASS", level: "Low-Code", dataset: "이메일 ×6", hist: ["PASS", "PASS", "FAIL", "PASS"], defects: 0, steps: [
+  { id: "TC-021", platform: "Web", name: "회원가입 이메일 형식 검증", suite: "회원가입", tags: "signup", status: "승인", last: "PASS", level: "Low-Code", dataset: "signup_emails", hist: ["PASS", "PASS", "FAIL", "PASS"], defects: 0, steps: [
     { act: "브라우저 열기", loc: "url", val: "https://www.tworld.co.kr/signup" },
     { act: "텍스트 입력", loc: "[data-testid=email]", val: '"invalid-email"' },
     { act: "요소 클릭", loc: "role=button[다음]", val: "-" },

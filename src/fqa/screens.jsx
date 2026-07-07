@@ -11,6 +11,7 @@ import { Card, Badge, Btn, Seg, Field, Input, Select, Toast, useToast, PageToolb
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
 import { useApp } from "../common/context.js";
 import { VarRefInput } from "../common/VarRefInput.jsx";
+import { DatasetPicker } from "../common/DatasetPicker.jsx";
 const FQA_EVENTS = [
   { key: "commit", label: "커밋 / PR (GitLab)", desc: "커밋·PR마다 회귀 자동 실행", short: "커밋/PR",
     fields: [{ k: "repo", type: "readonly", label: "저장소", value: "대상·환경 연동에서 상속" }, { k: "branch", type: "text", label: "브랜치/ref 필터", value: "main, release/*" }, { k: "kind", type: "select", label: "이벤트", options: ["커밋 push", "PR open", "PR merge"] }] },
@@ -567,7 +568,7 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
           </Card>
           <Card className="p-3">
             <div className="mb-2 text-xs font-semibold text-slate-400">데이터셋 (데이터 드리븐)</div>
-            <Select value={dataset} onChange={(e) => setDataset(e.target.value)}><option value="">없음 (단일 실행)</option>{(datasets || []).map((d) => <option key={d.id} value={d.name}>{d.name} ({(d.rowCount != null ? d.rowCount : (d.rows || []).length).toLocaleString()}행)</option>)}</Select>
+            <DatasetPicker value={dataset} onChange={setDataset} noneLabel="없음 (단일 실행)" />
             {selDs ? <div className="mt-1.5 text-xs text-slate-500">컬럼 <span className="text-slate-300">{selDs.columns.join(", ")}</span> · 스텝에서 <span className="font-mono text-teal-400">{"${row.컬럼}"}</span>로 사용 · 행마다 반복{missingDsCols.length > 0 && <span className="text-amber-300"> · ⚠ 없는 컬럼: {missingDsCols.join(", ")}</span>}</div> : <div className="mt-1.5 text-xs text-slate-500">선택 시 데이터셋 행 수만큼 반복 실행됩니다.</div>}
           </Card>
           <Card className="p-3">

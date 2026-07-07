@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useApp } from "../common/context.js";
 import { VarRefInput } from "../common/VarRefInput.jsx";
+import { DatasetPicker } from "../common/DatasetPicker.jsx";
 import { Card, PageToolbar, Badge, Btn, Field, Input, Select, Toggle, Seg, Toast, useToast } from "../common/ui.jsx";
 import { Gauge, Plus, X, Save, Smartphone, Cpu, Wifi, Package, Upload, Link2, CheckCircle2, Globe, Monitor, Server, Zap, Activity, AlertTriangle, TrendingUp } from "lucide-react";
-import { NQA_SUBTYPES, NQA_PLATFORMS, NQA_PLAT_K, NQA_TIERS, NQA_TOOLS, NQA_TOOL_METRICS, NQA_NETWORKS, NQA_STARTS, NQA_THERMAL_LEVELS, NQA_PROVIDERS, NQA_DEV_STATUS, NQA_DEV_ST_K, NQA_CAP_LABELS, NQA_PROVIDER_CAPS, NQA_SCN_SOURCES, NQA_SCN_SRC_K, NQA_MARKERS, NQA_SCN_TEMPLATES, NQA_BROWSERS, NQA_VIEWPORTS, NQA_WEB_NET, NQA_CPU_THROTTLE, NQA_CACHE, NQA_PROTOCOLS, NQA_LOAD_ENVS, NQA_HTTP_METHODS, NQA_APM, NQA_LOADGEN, NQA_APM_AUTO, NQA_AUTH_TYPES, NQA_MAX_AGENTS, NQA_SERVER_TIERS, NQA_WORKLOAD_MODES, NQA_WORKLOAD_K, NQA_LOAD_UNITS, NQA_LOAD_SHAPES } from "./data.js";
+import { NQA_SUBTYPES, NQA_PLATFORMS, NQA_PLAT_K, NQA_TIERS, NQA_TOOLS, NQA_TOOL_METRICS, NQA_NETWORKS, NQA_STARTS, NQA_THERMAL_LEVELS, NQA_PROVIDERS, NQA_DEV_STATUS, NQA_DEV_ST_K, NQA_CAP_LABELS, NQA_PROVIDER_CAPS, NQA_SCN_SOURCES, NQA_SCN_SRC_K, NQA_MARKERS, NQA_SCN_TEMPLATES, NQA_BROWSERS, NQA_VIEWPORTS, NQA_WEB_NET, NQA_CPU_THROTTLE, NQA_CACHE, NQA_PROTOCOLS, NQA_LOAD_ENVS, NQA_HTTP_METHODS, NQA_APM, NQA_LOADGEN, NQA_APM_AUTO, NQA_AUTH_TYPES, NQA_MAX_AGENTS, NQA_SERVER_TIERS, NQA_WORKLOAD_MODES, NQA_WORKLOAD_K, NQA_LOAD_UNITS, NQA_LOAD_SHAPES, NQA_PLAN_TRIGGERS, NQA_BASELINE_MODES } from "./data.js";
 
 const NQA_META = {
   "nqa-dashboard": ["대시보드", "부하 KPI · SLA 위반 추이 · 대상별 처리량/지연 요약"],
@@ -128,7 +129,7 @@ export function NqaTargetScreen() {
             {auth.type && auth.type !== "없음" && auth.type !== "로그인 플로우" && <div className="text-xs text-slate-500">시크릿은 공통 <span className="text-slate-300">변수</span> 화면의 값을 <span className="font-mono text-teal-400">{"${키}"}</span>로 참조 · 실행 시 환경 값으로 치환됩니다. <span className="text-slate-600">러너가 해당 환경 변수에 접근 가능해야 함.</span></div>}
             {auth.type === "로그인 플로우" && <><Field label="로그인 엔드포인트"><Input value={auth.loginPath || ""} onChange={(e) => setCfg({ auth: { ...auth, loginPath: e.target.value } })} placeholder="/v1/auth/login" /></Field><div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">계정 자격증명은 아래 <span className="text-slate-300">데이터 피드</span>에서 VU별로 공급되고, 로그인 응답의 토큰은 <span className="text-slate-300">엔드포인트 응답 추출(상관)</span>으로 이어집니다.</div></>}
             <div className="border-t border-slate-800 pt-2 text-xs font-semibold text-slate-400">테스트 데이터</div>
-            <Field label="데이터셋" hint="공통 데이터셋 메뉴에서 관리 · 컬럼이 ${row.X} 매핑 기준"><Select value={auth.dataset || ""} onChange={(e) => setCfg({ auth: { ...auth, dataset: e.target.value } })}><option value="">선택 안 함</option>{(datasets || []).map((d) => <option key={d.id} value={d.name}>{d.name} ({(d.rowCount != null ? d.rowCount : (d.rows || []).length).toLocaleString()}행)</option>)}</Select></Field>
+            <Field label="데이터셋" hint="공통 데이터셋 메뉴에서 관리 · 컬럼이 ${row.X} 매핑 기준"><DatasetPicker value={auth.dataset || ""} onChange={(v) => setCfg({ auth: { ...auth, dataset: v } })} noneLabel="선택 안 함" /></Field>
             {selDataset && <div className="text-xs text-slate-500">컬럼: <span className="text-slate-300">{selDataset.columns.join(", ")}</span> · {(selDataset.rowCount != null ? selDataset.rowCount : selDataset.rows.length).toLocaleString()}행{selDataset.desc ? " · " + selDataset.desc : ""}</div>}
             {usedRowVars.length > 0 && <div className="text-xs text-slate-500">본문/헤더 참조: <span className="text-slate-300">{usedRowVars.join(", ")}</span>{!auth.dataset ? <span className="text-amber-300"> · ⚠ 데이터셋 미선택</span> : missingCols.length > 0 && <span className="text-amber-300"> · ⚠ 데이터셋에 없는 컬럼: {missingCols.join(", ")}</span>}</div>}
             <div className="flex items-center justify-between text-sm text-slate-300"><span>상관(correlation) 사용 <span className="text-xs text-slate-500">— 엔드포인트 응답 추출값을 다음 요청에 재사용</span></span><Toggle on={!!auth.correlate} onClick={() => setCfg({ auth: { ...auth, correlate: !auth.correlate } })} /></div>
@@ -433,6 +434,124 @@ export function NqaScenarioScreen() {
             <Field label="워크로드"><Seg options={NQA_WORKLOAD_MODES} value={nf.mode} onChange={(v) => setNf({ ...nf, mode: v })} /></Field>
             <Field label="부하 유형"><Select value={nf.shape} onChange={(e) => setNf({ ...nf, shape: e.target.value })}>{NQA_LOAD_SHAPES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</Select></Field>
             <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">{nf.mode === "순서 저니" ? "생성 후 대상 엔드포인트를 순서대로 배치합니다." : "대상의 엔드포인트 믹스를 그대로 사용합니다."}</div>
+            <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(false)}>취소</Btn><Btn kind="primary" icon={Plus} onClick={create}>생성</Btn></div>
+          </div>
+        </div>
+      )}
+      <Toast msg={msg} />
+    </div>
+  );
+}
+
+export function NqaPlanScreen() {
+  const { nqaPlans, addNqaPlan, updateNqaPlan, removeNqaPlan, nqaScenarios, nqaSystems } = useApp();
+  const [msg, flash] = useToast();
+  const list = nqaPlans || [];
+  const scns = nqaScenarios || [];
+  const systems = nqaSystems || [];
+  const [sel, setSel] = useState(0);
+  const pl = list[sel] || list[0] || {};
+  const [draft, setDraft] = useState({});
+  const cfg = { ...pl, ...draft };
+  const dirty = Object.keys(draft).length > 0;
+  const setPlan = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const setSla = (patch) => setPlan({ sla: { ...(cfg.sla || {}), ...patch } });
+  const setBase = (patch) => setPlan({ baseline: { ...(cfg.baseline || {}), ...patch } });
+  const scn = scns.find((s) => s.id === cfg.scenarioId) || {};
+  const sut = systems.find((s) => s.id === scn.sutId) || {};
+  const sla = cfg.sla || {};
+  const base = cfg.baseline || {};
+  const num = (v) => (v === "" || v == null ? "" : Number(v));
+  const saveCfg = () => { if (!cfg.scenarioId) { flash("측정 시나리오를 선택하세요"); return; } updateNqaPlan(pl.id, draft); setDraft({}); flash("측정 계획 저장됨"); };
+  const guardSwitch = (fn) => { if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setDraft({}); fn(); };
+  useEffect(() => { setDraft({}); }, [pl.id]);
+  const choose = (i) => guardSwitch(() => setSel(i));
+  const [modal, setModal] = useState(false);
+  const [nf, setNf] = useState({ name: "", scenarioId: 0 });
+  const openModal = () => { setNf({ name: "", scenarioId: (scns[0] || {}).id || 0 }); setModal(true); };
+  const create = () => {
+    if (!nf.scenarioId) { flash("측정 시나리오를 선택하세요"); return; }
+    const s0 = scns.find((s) => s.id === nf.scenarioId) || {};
+    const name = nf.name.trim() || (s0.name || "부하") + " 계획";
+    const id = Math.max(0, ...list.map((x) => x.id)) + 1;
+    const np = { id, name, scenarioId: nf.scenarioId, status: "초안", sla: { p95: 2000, p99: 3000, errRate: 1.0, minRps: 500 }, baseline: { mode: "없음", runId: "", tolerance: 10 }, trigger: "수동 실행" };
+    guardSwitch(() => { addNqaPlan(np); setSel(list.length); setModal(false); flash(name + " 생성 (초안)"); });
+  };
+  const delPlan = (i, p) => { if (list.length <= 1) { flash("최소 1개 계획은 유지해야 합니다"); return; } if (!window.confirm(p.name + " 계획을 삭제할까요?")) return; guardSwitch(() => { removeNqaPlan(p.id); setSel(0); flash(p.name + " 삭제됨"); }); };
+  if (!list.length) return <div className="p-8 text-center text-sm text-slate-500">측정 계획이 없습니다.</div>;
+  const workloadTxt = scn.id ? (scn.mode + " · " + scn.shape + " · 피크 " + scn.peak + " " + ((scn.unit || "").indexOf("VU") >= 0 ? "VU" : "RPS")) : "";
+  return (
+    <div className="space-y-4">
+      <PageToolbar desc="대상 × 시나리오 + SLA 판정 임계(합격/불합격) + baseline 대비 — 계획이 아우름" />
+      <SubSwitch />
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-3 space-y-3">
+          <Btn kind="primary" icon={Plus} className="w-full" onClick={openModal}>새 계획</Btn>
+          {list.map((p, i) => {
+            const ps = scns.find((s) => s.id === p.scenarioId) || {};
+            const pu = systems.find((s) => s.id === ps.sutId) || {};
+            return (
+              <Card key={p.id} className={"cursor-pointer p-3 " + (sel === i ? "border-teal-500" : "hover:border-slate-700")}>
+                <div onClick={() => choose(i)}>
+                  <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-100">{p.name}</span><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "pass" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); delPlan(i, p); }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={12} /></button></div></div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1"><Badge kind="info">{pu.name || "대상 미지정"}</Badge></div>
+                  <div className="mt-1 text-xs text-slate-500">p95 ≤ {(p.sla || {}).p95}ms · 에러 ≤ {(p.sla || {}).errRate}%</div>
+                  <div className="mt-0.5 text-xs text-slate-600">수정 {p.updatedBy || "—"} · {p.updatedAt || "—"}</div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+        <div className="col-span-9 space-y-3">
+          <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5"><div className="w-64 shrink-0"><Input value={cfg.name || ""} onChange={(e) => setPlan({ name: e.target.value })} /></div><span className="shrink-0"><Badge kind="info">{sut.name || "대상 미지정"}</Badge></span></div>
+            <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{cfg.status === "활성" ? "활성" : "초안"}</span><Toggle on={cfg.status === "활성"} onClick={() => setPlan({ status: cfg.status === "활성" ? "초안" : "활성" })} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>계획 저장</Btn></div>
+          </Card>
+          <div className="text-xs text-slate-500">생성 <span className="text-slate-400">{pl.createdBy || "—"}</span> · {pl.createdAt || "—"} · 수정 <span className="text-slate-400">{pl.updatedBy || "—"}</span> · {pl.updatedAt || "—"}</div>
+
+          <Card className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Link2 size={15} className="text-teal-400" />대상 × 시나리오 <span className="text-xs font-normal text-slate-500">· 무엇을 얼마나 때릴지</span></div>
+            <Field label="측정 시나리오"><Select value={cfg.scenarioId || ""} onChange={(e) => setPlan({ scenarioId: Number(e.target.value) })}><option value="">선택하세요</option>{scns.map((s) => { const su = systems.find((x) => x.id === s.sutId) || {}; return <option key={s.id} value={s.id}>{s.name} · {su.name || "대상 미지정"}</option>; })}</Select></Field>
+            {scn.id ? (
+              <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">대상 <span className="text-slate-200">{sut.name}</span> · <span className="font-mono">{sut.baseUrl}</span><br />워크로드 <span className="text-slate-300">{workloadTxt}</span></div>
+            ) : <div className="rounded-lg border border-amber-800 bg-amber-950 px-2.5 py-1.5 text-xs text-amber-300">시나리오를 선택하면 대상·부하 형상이 계획에 반영됩니다.</div>}
+          </Card>
+
+          <Card className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Activity size={15} className="text-teal-400" />SLA 판정 임계 <span className="text-xs font-normal text-slate-500">· 합격/불합격 기준</span></div>
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="p95 응답 ≤ (ms)"><Input type="number" value={sla.p95 ?? ""} onChange={(e) => setSla({ p95: num(e.target.value) })} /></Field>
+              <Field label="p99 응답 ≤ (ms)"><Input type="number" value={sla.p99 ?? ""} onChange={(e) => setSla({ p99: num(e.target.value) })} /></Field>
+              <Field label="에러율 ≤ (%)"><Input type="number" value={sla.errRate ?? ""} onChange={(e) => setSla({ errRate: num(e.target.value) })} /></Field>
+              <Field label="최소 처리량 ≥ (RPS)"><Input type="number" value={sla.minRps ?? ""} onChange={(e) => setSla({ minRps: num(e.target.value) })} /></Field>
+            </div>
+            <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">실행 결과가 위 임계를 <span className="text-slate-200">모두 만족하면 합격</span>, 하나라도 벗어나면 불합격으로 판정합니다. ＊ 대상·환경의 자동 중단(가드레일)과는 별개 — 그건 실행을 멈추는 안전장치, 여기는 합격 판정 기준입니다.</div>
+          </Card>
+
+          <Card className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><TrendingUp size={15} className="text-teal-400" />baseline 대비 <span className="text-xs font-normal text-slate-500">· 성능 회귀 판정</span></div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="기준(baseline)"><Select value={base.mode || "없음"} onChange={(e) => setBase({ mode: e.target.value })}>{NQA_BASELINE_MODES.map((m) => <option key={m}>{m}</option>)}</Select></Field>
+              {base.mode === "고정 회차" && <Field label="기준 회차 ID"><Input value={base.runId || ""} onChange={(e) => setBase({ runId: e.target.value })} placeholder="RUN-2026-0612-03" /></Field>}
+              {base.mode !== "없음" && <Field label="허용 저하 (p95 +%)"><Input type="number" value={base.tolerance ?? ""} onChange={(e) => setBase({ tolerance: num(e.target.value) })} /></Field>}
+            </div>
+            <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">{base.mode === "없음" ? "회귀 판정 없이 SLA 임계만으로 합격/불합격을 정합니다." : "이번 회차 p95가 기준 대비 " + (base.tolerance || 0) + "% 이내면 통과, 초과하면 성능 회귀로 표시합니다."}</div>
+          </Card>
+
+          <Card className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Zap size={15} className="text-teal-400" />실행 트리거</div>
+            <Field label="언제 실행"><div style={{ maxWidth: 240 }}><Select value={cfg.trigger || "수동 실행"} onChange={(e) => setPlan({ trigger: e.target.value })}>{NQA_PLAN_TRIGGERS.map((t) => <option key={t}>{t}</option>)}</Select></div></Field>
+            <div className="text-xs text-slate-500">운영 환경 부하 차단 등 가드레일은 대상·환경 설정을 그대로 따릅니다. 트리거는 이 계획을 언제 큐에 넣을지만 정합니다.</div>
+          </Card>
+        </div>
+      </div>
+      {modal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4" onClick={() => setModal(false)}>
+          <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-semibold text-slate-100">새 측정 계획</div>
+            <Field label="이름 (비우면 자동)"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="계획 이름" /></Field>
+            <Field label="측정 시나리오"><Select value={nf.scenarioId || ""} onChange={(e) => setNf({ ...nf, scenarioId: Number(e.target.value) })}><option value="">선택하세요</option>{scns.map((s) => { const su = systems.find((x) => x.id === s.sutId) || {}; return <option key={s.id} value={s.id}>{s.name} · {su.name || "대상 미지정"}</option>; })}</Select></Field>
+            <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">SLA 임계·baseline은 생성 후 기본값으로 채워지며, 상세에서 조정합니다.</div>
             <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(false)}>취소</Btn><Btn kind="primary" icon={Plus} onClick={create}>생성</Btn></div>
           </div>
         </div>
