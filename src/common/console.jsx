@@ -10,19 +10,24 @@ import { useApp } from "./context.js";
 import { C, KIND } from "./theme.js";
 import { Badge, Card, Btn, Field, Input, Select, PageToolbar, EmptyState, SearchInput } from "./ui.jsx";
 
+// 도메인별 사용량 — LQA(평가·토큰), FQA(기능 실행), NQA(부하 실행·부하생성기 워커 시간)
 const INIT_USAGE = [
-  { tenant: "t1", evals: 142, calls: 18400, tokensM: 12.4, cost: 1840000 },
-  { tenant: "t2", evals: 38, calls: 4200, tokensM: 2.8, cost: 420000 },
-  { tenant: "t3", evals: 6, calls: 540, tokensM: 0.3, cost: 21000 },
+  { tenant: "t1", lqaEvals: 142, lqaTokensM: 12.4, fqaRuns: 86, nqaRuns: 14, nqaWorkerHrs: 38, cost: 1980000 },
+  { tenant: "t2", lqaEvals: 38, lqaTokensM: 2.8, fqaRuns: 22, nqaRuns: 3, nqaWorkerHrs: 6, cost: 462000 },
+  { tenant: "t3", lqaEvals: 6, lqaTokensM: 0.3, fqaRuns: 4, nqaRuns: 0, nqaWorkerHrs: 0, cost: 21000 },
 ];
 
 const INIT_AUDIT = [
+  { t: "2026-06-11 21:04", actor: "이민준", tenant: "t1", action: "부하 측정 실행", target: "로그인 순차 부하 · 용량 점검 (RUN-0611)" },
+  { t: "2026-06-11 21:12", actor: "system", tenant: "t1", action: "결함 등록", target: "DEF-2001 (SLA p95 초과)" },
   { t: "2026-06-11 14:36", actor: "이민준", tenant: "t1", action: "평가 실행", target: "요금/청구 평가 (48 TC)" },
   { t: "2026-06-11 14:36", actor: "system", tenant: "t1", action: "결함 등록", target: "DEF-1842 (PII)" },
   { t: "2026-06-11 11:20", actor: "김지훈", tenant: "t1", action: "권한 변경", target: "QA엔지니어 · 챗봇연결 조회→허용" },
   { t: "2026-06-10 17:02", actor: "admin", tenant: "-", action: "모델 등록", target: "Gemini 2.0 Flash" },
+  { t: "2026-06-10 15:48", actor: "최서연", tenant: "t1", action: "기능 실행", target: "회원가입 스위트 (32 TC)" },
   { t: "2026-06-10 09:15", actor: "admin", tenant: "t3", action: "테넌트 정지", target: "데모 조직" },
   { t: "2026-06-09 16:40", actor: "박지영", tenant: "t2", action: "멤버 초대", target: "newuser@skt.com" },
+  { t: "2026-06-09 13:30", actor: "이민준", tenant: "t1", action: "측정 시나리오 생성", target: "T월드 조회 혼합 부하" },
   { t: "2026-06-09 10:05", actor: "최서연", tenant: "t1", action: "평가 계획 생성", target: "개통/부가서비스 안내" },
   { t: "2026-06-08 18:22", actor: "admin", tenant: "-", action: "사용자 차단", target: "오현태 (demo.com)" },
 ];
@@ -73,13 +78,13 @@ function UsersConsole() {
 function UsageConsole() {
   const { tenants } = useApp();
   const tName = (id) => (tenants.find((t) => t.id === id) || {}).name || id;
-  const total = INIT_USAGE.reduce((a, u) => ({ calls: a.calls + u.calls, tokensM: a.tokensM + u.tokensM, cost: a.cost + u.cost, evals: a.evals + u.evals }), { calls: 0, tokensM: 0, cost: 0, evals: 0 });
+  const total = INIT_USAGE.reduce((a, u) => ({ lqaEvals: a.lqaEvals + u.lqaEvals, lqaTokensM: a.lqaTokensM + u.lqaTokensM, fqaRuns: a.fqaRuns + u.fqaRuns, nqaRuns: a.nqaRuns + u.nqaRuns, nqaWorkerHrs: a.nqaWorkerHrs + u.nqaWorkerHrs, cost: a.cost + u.cost }), { lqaEvals: 0, lqaTokensM: 0, fqaRuns: 0, nqaRuns: 0, nqaWorkerHrs: 0, cost: 0 });
   const won = (n) => "₩" + n.toLocaleString();
   const chartData = INIT_USAGE.map((u) => ({ name: tName(u.tenant), cost: Math.round(u.cost / 10000) }));
-  const stat = [["평가 수행", total.evals.toLocaleString(), "text-slate-100"], ["LLM 호출", total.calls.toLocaleString(), "text-slate-100"], ["토큰", total.tokensM.toFixed(1) + "M", "text-slate-100"], ["총 비용", won(total.cost), "text-teal-400"]];
+  const stat = [["LQA 평가", total.lqaEvals.toLocaleString(), "text-slate-100"], ["FQA 기능 실행", total.fqaRuns.toLocaleString(), "text-slate-100"], ["NQA 부하 실행", total.nqaRuns.toLocaleString(), "text-slate-100"], ["총 비용", won(total.cost), "text-teal-400"]];
   return (
     <div className="space-y-4">
-      <PageToolbar desc="테넌트별 AI 모델 사용량·과금액 집계 (월별)">
+      <PageToolbar desc="테넌트별 도메인 사용량·과금액 집계 (월별) · LQA 평가/토큰 · FQA 기능 실행 · NQA 부하 실행/워커 시간">
         <select className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-300 text-xs"><option>2026-06</option><option>2026-05</option><option>2026-04</option></select>
       </PageToolbar>
       <div className="grid grid-cols-4 gap-3">{stat.map((x) => (<Card key={x[0]} className="p-4"><div className="text-xs text-slate-400">{x[0]}</div><div className={"mt-1 text-2xl font-bold " + x[2]}>{x[1]}</div></Card>))}</div>
@@ -91,23 +96,24 @@ function UsageConsole() {
       </Card>
       <Card>
         <table className="w-full text-sm">
-          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">테넌트</th><th className="font-medium">평가 수행</th><th className="font-medium">LLM 호출</th><th className="font-medium">토큰</th><th className="font-medium">비중</th><th className="font-medium text-right">과금액</th></tr></thead>
+          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">테넌트</th><th className="font-medium">LQA 평가</th><th className="font-medium">LQA 토큰</th><th className="font-medium">FQA 실행</th><th className="font-medium">NQA 부하</th><th className="font-medium">NQA 워커(h)</th><th className="font-medium text-right">과금액</th></tr></thead>
           <tbody className="text-slate-300">
             {INIT_USAGE.map((u) => (
               <tr key={u.tenant} className="border-b border-slate-800 hover:bg-slate-800">
                 <td className="py-3 px-4 font-medium text-slate-100">{tName(u.tenant)}</td>
-                <td>{u.evals.toLocaleString()}</td>
-                <td>{u.calls.toLocaleString()}</td>
-                <td>{u.tokensM.toFixed(1)}M</td>
-                <td>{Math.round((u.cost / total.cost) * 100)}%</td>
+                <td>{u.lqaEvals.toLocaleString()}</td>
+                <td>{u.lqaTokensM.toFixed(1)}M</td>
+                <td>{u.fqaRuns.toLocaleString()}</td>
+                <td>{u.nqaRuns.toLocaleString()}</td>
+                <td>{u.nqaWorkerHrs.toLocaleString()}</td>
                 <td className="text-right font-semibold text-slate-100">{won(u.cost)}</td>
               </tr>
             ))}
-            <tr className="bg-slate-800"><td className="py-2.5 px-4 font-bold text-slate-100">합계</td><td className="font-semibold">{total.evals.toLocaleString()}</td><td className="font-semibold">{total.calls.toLocaleString()}</td><td className="font-semibold">{total.tokensM.toFixed(1)}M</td><td>100%</td><td className="text-right font-bold text-teal-400">{won(total.cost)}</td></tr>
+            <tr className="bg-slate-800"><td className="py-2.5 px-4 font-bold text-slate-100">합계</td><td className="font-semibold">{total.lqaEvals.toLocaleString()}</td><td className="font-semibold">{total.lqaTokensM.toFixed(1)}M</td><td className="font-semibold">{total.fqaRuns.toLocaleString()}</td><td className="font-semibold">{total.nqaRuns.toLocaleString()}</td><td className="font-semibold">{total.nqaWorkerHrs.toLocaleString()}</td><td className="text-right font-bold text-teal-400">{won(total.cost)}</td></tr>
           </tbody>
         </table>
       </Card>
-      <div className="text-xs text-slate-500">＊ 과금액은 모델 단가 × 토큰 사용량 기준 추정치이며, 사용량 미터링(metering_event)에서 집계됩니다.</div>
+      <div className="text-xs text-slate-500">＊ 과금액은 LQA 모델 토큰 비용 + FQA 러너·NQA 부하생성기 컴퓨트 시간 기준 추정치이며, 사용량 미터링(metering_event)에서 집계됩니다.</div>
     </div>
   );
 }

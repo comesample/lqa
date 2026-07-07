@@ -1666,9 +1666,11 @@ export function MembersView() {
   const MENU_GROUPS = [
     { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge·Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
     { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "결과"] },
-    { id: "COM", label: "공통", menus: ["결함", "리포트·알림"] },
+    { id: "NQA", label: "비기능 QA", menus: ["대시보드", "대상·환경", "측정 시나리오", "측정 계획", "측정 실행", "실행 이력", "추이"] },
+    { id: "COM", label: "공통", menus: ["결함", "리포트·알림", "데이터셋", "변수"] },
   ];
-  const readOnlyForQA = new Set(["Judge·Prompt", "챗봇 연결", "대상·환경"]);
+  // QA 엔지니어 기본 조회: 설정성/민감 메뉴 + 부하 실행(위험 작업) + 변수(시크릿)
+  const readOnlyForQA = new Set(["Judge·Prompt", "챗봇 연결", "대상·환경", "측정 실행", "변수"]);
   const ROLES = ["조직관리자", "QA 엔지니어", "Viewer"];
   const [perm, setPerm] = useState(() => {
     const init = {};
