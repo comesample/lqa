@@ -3,12 +3,13 @@
 // 도메인(LQA/FQA/NQA) 목록 · 공통 네비 · 테넌트/사용자/모델 시드
 // lqa/data.js에서 분리(2026-07-01). App·콘솔이 import.
 // ============================================================
-import { Bug, Megaphone, UserCog, Braces } from "lucide-react";
+import { Bug, Megaphone, UserCog, Braces, Database } from "lucide-react";
 
 export const DOMAINS = [{ id: "LQA", label: "AI 품질", ready: true }, { id: "FQA", label: "기능 QA", ready: true }, { id: "NQA", label: "비기능 QA", ready: true }];
 export const COMMON_SECTIONS = [
   { group: "공통", items: [
     { id: "variables", label: "변수", icon: Braces },
+    { id: "datasets", label: "데이터셋", icon: Database },
     { id: "defects", label: "결함", icon: Bug },
     { id: "report", label: "리포트 · 알림", icon: Megaphone },
   ] },
@@ -21,6 +22,13 @@ export const INIT_VARIABLES = [
   { id: "v3", key: "dev_tworld_token", value: "eyJhbGciOiJIUzI1Ni-dev", secret: true, desc: "T월드 개발 API 토큰", createdAt: "2026-02-03 14:22", updatedAt: "2026-02-03 14:22" },
   { id: "v4", key: "stg_test_pw", value: "P@ssw0rd!23", secret: true, desc: "스테이징 테스트 계정 비밀번호", createdAt: "2026-03-15 10:00", updatedAt: "2026-05-02 16:40" },
   { id: "v5", key: "vip_account_id", value: "1000482", secret: false, desc: "VIP 시나리오 대표 계정", createdAt: "2026-01-10 09:15", updatedAt: "2026-04-11 13:30" },
+];
+
+/* 테스트 데이터셋 — 명명된 표 데이터. NQA 피드/FQA 데이터 드리븐이 이름으로 참조. */
+export const INIT_DATASETS = [
+  { id: "ds1", name: "accounts_10k", desc: "부하용 대량 로그인 계정", columns: ["phone", "pw"], rows: [{ phone: "01012340001", pw: "P@ss0001" }, { phone: "01012340002", pw: "P@ss0002" }, { phone: "01012340003", pw: "P@ss0003" }], rowCount: 10000, source: "업로드", createdAt: "2026-05-02 16:40", updatedAt: "2026-06-28 11:05" },
+  { id: "ds2", name: "signup_emails", desc: "회원가입 이메일 형식 케이스", columns: ["email", "expected"], rows: [{ email: "valid@tworld.co.kr", expected: "pass" }, { email: "invalid-email", expected: "fail" }, { email: "no@dot", expected: "fail" }], rowCount: 6, source: "인라인", createdAt: "2026-04-11 13:30", updatedAt: "2026-04-11 13:30" },
+  { id: "ds3", name: "plan_change_utterances", desc: "요금제 변경 발화 세트", columns: ["utterance", "golden"], rows: [{ utterance: "요금제 바꿔줘", golden: "나의 T월드에서 변경" }, { utterance: "요금제 변경 가능해?", golden: "당월 1회 변경 안내" }], rowCount: 24, source: "인라인", createdAt: "2026-03-15 10:00", updatedAt: "2026-05-20 09:12" },
 ];
 export const MEMBERS_ITEM = { id: "members", label: "조직 관리", icon: UserCog };
 export const INIT_TENANTS = [

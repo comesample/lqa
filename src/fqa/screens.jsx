@@ -524,7 +524,7 @@ export function FqaApiImportScreen({ onDone }) {
   );
 }
 export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
-  const { updateFqaCase, addFqaCase, fqaSuites, fqaCases, runnerConnected } = useApp();
+  const { updateFqaCase, addFqaCase, fqaSuites, fqaCases, runnerConnected, datasets } = useApp();
   const tcOf = (name) => fqaCases.filter((c) => c.suite === name).length;
   const [msg, flash] = useToast();
   const [status, setStatus] = useState(tc && tc.status ? tc.status : "검토중");
@@ -539,13 +539,18 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
   const [code, setCode] = useState(() => stepsToCode(initSteps, tc || { id: "TC-021", name: "회원가입 이메일 형식 검증" }));
   const [plat, setPlat] = useState("Web");
   const [suite, setSuite] = useState(tc ? tc.suite : ((fqaSuites[0] || {}).name || ""));
+  const [dataset, setDataset] = useState(tc ? (tc.dataset && tc.dataset !== "-" ? tc.dataset : "") : "");
   const [dragIdx, setDragIdx] = useState(null);
   const [codeOpen, setCodeOpen] = useState({});
   const toggleCode = (i) => setCodeOpen((m) => ({ ...m, [i]: !m[i] }));
   const reorder = (from, to) => { setSteps((prev) => { const arr = [...prev]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return arr; }); setCodeOpen({}); };
   const vi = LV.indexOf(view);
-  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, code: stepsToCode(initSteps, tc || {}), committed: ei, suite: tc ? tc.suite : ((fqaSuites[0] || {}).name || "") }));
-  const dirty = snap !== JSON.stringify({ steps, code, committed, suite });
+  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, code: stepsToCode(initSteps, tc || {}), committed: ei, suite: tc ? tc.suite : ((fqaSuites[0] || {}).name || ""), dataset: tc ? (tc.dataset && tc.dataset !== "-" ? tc.dataset : "") : "" }));
+  const dirty = snap !== JSON.stringify({ steps, code, committed, suite, dataset });
+  const selDs = (datasets || []).find((d) => d.name === dataset);
+  const dsCols = selDs ? selDs.columns : [];
+  const usedRowVars = [...new Set(steps.flatMap((s) => { const txt = (s.val || "") + " " + (s.loc || "") + " " + (s.code || ""); return (txt.match(/\$\{row\.([a-zA-Z0-9_]+)\}/g) || []).map((x) => x.replace(/\$\{row\.|\}/g, "")); }))];
+  const missingDsCols = usedRowVars.filter((v) => !dsCols.includes(v));
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
   const editable = vi === committed;
   const readonly = vi < committed;
@@ -559,6 +564,11 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
             <div className="mb-2 text-xs font-semibold text-slate-400">테스트 스위트</div>
             <Select value={suite} onChange={(e) => setSuite(e.target.value)}>{fqaSuites.filter((x) => (x.platform || "Web") === ((tc && tc.platform) || "Web")).map((sx) => <option key={sx.id} value={sx.name}>{sx.name} · {tcOf(sx.name)}건</option>)}</Select>
             <div className="mt-1.5 text-xs text-slate-500">이 케이스가 속한 스위트 (상단 &quot;저장&quot;으로 반영)</div>
+          </Card>
+          <Card className="p-3">
+            <div className="mb-2 text-xs font-semibold text-slate-400">데이터셋 (데이터 드리븐)</div>
+            <Select value={dataset} onChange={(e) => setDataset(e.target.value)}><option value="">없음 (단일 실행)</option>{(datasets || []).map((d) => <option key={d.id} value={d.name}>{d.name} ({(d.rowCount != null ? d.rowCount : (d.rows || []).length).toLocaleString()}행)</option>)}</Select>
+            {selDs ? <div className="mt-1.5 text-xs text-slate-500">컬럼 <span className="text-slate-300">{selDs.columns.join(", ")}</span> · 스텝에서 <span className="font-mono text-teal-400">{"${row.컬럼}"}</span>로 사용 · 행마다 반복{missingDsCols.length > 0 && <span className="text-amber-300"> · ⚠ 없는 컬럼: {missingDsCols.join(", ")}</span>}</div> : <div className="mt-1.5 text-xs text-slate-500">선택 시 데이터셋 행 수만큼 반복 실행됩니다.</div>}
           </Card>
           <Card className="p-3">
             <div className="mb-2 text-xs font-semibold text-slate-400">빠른 작업</div>
@@ -660,7 +670,7 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
                 {committed < 1 && view === LV[committed] && (
                   <Btn icon={ArrowRight} onClick={descend}>Full-Code로 변환 (eject)</Btn>
                 )}
-                <Btn kind="primary" icon={Save} disabled={!dirty} onClick={() => { const revert = status === "승인"; if (tc) updateFqaCase(tc.id, { steps, level: LV[committed], suite, ...(revert ? { status: "검토중" } : {}) }); if (revert) setStatus("검토중"); setSnap(JSON.stringify({ steps, code, committed, suite })); flash(revert ? "저장됨 · 승인 해제(검토중) — 재검토 필요" : "저장됨 · 검토중"); }}>{dirty ? "저장" : "저장됨"}</Btn>
+                <Btn kind="primary" icon={Save} disabled={!dirty} onClick={() => { const revert = status === "승인"; if (tc) updateFqaCase(tc.id, { steps, level: LV[committed], suite, dataset: dataset || "-", ...(revert ? { status: "검토중" } : {}) }); if (revert) setStatus("검토중"); setSnap(JSON.stringify({ steps, code, committed, suite, dataset })); flash(revert ? "저장됨 · 승인 해제(검토중) — 재검토 필요" : "저장됨 · 검토중"); }}>{dirty ? "저장" : "저장됨"}</Btn>
               </div>
             </div>
           </Card>
@@ -1469,6 +1479,7 @@ export function FqaCasesScreen() {
               <div><div className="text-slate-100">{open.name}</div><div className="mt-1.5 flex flex-wrap gap-1.5"><Badge kind={PLAT_K[open.platform || "Web"] || "info"}>{open.platform || "Web"}</Badge><Badge kind="info">{open.suite}</Badge><Badge kind={lvK2[open.level]}>{lvLabel(open)}</Badge><Badge kind={stK[open.status]}>{open.status}</Badge></div></div>
               <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400 space-y-0.5"><div>생성 <span className="text-slate-300">{open.createdBy || "—"}</span> · {open.createdAt || "—"}</div><div>수정 <span className="text-slate-300">{open.updatedBy || "—"}</span> · {open.updatedAt || "—"}</div></div>
               <div><div className="mb-1 text-xs text-slate-500">태그</div><div className="text-xs text-slate-400">{open.tags || "-"}</div></div>
+              <div><div className="mb-1 text-xs text-slate-500">데이터셋 (데이터 드리븐)</div><div className="text-xs text-slate-400">{open.dataset && open.dataset !== "-" ? open.dataset : "없음"}</div></div>
               <div>
                 <div className="mb-1 text-xs text-slate-500">최근 실행 이력</div>
                 {open.hist.length ? <div className="flex items-center gap-1.5">{open.hist.map((h, i) => <span key={i} className={"flex h-6 w-6 items-center justify-center rounded text-xs font-semibold " + (h === "PASS" ? "bg-emerald-900 text-emerald-300" : "bg-red-900 text-red-300")}>{h === "PASS" ? "P" : "F"}</span>)}<span className="ml-1 text-xs text-slate-500">(최근 4회)</span></div> : <div className="text-xs text-slate-500">실행 이력 없음 (검토중)</div>}
@@ -1564,10 +1575,11 @@ export function FqaTargetScreen() {
           ))}
         </div>
         <div className="col-span-9 space-y-3">
-          <Card className="flex items-center justify-between p-3">
-            <div className="flex items-center gap-2"><Input value={nameDraft ?? sys.name} onChange={(e) => setNameDraft(e.target.value)} className="w-52 text-base font-semibold" /><Badge kind="info">{sys.platform}</Badge><span className="text-xs text-slate-500">생성 {sys.createdBy || "—"} · 수정 {sys.updatedBy || "—"} ({sys.updatedAt || "—"})</span></div>
-            <div className="flex items-center gap-1.5">{sys.envs.map((e, i) => (<button key={e.env} onClick={() => guardSwitch(() => { setEnvIdx(i); setTest(null); })} className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (envIdx === i ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{e.env}{e.prod ? " ●" : ""}</button>))}<button onClick={() => { setEf({ env: "개발", url: "" }); setModal("env"); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800">+ 환경</button>{sys.envs.length > 1 && <button onClick={delEnv} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-500 hover:text-red-400" title="현재 환경 삭제">− 환경</button>}</div>
+          <Card className="flex items-center justify-between gap-3 p-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2"><Input value={nameDraft ?? sys.name} onChange={(e) => setNameDraft(e.target.value)} className="w-52 shrink-0 text-base font-semibold" /><span className="shrink-0"><Badge kind="info">{sys.platform}</Badge></span></div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">{sys.envs.map((e, i) => (<button key={e.env} onClick={() => guardSwitch(() => { setEnvIdx(i); setTest(null); })} className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (envIdx === i ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{e.env}{e.prod ? " ●" : ""}</button>))}<button onClick={() => { setEf({ env: "개발", url: "" }); setModal("env"); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800">+ 환경</button>{sys.envs.length > 1 && <button onClick={delEnv} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-500 hover:text-red-400" title="현재 환경 삭제">− 환경</button>}</div>
           </Card>
+          <div className="text-xs text-slate-500">생성 <span className="text-slate-400">{sys.createdBy || "—"}</span> · {sys.createdAt || "—"} · 수정 <span className="text-slate-400">{sys.updatedBy || "—"}</span> · {sys.updatedAt || "—"}</div>
 
           <Card className="p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">

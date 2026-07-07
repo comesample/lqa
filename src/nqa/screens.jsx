@@ -36,7 +36,7 @@ function SubSwitch() {
 /* ═══════════ 측정 대상·환경 (부하 · 서버 엔드포인트 + APM 관측) — 기능 QA 독립 ═══════════ */
 const M_LK = { GET: "info", POST: "pass", PUT: "warn", DELETE: "fail", PATCH: "warn" };
 export function NqaTargetScreen() {
-  const { nqaSystems, addNqaSystem, updateNqaSystem, removeNqaSystem, variables } = useApp();
+  const { nqaSystems, addNqaSystem, updateNqaSystem, removeNqaSystem, variables, datasets } = useApp();
   const [msg, flash] = useToast();
   const systems = nqaSystems || [];
   const [sel, setSel] = useState(0);
@@ -64,7 +64,8 @@ export function NqaTargetScreen() {
   const guard = cfg.guard || {};
   const servers = apm.servers || [];
   const wsum = endpoints.reduce((a, e) => a + (e.weight || 0), 0);
-  const feedCols = (auth.feedCols || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const selDataset = (datasets || []).find((d) => d.name === auth.dataset);
+  const feedCols = selDataset ? selDataset.columns : [];
   const usedRowVars = [...new Set(endpoints.flatMap((ep) => { const txt = (ep.body || "") + " " + ((ep.headers || []).map((h) => h.v).join(" ")); return (txt.match(/\$\{row\.([a-zA-Z0-9_]+)\}/g) || []).map((x) => x.replace(/\$\{row\.|\}/g, "")); }))];
   const missingCols = usedRowVars.filter((v) => !feedCols.includes(v));
   const producedVars = [...new Set(endpoints.flatMap((ep) => (ep.extracts || []).map((x) => x.var).filter(Boolean)))];
@@ -103,10 +104,11 @@ export function NqaTargetScreen() {
           ))}
         </div>
         <div className="col-span-9 space-y-3">
-          <Card className="flex items-center justify-between p-3">
-            <div className="flex items-center gap-2"><Server size={16} className="text-teal-400" /><Input value={cfg.name || ""} onChange={(e) => setCfg({ name: e.target.value })} className="w-52 text-base font-semibold" /><Badge kind="info">{sys.protocol}</Badge><Badge kind={cfg.env === "운영" ? "fail" : "info"}>{cfg.env}</Badge><span className="truncate text-xs text-slate-500">{cfg.baseUrl}</span><span className="shrink-0 text-xs text-slate-500">· 수정 {sys.updatedBy || "—"} · {sys.updatedAt || "—"}</span></div>
-            <div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={Link2} onClick={runCheck}>{chk && chk.s === "run" ? "확인 중…" : "연결 확인"}</Btn><Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
+          <Card className="flex items-center justify-between gap-3 p-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2"><Server size={16} className="shrink-0 text-teal-400" /><Input value={cfg.name || ""} onChange={(e) => setCfg({ name: e.target.value })} className="w-52 shrink-0 text-base font-semibold" /><span className="shrink-0"><Badge kind="info">{sys.protocol}</Badge></span><span className="shrink-0"><Badge kind={cfg.env === "운영" ? "fail" : "info"}>{cfg.env}</Badge></span><span className="truncate text-xs text-slate-500">{cfg.baseUrl}</span></div>
+            <div className="flex shrink-0 items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={Link2} onClick={runCheck}>{chk && chk.s === "run" ? "확인 중…" : "연결 확인"}</Btn><Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
           </Card>
+          <div className="text-xs text-slate-500">생성 <span className="text-slate-400">{sys.createdBy || "—"}</span> · {sys.createdAt || "—"} · 수정 <span className="text-slate-400">{sys.updatedBy || "—"}</span> · {sys.updatedAt || "—"}</div>
           {chk && chk.s !== "run" && <div className={"flex items-center gap-2 rounded-lg border px-3 py-2 text-xs " + (chk.s === "ok" ? "border-emerald-800 bg-emerald-950 text-emerald-300" : "border-amber-800 bg-amber-950 text-amber-300")}>{chk.s === "ok" && <CheckCircle2 size={13} />}{chk.m}</div>}
           <Card className="p-4 space-y-3">
             <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Server size={15} className="text-teal-400" />대상 시스템 (SUT)</div>
@@ -126,11 +128,9 @@ export function NqaTargetScreen() {
             {auth.type && auth.type !== "없음" && auth.type !== "로그인 플로우" && <div className="text-xs text-slate-500">시크릿은 공통 <span className="text-slate-300">변수</span> 화면의 값을 <span className="font-mono text-teal-400">{"${키}"}</span>로 참조 · 실행 시 환경 값으로 치환됩니다. <span className="text-slate-600">러너가 해당 환경 변수에 접근 가능해야 함.</span></div>}
             {auth.type === "로그인 플로우" && <><Field label="로그인 엔드포인트"><Input value={auth.loginPath || ""} onChange={(e) => setCfg({ auth: { ...auth, loginPath: e.target.value } })} placeholder="/v1/auth/login" /></Field><div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">계정 자격증명은 아래 <span className="text-slate-300">데이터 피드</span>에서 VU별로 공급되고, 로그인 응답의 토큰은 <span className="text-slate-300">엔드포인트 응답 추출(상관)</span>으로 이어집니다.</div></>}
             <div className="border-t border-slate-800 pt-2 text-xs font-semibold text-slate-400">테스트 데이터</div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="데이터 피드 (CSV 참조)" hint="민감 데이터는 저장소/시크릿 참조 권장"><Input value={auth.dataFeed || ""} onChange={(e) => setCfg({ auth: { ...auth, dataFeed: e.target.value } })} placeholder="accounts_10k.csv" /></Field>
-              <Field label="피드 컬럼" hint="쉼표 구분 · 본문의 ${row.X}와 매칭"><Input value={auth.feedCols || ""} onChange={(e) => setCfg({ auth: { ...auth, feedCols: e.target.value } })} placeholder="phone, pw" /></Field>
-            </div>
-            {usedRowVars.length > 0 && <div className="text-xs text-slate-500">본문/헤더 참조: <span className="text-slate-300">{usedRowVars.join(", ")}</span>{missingCols.length > 0 && <span className="text-amber-300"> · ⚠ 미선언 컬럼: {missingCols.join(", ")}</span>}</div>}
+            <Field label="데이터셋" hint="공통 데이터셋 메뉴에서 관리 · 컬럼이 ${row.X} 매핑 기준"><Select value={auth.dataset || ""} onChange={(e) => setCfg({ auth: { ...auth, dataset: e.target.value } })}><option value="">선택 안 함</option>{(datasets || []).map((d) => <option key={d.id} value={d.name}>{d.name} ({(d.rowCount != null ? d.rowCount : (d.rows || []).length).toLocaleString()}행)</option>)}</Select></Field>
+            {selDataset && <div className="text-xs text-slate-500">컬럼: <span className="text-slate-300">{selDataset.columns.join(", ")}</span> · {(selDataset.rowCount != null ? selDataset.rowCount : selDataset.rows.length).toLocaleString()}행{selDataset.desc ? " · " + selDataset.desc : ""}</div>}
+            {usedRowVars.length > 0 && <div className="text-xs text-slate-500">본문/헤더 참조: <span className="text-slate-300">{usedRowVars.join(", ")}</span>{!auth.dataset ? <span className="text-amber-300"> · ⚠ 데이터셋 미선택</span> : missingCols.length > 0 && <span className="text-amber-300"> · ⚠ 데이터셋에 없는 컬럼: {missingCols.join(", ")}</span>}</div>}
             <div className="flex items-center justify-between text-sm text-slate-300"><span>상관(correlation) 사용 <span className="text-xs text-slate-500">— 엔드포인트 응답 추출값을 다음 요청에 재사용</span></span><Toggle on={!!auth.correlate} onClick={() => setCfg({ auth: { ...auth, correlate: !auth.correlate } })} /></div>
             {auth.correlate && (usedCorrVars.length > 0 || producedVars.length > 0) && <div className="text-xs text-slate-500">요청 참조: <span className="text-slate-300">{usedCorrVars.length ? usedCorrVars.map((v) => "${" + v + "}").join(", ") : "없음"}</span> · 추출 생산: <span className="text-slate-300">{producedVars.length ? producedVars.join(", ") : "없음"}</span>{missingVars.length > 0 && <span className="text-amber-300"> · ⚠ 미정의 변수: {missingVars.map((v) => "${" + v + "}").join(", ")}</span>}</div>}
             {auth.correlate && missingVars.length === 0 && usedCorrVars.length > 0 && <div className="text-xs text-slate-500">변수 스코프: <span className="text-slate-400">VU별(세션 격리)</span> — 각 가상 사용자가 자신의 추출값을 사용</div>}

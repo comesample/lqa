@@ -559,9 +559,10 @@ function ChatbotDetail({ cb, onDirty }) {
   return (
     <div className="space-y-3">
       <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
-        <div className="flex items-center gap-2"><Input value={name} onChange={(e) => setName(e.target.value)} className="w-52 text-base font-semibold" /><Badge kind="info">{cb.env}</Badge><Badge kind={chK[cb.channel]}>{cb.channel}</Badge><Badge kind={stK[cb.status]}>{cb.status}</Badge><span className="text-xs text-slate-500">생성 {cb.createdBy || "—"} · 수정 {cb.updatedBy || "—"} ({cb.updatedAt || "—"})</span></div>
-        <div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={Link2} onClick={runTest}>{test && test.state === "running" ? "테스트 중…" : "연결 테스트"}</Btn><Btn kind="primary" icon={RefreshCw} onClick={save} disabled={!dirty}>설정 저장</Btn><button onClick={() => { if (window.confirm(cb.name + " (" + cb.env + ") 연결을 삭제할까요?")) { removeChatbot(cb.id); toast(cb.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={16} /></button></div>
+        <div className="flex min-w-0 flex-1 items-center gap-2"><Input value={name} onChange={(e) => setName(e.target.value)} className="w-52 shrink-0 text-base font-semibold" /><span className="shrink-0"><Badge kind="info">{cb.env}</Badge></span><span className="shrink-0"><Badge kind={chK[cb.channel]}>{cb.channel}</Badge></span><span className="shrink-0"><Badge kind={stK[cb.status]}>{cb.status}</Badge></span></div>
+        <div className="flex shrink-0 items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={Link2} onClick={runTest}>{test && test.state === "running" ? "테스트 중…" : "연결 테스트"}</Btn><Btn kind="primary" icon={RefreshCw} onClick={save} disabled={!dirty}>설정 저장</Btn><button onClick={() => { if (window.confirm(cb.name + " (" + cb.env + ") 연결을 삭제할까요?")) { removeChatbot(cb.id); toast(cb.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={16} /></button></div>
       </Card>
+      <div className="text-xs text-slate-500">생성 <span className="text-slate-400">{cb.createdBy || "—"}</span> · {cb.createdAt || "—"} · 수정 <span className="text-slate-400">{cb.updatedBy || "—"}</span> · {cb.updatedAt || "—"}</div>
 
       <div className="grid grid-cols-2 gap-4 items-start">
         <div className="space-y-3">
