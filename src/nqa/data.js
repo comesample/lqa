@@ -23,17 +23,13 @@ export const NQA_SUBTYPES = [
   { id: "perf", label: "클라이언트 성능", ready: false },
 ];
 
-/* 부하(v1) — 서버 엔드포인트 자극 + 서버 인프라 관측(APM). 기능 QA와 완전 독립. */
-export const NQA_PROTOCOLS = ["HTTP/HTTPS", "gRPC", "WebSocket"];
-export const NQA_LOAD_ENVS = ["개발", "스테이징", "운영"];
+/* 부하(v1) — 서버 엔드포인트 자극(HTTP). 기능 QA와 완전 독립. */
+export const NQA_PROTOCOLS = ["HTTP/HTTPS"];
+export const NQA_LOAD_ENVS = ["개발", "스테이징"];
 export const NQA_HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
-export const NQA_APM = ["Jennifer", "Datadog", "Pinpoint", "Scouter", "없음"];
-export const NQA_LOADGEN = ["JMeter", "nGrinder", "k6", "Gatling", "Locust"];
-export const NQA_APM_AUTO = { "Jennifer": false, "Datadog": true, "Pinpoint": false, "Scouter": false, "없음": false };
-export const NQA_AUTH_TYPES = ["Bearer 토큰", "API Key", "OAuth 2.0", "로그인 플로우", "없음"];
+export const NQA_AUTH_TYPES = ["Bearer 토큰", "API Key", "OAuth 2.0 (client credentials)", "없음"];
 // (외부 Secrets 백엔드 제거 — 시크릿은 공통 "변수" 화면에서 관리·참조)
 export const NQA_MAX_AGENTS = 20; // 테넌트 부하 생성 한도(쿼터) — 데모 상수. 실제는 테넌트/플랜별 admin 설정.
-export const NQA_SERVER_TIERS = ["WAS", "DB", "캐시", "메시지큐", "LB", "기타"];
 
 /* 측정 플랫폼 — 앱 우선(Android/iOS), Web은 고스트(준비중). FQA(웹 우선·앱 고스트)의 반전. */
 export const NQA_PLATFORMS = [
@@ -109,9 +105,7 @@ export const NQA_SCN_TEMPLATES = [
   { name: "검색 상호작용 (INP)", steps: [{ type: "flow", act: "페이지 이동", detail: "검색" }, { type: "flow", act: "입력", detail: "질의어" }, { type: "measure", metric: "INP" }, { type: "measure", metric: "TBT" }] },
   { name: "리스트 스크롤 (CLS)", steps: [{ type: "flow", act: "페이지 이동", detail: "요금제 리스트" }, { type: "flow", act: "스크롤", detail: "하단까지" }, { type: "measure", metric: "CLS" }] },
 ];
-/* 부하 시나리오 — 대상(SUT) 선택 + 워크로드(믹스 재사용/순서 저니) + 부하 형상. SLA 판정은 측정 계획. */
-export const NQA_WORKLOAD_MODES = ["믹스 재사용", "순서 저니"];
-export const NQA_WORKLOAD_K = { "믹스 재사용": "info", "순서 저니": "active" };
+/* 부하 시나리오 — 대상(SUT) 선택 + 워크로드(비율 혼합/순차 진행) + 부하 형상. SLA 판정은 측정 계획. */
 export const NQA_LOAD_UNITS = ["가상 사용자(VU)", "도착률(RPS)"];
 export const NQA_LOAD_SHAPES = [
   { id: "스테디", label: "스테디", hint: "일정 부하 유지 — 기준 성능 확인" },
@@ -120,23 +114,29 @@ export const NQA_LOAD_SHAPES = [
   { id: "스트레스", label: "스트레스(계단)", hint: "계단식 증가 — 포화점까지" },
   { id: "소크", label: "소크(내구)", hint: "장시간 유지 — 누수·성능 저하" },
 ];
-/* 부하 시나리오 시드 — 대상(nqaSystems)과 sutId로 연결. 믹스 재사용은 대상 가중치 사용, 순서 저니는 endpoints 순서 참조. */
+/* 부하 시나리오 시드 — 대상(nqaSystems)과 sutId로 연결. 비율 혼합은 endpoints 가중치 사용, 순차 진행은 journey 순서 참조. 워크로드는 상관 유무로 자동 판정(forceOrder로 수동 순차). */
 export const INIT_NQA_SCENARIOS = [
-  { id: 1, name: "T월드 로그인 저니 부하", sutId: 1, mode: "순서 저니", unit: "가상 사용자(VU)", shape: "램프업", peak: 800, rampUp: 5, sustain: 20, rampDown: 3, thinkTime: 3, status: "활성", journey: [{ method: "POST", path: "/v1/auth/login" }, { method: "GET", path: "/v1/users/{id}" }, { method: "GET", path: "/v1/plans" }] },
-  { id: 2, name: "T월드 조회 믹스 부하", sutId: 1, mode: "믹스 재사용", unit: "도착률(RPS)", shape: "스테디", peak: 1500, rampUp: 3, sustain: 15, rampDown: 2, thinkTime: 1, status: "초안", journey: [] },
-  { id: 3, name: "T다이렉트 스파이크", sutId: 2, mode: "믹스 재사용", unit: "가상 사용자(VU)", shape: "스파이크", peak: 400, rampUp: 1, sustain: 5, rampDown: 1, thinkTime: 2, status: "초안", journey: [] },
+  { id: 1, name: "T월드 로그인 순차 부하", sutId: 1, unit: "가상 사용자(VU)", shape: "램프업", peak: 800, rampUp: 5, sustain: 20, rampDown: 3, thinkTime: 3, status: "활성", dataset: "accounts_10k", forceOrder: false,endpoints: [{ method: "GET", path: "/v1/plans", weight: 50, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v1/auth/login", weight: 30, headers: [{ k: "Content-Type", v: "application/json" }], body: '{ "phone": "${row.phone}", "pw": "${row.pw}" }', expect: 200, extracts: [{ var: "token", path: "$.data.token" }] }, { method: "GET", path: "/v1/users/{id}", weight: 20, headers: [{ k: "Authorization", v: "Bearer ${token}" }], body: "", expect: 200, extracts: [] }], journey: [{ method: "POST", path: "/v1/auth/login" }, { method: "GET", path: "/v1/users/{id}" }, { method: "GET", path: "/v1/plans" }] },
+  { id: 2, name: "T월드 조회 혼합 부하", sutId: 1, unit: "도착률(RPS)", shape: "스테디", peak: 1500, rampUp: 3, sustain: 15, rampDown: 2, thinkTime: 1, status: "초안", dataset: "", forceOrder: false,endpoints: [{ method: "GET", path: "/v1/plans", weight: 60, headers: [], body: "", expect: 200, extracts: [] }, { method: "GET", path: "/v1/users/{id}", weight: 40, headers: [{ k: "Authorization", v: "Bearer ${stg_tworld_token}" }], body: "", expect: 200, extracts: [] }], journey: [] },
+  { id: 3, name: "T다이렉트 스파이크", sutId: 2, unit: "가상 사용자(VU)", shape: "스파이크", peak: 400, rampUp: 1, sustain: 5, rampDown: 1, thinkTime: 2, status: "초안", dataset: "", forceOrder: false,endpoints: [{ method: "GET", path: "/v2/products", weight: 70, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v2/order", weight: 30, headers: [], body: "", expect: 200, extracts: [] }], journey: [] },
 ];
 
-/* 측정 계획 — 측정 시나리오 참조 + SLA 판정 임계(합격/불합격) + baseline 대비(회귀) + 실행 트리거. 대상(SUT)은 시나리오에서 파생. */
-export const NQA_PLAN_TRIGGERS = ["수동 실행", "야간 배치", "릴리스 후 자동"];
-export const NQA_BASELINE_MODES = ["없음", "직전 통과 회차", "고정 회차"];
+/* 측정 계획 — 측정 시나리오 참조 + SLA 판정 임계(합격/불합격). 대상(SUT)은 시나리오에서 파생. 실행 시점(즉시/예약)은 측정 실행에서, 회귀(baseline)는 성능 추이에서 판단. 판정은 워밍업(초기 램프업)을 제외하고 목표 부하 도달 이후 구간에서 집계(고정). */
 export const INIT_NQA_PLANS = [
-  { id: 1, name: "로그인 저니 부하 · 릴리스 게이트", scenarioId: 1, status: "활성", sla: { p95: 1500, p99: 2500, errRate: 1.0, minRps: 600 }, baseline: { mode: "직전 통과 회차", runId: "", tolerance: 10 }, trigger: "릴리스 후 자동" },
-  { id: 2, name: "조회 믹스 기준 성능", scenarioId: 2, status: "초안", sla: { p95: 800, p99: 1500, errRate: 0.5, minRps: 1200 }, baseline: { mode: "없음", runId: "", tolerance: 10 }, trigger: "수동 실행" },
+  { id: 1, name: "로그인 순차 부하 · 용량 점검", scenarioId: 1, status: "활성", sla: { p95: 1500, p99: 2500, errRate: 1.0, minRps: 600 } },
+  { id: 2, name: "조회 혼합 기준 성능", scenarioId: 2, status: "초안", sla: { p95: 800, p99: 1500, errRate: 0.5, minRps: 1200 } },
+];
+
+/* 측정 실행 — 계획을 1회 돌린 실행 인스턴스(회차) + 결과 + SLA 판정. 이력·추이가 파생. */
+export const INIT_NQA_RUNS = [
+  { id: "RUN-0613-03", planId: 1, no: 3, startedAt: "2026-06-13 02:10", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 720, errRate: 0.6, p50: 240, p95: 1420, p99: 2180, throughput: 718, totalReq: 1206000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0606-02", planId: 1, no: 2, startedAt: "2026-06-06 02:10", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 650, errRate: 1.3, p50: 300, p95: 1680, p99: 2620, throughput: 642, totalReq: 1078000, verdict: "불합격", breaches: ["p95 1680 > 1500ms", "에러율 1.3 > 1.0%"] } },
+  { id: "RUN-0530-01", planId: 1, no: 1, startedAt: "2026-05-30 02:10", durationSec: 1680, status: "완료", by: "이민준", result: { rps: 700, errRate: 0.5, p50: 235, p95: 1350, p99: 2050, throughput: 699, totalReq: 1175000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0612-01", planId: 2, no: 1, startedAt: "2026-06-12 22:00", durationSec: 900, status: "완료", by: "이민준", result: { rps: 1350, errRate: 0.3, p50: 120, p95: 760, p99: 1180, throughput: 1342, totalReq: 1207800, verdict: "합격", breaches: [] } },
 ];
 
 /* 측정 대상(앱) 시드 — 앱 + 단말 인벤토리 + 측정 도구 + 측정 조건. 단말×조건 조합은 측정 계획에서. */
 export const INIT_NQA_SYSTEMS = [
-  { id: 1, name: "T월드 API 부하", subtype: "load", baseUrl: "https://api-stg.tworld.co.kr", protocol: "HTTP/HTTPS", env: "스테이징", endpoints: [{ method: "GET", path: "/v1/plans", weight: 50, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v1/auth/login", weight: 30, headers: [{ k: "Content-Type", v: "application/json" }], body: '{ "phone": "${row.phone}", "pw": "${row.pw}" }', expect: 200, extracts: [{ var: "token", path: "$.data.token" }] }, { method: "GET", path: "/v1/users/{id}", weight: 20, headers: [{ k: "Authorization", v: "Bearer ${token}" }], body: "", expect: 200, extracts: [] }], apm: { provider: "Jennifer", servers: [{ name: "was-01", tier: "WAS" }, { name: "was-02", tier: "WAS" }, { name: "tworld-db-01", tier: "DB" }] }, loadgen: { tool: "JMeter", agents: 3 }, auth: { type: "로그인 플로우", loginPath: "/v1/auth/login", ref: "${stg_tworld_token}", dataset: "accounts_10k", correlate: true }, guard: { blockProd: true, approval: false, maxRps: 2000, maxVu: 1000, maxDur: 30, autoErr: 5, autoP95: 2000, autoCpu: 90, autoMem: 85 } },
-  { id: 2, name: "T다이렉트 API 부하", subtype: "load", baseUrl: "https://api-stg.direct.tworld.co.kr", protocol: "HTTP/HTTPS", env: "스테이징", endpoints: [{ method: "GET", path: "/v2/products", weight: 70 }, { method: "POST", path: "/v2/order", weight: 30 }], apm: { provider: "Datadog", servers: [{ name: "direct-api-01", tier: "WAS" }] }, loadgen: { tool: "JMeter", agents: 1 }, auth: { type: "Bearer 토큰", loginPath: "", ref: "${stg_tworld_token}", dataset: "", correlate: false }, guard: { blockProd: true, approval: true, maxRps: 800, maxVu: 400, maxDur: 20, autoErr: 3, autoP95: 1500, autoCpu: 85, autoMem: 80 } },
+  { id: 1, name: "T월드 API 부하", subtype: "load", baseUrl: "https://api-stg.tworld.co.kr", protocol: "HTTP/HTTPS", env: "스테이징", loadgen: { tool: "JMeter", agents: 3 }, auth: { type: "없음" } },
+  { id: 2, name: "T다이렉트 API 부하", subtype: "load", baseUrl: "https://api-stg.direct.tworld.co.kr", protocol: "HTTP/HTTPS", env: "스테이징", loadgen: { tool: "JMeter", agents: 1 }, auth: { type: "Bearer 토큰", ref: "${stg_tworld_token}" } },
 ];
