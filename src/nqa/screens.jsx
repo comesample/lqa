@@ -352,7 +352,7 @@ export function NqaScenarioScreen() {
         </div>
         <div className="col-span-9 space-y-3">
           <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
-            <div className="flex items-center gap-2"><Input value={cfg.name || ""} onChange={(e) => setScn({ name: e.target.value })} className="w-64" /><Badge kind="info">{sut.name || "대상 미지정"}</Badge><Badge kind={NQA_WORKLOAD_K[cfg.mode] || "info"}>{cfg.mode}</Badge></div>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5"><div className="w-64 shrink-0"><Input value={cfg.name || ""} onChange={(e) => setScn({ name: e.target.value })} /></div><span className="shrink-0"><Badge kind="info">{sut.name || "대상 미지정"}</Badge></span><span className="shrink-0"><Badge kind={NQA_WORKLOAD_K[cfg.mode] || "info"}>{cfg.mode}</Badge></span></div>
             <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{cfg.status === "활성" ? "활성" : "초안"}</span><Toggle on={cfg.status === "활성"} onClick={() => setScn({ status: cfg.status === "활성" ? "초안" : "활성" })} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>시나리오 저장</Btn></div>
           </Card>
 

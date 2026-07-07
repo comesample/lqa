@@ -1583,7 +1583,7 @@ export function FqaTargetScreen() {
 
           <Card className="p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-3 text-sm"><Input value={cfg.url || ""} onChange={(e) => setEnvCfg({ url: e.target.value })} placeholder={isApi ? "https://api-stg.tworld.co.kr" : "https://stg.tworld.co.kr"} className="w-72 font-mono text-xs" title="Base URL · 변경 후 설정 저장" /><Badge kind={stK[env.status]}>{env.status}</Badge><span className="text-xs text-slate-500">빌드 {env.ver}</span></div>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 text-sm"><Input value={cfg.url || ""} onChange={(e) => setEnvCfg({ url: e.target.value })} placeholder={isApi ? "https://api-stg.tworld.co.kr" : "https://stg.tworld.co.kr"} className="w-72 shrink-0 font-mono text-xs" title="Base URL · 변경 후 설정 저장" /><span className="shrink-0"><Badge kind={stK[env.status]}>{env.status}</Badge></span><span className="shrink-0 whitespace-nowrap text-xs text-slate-500">빌드 {env.ver}</span></div>
               <div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={RefreshCw} onClick={runTest}>{test && test.s === "run" ? "테스트 중…" : "연결 테스트"}</Btn><Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
             </div>
             {test && test.s === "ok" && <div className="mt-2 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />{test.m}</div>}
