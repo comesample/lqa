@@ -105,7 +105,7 @@ export function NqaTargetScreen() {
         </div>
         <div className="col-span-9 space-y-3">
           <Card className="flex items-center justify-between gap-3 p-3">
-            <div className="flex min-w-0 flex-1 items-center gap-2"><Server size={16} className="shrink-0 text-teal-400" /><Input value={cfg.name || ""} onChange={(e) => setCfg({ name: e.target.value })} className="w-52 shrink-0 text-base font-semibold" /><span className="shrink-0"><Badge kind="info">{sys.protocol}</Badge></span><span className="shrink-0"><Badge kind={cfg.env === "운영" ? "fail" : "info"}>{cfg.env}</Badge></span><span className="truncate text-xs text-slate-500">{cfg.baseUrl}</span></div>
+            <div className="flex min-w-0 flex-1 items-center gap-2"><Server size={16} className="shrink-0 text-teal-400" /><div className="w-56 shrink-0"><Input value={cfg.name || ""} onChange={(e) => setCfg({ name: e.target.value })} className="text-base font-semibold" /></div><span className="shrink-0"><Badge kind="info">{sys.protocol}</Badge></span><span className="shrink-0"><Badge kind={cfg.env === "운영" ? "fail" : "info"}>{cfg.env}</Badge></span><span className="truncate text-xs text-slate-500">{cfg.baseUrl}</span></div>
             <div className="flex shrink-0 items-center gap-2">{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn icon={Link2} onClick={runCheck}>{chk && chk.s === "run" ? "확인 중…" : "연결 확인"}</Btn><Btn kind="primary" icon={Save} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
           </Card>
           <div className="text-xs text-slate-500">생성 <span className="text-slate-400">{sys.createdBy || "—"}</span> · {sys.createdAt || "—"} · 수정 <span className="text-slate-400">{sys.updatedBy || "—"}</span> · {sys.updatedAt || "—"}</div>
