@@ -125,7 +125,7 @@ export const INIT_FQA_SYSTEMS = [
 
 
 export const INIT_FQA_RUNS = [
-  { id: "FRUN-503", platform: "API", name: "API 스모크", plan: "API 스모크 (스테이징)", suite: "API 연동", brow: "", trig: "CI", by: "CI/CD Bot", status: "완료", prog: 100, progt: "5/5", dur: "0분 9초", at: "오늘 10:30", total: 5, pass: 4, fail: 1, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-503", platform: "API", name: "API 스모크", plan: "API 스모크 (스테이징)", suite: "API 연동", brow: "", trig: "CI", by: "CI/CD Bot", status: "완료", prog: 100, progt: "5/5", dur: "0분 9초", at: "오늘 10:30", startedAt: "2026-07-09 10:30", endedAt: "2026-07-09 10:30", total: 5, pass: 4, fail: 1, warn: 0, heal: 0, tcs: [
     { id: "TC-API-101", name: "사용자 조회", v: "PASS", dur: "0.3s" },
     { id: "TC-API-102", name: "사용자 생성", v: "PASS", dur: "0.4s" },
     { id: "TC-API-103", name: "로그인 토큰 발급", v: "PASS", dur: "0.5s" },
@@ -135,11 +135,11 @@ export const INIT_FQA_RUNS = [
   { id: "FRUN-512", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 62, progt: "42/68", dur: "3분 12초", at: "방금 전", total: 68, pass: 42, fail: 0, warn: 0, heal: 1, tcs: [] },
   { id: "FRUN-511", name: "결제 스모크", plan: "결제 회귀", suite: "결제 / 요금제", brow: "Chrome+FF", trig: "CI", by: "CI/CD Bot", status: "실행 중", prog: 33, progt: "8/24", dur: "5분 02초", at: "방금 전", total: 24, pass: 8, fail: 0, warn: 0, heal: 0, tcs: [] },
   { id: "FRUN-509", name: "회원가입 검증", plan: "전체 스모크 (운영)", suite: "회원가입", brow: "Chrome", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: "대기 #1", dur: "-", at: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-505", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", suite: "메인 화면", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "30/30", dur: "2분 41초", at: "어제 18:20", total: 30, pass: 30, fail: 0, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-505", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", suite: "메인 화면", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "30/30", dur: "2분 41초", at: "어제 18:20", startedAt: "2026-07-08 18:20", endedAt: "2026-07-08 18:22", total: 30, pass: 30, fail: 0, warn: 0, heal: 0, tcs: [
     { id: "TC-101", name: "메인 배너 노출", v: "PASS", dur: "0.6s" },
     { id: "TC-102", name: "추천 요금제 카드 렌더", v: "PASS", dur: "0.9s" },
   ] },
-  { id: "FRUN-502", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 97, progt: "66/68", dur: "3분 30초", at: "오늘 11:10", total: 68, pass: 61, fail: 5, warn: 2, heal: 3, tcs: [
+  { id: "FRUN-502", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 97, progt: "66/68", dur: "3분 30초", at: "오늘 11:10", startedAt: "2026-07-09 11:10", endedAt: "2026-07-09 11:13", total: 68, pass: 61, fail: 5, warn: 2, heal: 3, tcs: [
     { id: "TC-156", name: "부가서비스 신청 후 상태 미반영", v: "FAIL", dur: "8.4s" },
     { id: "TC-203", name: "OTP 재발송 오류", v: "FAIL", dur: "1.2s" },
     { id: "TC-089", name: "레이아웃 깨짐", v: "FAIL", dur: "0.5s" },
@@ -147,13 +147,13 @@ export const INIT_FQA_RUNS = [
     { id: "TC-044", name: "자동 로그인", v: "PASS", dur: "1.8s" },
     { id: "TC-055", name: "세션 만료", v: "PASS", dur: "3.2s" },
   ] },
-  { id: "FRUN-498", name: "결제 스모크", plan: "결제 회귀", suite: "결제 / 요금제", brow: "Chrome", trig: "CI", by: "CI/CD Bot", status: "완료", prog: 100, progt: "24/24", dur: "2분 10초", at: "오늘 09:42", total: 24, pass: 24, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-499", name: "결제 스모크", plan: "결제 회귀", suite: "결제 / 요금제", brow: "Chrome", trig: "CI", by: "CI/CD Bot", status: "오류", prog: 0, progt: "연결 실패", dur: "-", at: "오늘 08:50", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-491", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", suite: "메인 화면", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "30/30", dur: "2분 41초", at: "어제 18:20", total: 30, pass: 30, fail: 0, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-498", name: "결제 스모크", plan: "결제 회귀", suite: "결제 / 요금제", brow: "Chrome", trig: "CI", by: "CI/CD Bot", status: "완료", prog: 100, progt: "24/24", dur: "2분 10초", at: "오늘 09:42", startedAt: "2026-07-09 09:42", endedAt: "2026-07-09 09:44", total: 24, pass: 24, fail: 0, warn: 0, heal: 0, tcs: [] },
+  { id: "FRUN-499", name: "결제 스모크", plan: "결제 회귀", suite: "결제 / 요금제", brow: "Chrome", trig: "CI", by: "CI/CD Bot", status: "오류", prog: 0, progt: "연결 실패", dur: "-", at: "오늘 08:50", startedAt: "2026-07-09 08:50", endedAt: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
+  { id: "FRUN-491", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", suite: "메인 화면", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "30/30", dur: "2분 41초", at: "어제 18:20", startedAt: "2026-07-08 18:20", endedAt: "2026-07-08 18:22", total: 30, pass: 30, fail: 0, warn: 0, heal: 0, tcs: [
     { id: "TC-101", name: "메인 배너 노출", v: "PASS", dur: "0.6s" },
     { id: "TC-102", name: "추천 요금제 카드 렌더", v: "PASS", dur: "0.8s" },
   ] },
-  { id: "FRUN-487", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "66/68", dur: "3분 22초", at: "어제 09:00", total: 68, pass: 66, fail: 0, warn: 2, heal: 0, tcs: [
+  { id: "FRUN-487", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "66/68", dur: "3분 22초", at: "어제 09:00", startedAt: "2026-07-08 09:00", endedAt: "2026-07-08 09:03", total: 68, pass: 66, fail: 0, warn: 2, heal: 0, tcs: [
     { id: "TC-156", name: "부가서비스 신청 후 상태 미반영", v: "PASS", dur: "1.1s" },
     { id: "TC-203", name: "OTP 재발송 오류", v: "PASS", dur: "1.0s" },
     { id: "TC-089", name: "레이아웃 깨짐", v: "WARN", dur: "0.6s" },

@@ -129,10 +129,10 @@ export const INIT_NQA_PLANS = [
 
 /* 측정 실행 — 계획을 1회 돌린 실행 인스턴스(회차) + 결과 + SLA 판정. 이력·추이가 파생. */
 export const INIT_NQA_RUNS = [
-  { id: "RUN-0613-03", planId: 1, no: 3, startedAt: "2026-06-13 02:10", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 720, errRate: 0.6, p50: 240, p95: 1420, p99: 2180, throughput: 718, totalReq: 1206000, verdict: "합격", breaches: [] } },
-  { id: "RUN-0606-02", planId: 1, no: 2, startedAt: "2026-06-06 02:10", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 650, errRate: 1.3, p50: 300, p95: 1680, p99: 2620, throughput: 642, totalReq: 1078000, verdict: "불합격", breaches: ["p95 1680 > 1500ms", "에러율 1.3 > 1.0%"] } },
-  { id: "RUN-0530-01", planId: 1, no: 1, startedAt: "2026-05-30 02:10", durationSec: 1680, status: "완료", by: "이민준", result: { rps: 700, errRate: 0.5, p50: 235, p95: 1350, p99: 2050, throughput: 699, totalReq: 1175000, verdict: "합격", breaches: [] } },
-  { id: "RUN-0612-01", planId: 2, no: 1, startedAt: "2026-06-12 22:00", durationSec: 900, status: "완료", by: "이민준", result: { rps: 1350, errRate: 0.3, p50: 120, p95: 760, p99: 1180, throughput: 1342, totalReq: 1207800, verdict: "합격", breaches: [] } },
+  { id: "RUN-0613-03", planId: 1, no: 3, startedAt: "2026-06-13 02:10", endedAt: "2026-06-13 02:38", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 720, errRate: 0.6, p50: 240, p95: 1420, p99: 2180, throughput: 718, totalReq: 1206000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0606-02", planId: 1, no: 2, startedAt: "2026-06-06 02:10", endedAt: "2026-06-06 02:38", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 650, errRate: 1.3, p50: 300, p95: 1680, p99: 2620, throughput: 642, totalReq: 1078000, verdict: "불합격", breaches: ["p95 1680 > 1500ms", "에러율 1.3 > 1.0%"] } },
+  { id: "RUN-0530-01", planId: 1, no: 1, startedAt: "2026-05-30 02:10", endedAt: "2026-05-30 02:38", durationSec: 1680, status: "완료", by: "이민준", result: { rps: 700, errRate: 0.5, p50: 235, p95: 1350, p99: 2050, throughput: 699, totalReq: 1175000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0612-01", planId: 2, no: 1, startedAt: "2026-06-12 22:00", endedAt: "2026-06-12 22:15", durationSec: 900, status: "완료", by: "이민준", result: { rps: 1350, errRate: 0.3, p50: 120, p95: 760, p99: 1180, throughput: 1342, totalReq: 1207800, verdict: "합격", breaches: [] } },
 ];
 
 /* 측정 대상(앱) 시드 — 앱 + 단말 인벤토리 + 측정 도구 + 측정 조건. 단말×조건 조합은 측정 계획에서. */

@@ -15,16 +15,26 @@ const toCsv = (d) => (d.columns || []).join(",") + "\n" + (d.rows || []).map((r)
 
 /* 테스트 데이터셋 (공통) — 명명된 표 데이터. NQA 피드/FQA 데이터 드리븐이 이름으로 참조. */
 export function DatasetsScreen() {
-  const { datasets, addDataset, updateDataset, removeDataset, nqaSystems, fqaCases } = useApp();
+  const { datasets, addDataset, updateDataset, removeDataset, nqaScenarios, fqaCases, goto, setDomain, setFqaEditTc, setNqaScnFocus } = useApp();
   const [msg, flash] = useToast();
   const list = datasets || [];
   const [q, setQ] = useState("");
   const [modal, setModal] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [refModal, setRefModal] = useState(null);
   const [df, setDf] = useState({ name: "", desc: "", text: "", uploaded: false });
   const ql = q.trim().toLowerCase();
   const shown = !ql ? list : list.filter((d) => d.name.toLowerCase().includes(ql) || (d.desc || "").toLowerCase().includes(ql));
-  const refCount = (name) => (nqaSystems || []).filter((s) => (s.auth || {}).dataset === name).length + (fqaCases || []).filter((c) => c.dataset === name).length;
+  // 참조처: NQA 측정 시나리오(scn.dataset) + FQA 테스트케이스(c.dataset)
+  const refsOf = (name) => [
+    ...(fqaCases || []).filter((c) => c.dataset === name).map((c) => ({ domain: "FQA", domLabel: "기능 QA", code: c.id, title: c.name, tc: c.id })),
+    ...(nqaScenarios || []).filter((s) => s.dataset === name).map((s) => ({ domain: "NQA", domLabel: "비기능 QA · 부하", code: "시나리오", title: s.name, id: s.id })),
+  ];
+  const refCount = (name) => refsOf(name).length;
+  const goRef = (r) => {
+    if (r.domain === "FQA") { if (setFqaEditTc) setFqaEditTc(r.tc); if (setDomain) setDomain("FQA"); if (goto) goto("fqa-cases"); }
+    else { if (setNqaScnFocus) setNqaScnFocus(r.id); if (setDomain) setDomain("NQA"); if (goto) goto("nqa-scenarios"); }
+  };
   const rowN = (d) => (d.rowCount != null ? d.rowCount : (d.rows || []).length);
   const openAdd = () => { setEditId(null); setDf({ name: "", desc: "", text: "phone,pw\n", uploaded: false }); setModal(true); };
   const openEdit = (d) => { setEditId(d.id); setDf({ name: d.name, desc: d.desc || "", text: toCsv(d), uploaded: false }); setModal(true); };
@@ -61,7 +71,7 @@ export function DatasetsScreen() {
             <div className="col-span-3 min-w-0"><div className="flex items-center gap-1.5 min-w-0"><Database size={12} className="shrink-0 text-teal-400" /><span className="truncate font-mono text-slate-200">{d.name}</span></div>{d.desc && <div className="truncate pl-5 text-xs text-slate-500">{d.desc}</div>}</div>
             <div className="col-span-4 flex flex-wrap gap-1">{(d.columns || []).map((c) => <span key={c} className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-xs text-slate-400">{c}</span>)}</div>
             <div className="col-span-1 text-center text-xs text-slate-400">{rowN(d).toLocaleString()}</div>
-            <div className="col-span-1 text-center" title="이 데이터셋을 참조하는 대상 수"><Badge kind={n > 0 ? "teal" : "draft"}>{n}</Badge></div>
+            <div className="col-span-1 text-center">{n > 0 ? <button onClick={() => setRefModal({ name: d.name, refs: refsOf(d.name) })} title="참조 목록 보기"><Badge kind="teal">{n}</Badge></button> : <Badge kind="draft">0</Badge>}</div>
             <div className="col-span-2 text-xs leading-tight text-slate-500"><div>{d.createdAt || "—"}</div><div className="text-slate-400">변경 {d.updatedAt || "—"}</div></div>
             <div className="col-span-1 flex items-center justify-end gap-2"><button onClick={() => openEdit(d)} className="text-slate-500 hover:text-slate-200" title="편집"><Pencil size={13} /></button><button onClick={() => del(d)} className="text-slate-500 hover:text-red-400" title="삭제"><X size={14} /></button></div>
           </div>
@@ -82,6 +92,24 @@ export function DatasetsScreen() {
             <textarea value={df.text} onChange={(e) => setDf({ ...df, text: e.target.value, uploaded: false })} rows={8} placeholder={"phone,pw\n01012340001,P@ss0001\n01012340002,P@ss0002"} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-200 outline-none focus:border-teal-500" />
             <div className="text-xs text-slate-500">컬럼: <span className="text-slate-300">{parsed.columns.join(", ") || "—"}</span> · 행 {parsed.rows.length}개 {df.uploaded && <span className="text-teal-400">· 업로드됨</span>}</div>
             <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(false)}>취소</Btn><Btn kind="primary" icon={Save} onClick={save}>{editId ? "저장" : "추가"}</Btn></div>
+          </div>
+        </div>
+      )}
+      {refModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRefModal(null)}>
+          <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between"><div className="text-base font-semibold text-slate-100"><span className="font-mono text-teal-400">{refModal.name}</span> 참조처 <span className="text-sm font-normal text-slate-500">· {refModal.refs.length}건</span></div><button onClick={() => setRefModal(null)} className="text-slate-500 hover:text-slate-300"><X size={18} /></button></div>
+            <div className="space-y-1.5">
+              {refModal.refs.length === 0 ? <div className="p-4 text-center text-xs text-slate-500">참조하는 항목이 없습니다.</div> : refModal.refs.map((r, i) => (
+                <button key={i} onClick={() => { goRef(r); setRefModal(null); }} className="flex w-full items-center gap-2 rounded-lg border border-slate-800 bg-slate-800/50 px-3 py-2 text-left hover:border-teal-500" title="해당 항목으로 이동">
+                  <Badge kind={r.domain === "NQA" ? "info" : "active"}>{r.domLabel}</Badge>
+                  <span className="shrink-0 font-mono text-xs text-teal-400">{r.code}</span>
+                  <span className="truncate text-sm text-slate-200">{r.title}</span>
+                  <span className="ml-auto shrink-0 text-xs text-slate-500">이동 →</span>
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-slate-500">항목을 클릭하면 해당 도메인의 테스트케이스·시나리오로 이동합니다.</div>
           </div>
         </div>
       )}

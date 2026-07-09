@@ -4,7 +4,7 @@
 //   events: [key, 라벨, 설명, 요약라벨][]
 //   onSave(summary): 저장 시 호출(계획에 반영 등) · toast(msg,kind): 알림
 // ============================================================
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Calendar, RefreshCw } from "lucide-react";
 import { Field, Input, Select, Btn, Toggle, Seg } from "./ui.jsx";
 
@@ -16,16 +16,18 @@ const DEFAULT_EVENTS = [
     fields: [{ k: "repo", type: "readonly", label: "저장소", value: "대상·환경 연동에서 상속" }, { k: "branch", type: "text", label: "브랜치/ref 필터", value: "main" }, { k: "kind", type: "select", label: "이벤트", options: ["커밋 push", "PR open", "PR merge"] }] },
 ];
 
-export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그라운드 자동 실행", manualHint = "자동 실행 없음 — 수동으로만 수행합니다.", events = DEFAULT_EVENTS, onSave, toast }) {
-  const [mode, setMode] = useState("schedule");
-  const [freq, setFreq] = useState("weekly");
-  const [time, setTime] = useState("09:00");
-  const [dow, setDow] = useState(1);
-  const [dom, setDom] = useState(1);
-  const [cron, setCron] = useState("0 9 * * 1");
-  const [tz, setTz] = useState("Asia/Seoul");
-  const [active, setActive] = useState(true);
-  const [ev, setEv] = useState(() => Object.fromEntries(events.map((e, i) => [e.key, i === 0])));
+export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그라운드 자동 실행", manualHint = "자동 실행 없음 — 수동으로만 수행합니다.", events = DEFAULT_EVENTS, singleSelect = false, value, onChange, onSave, toast }) {
+  const controlled = !!onChange;
+  const v = value || {};
+  const [mode, setMode] = useState(v.mode || "schedule");
+  const [freq, setFreq] = useState(v.freq || "weekly");
+  const [time, setTime] = useState(v.time || "09:00");
+  const [dow, setDow] = useState(v.dow != null ? v.dow : 1);
+  const [dom, setDom] = useState(v.dom != null ? v.dom : 1);
+  const [cron, setCron] = useState(v.cron || "0 9 * * 1");
+  const [tz, setTz] = useState(v.tz || "Asia/Seoul");
+  const [active, setActive] = useState(v.active != null ? v.active : true);
+  const [ev, setEv] = useState(() => (v.ev ? { ...Object.fromEntries(events.map((e) => [e.key, false])), ...v.ev } : Object.fromEntries(events.map((e, i) => [e.key, i === 0]))));
   const dowK = ["일", "월", "화", "수", "목", "금", "토"];
   const notify = (m, k) => { if (toast) toast(m, k); };
   const cronExpr = () => {
@@ -53,6 +55,19 @@ export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그�
     if (onSave) onSave(picked ? "이벤트: " + picked : "예약 없음");
     notify("이벤트 트리거 저장됨", "ok");
   };
+  const summaryOf = () => {
+    if (mode === "manual") return "예약 없음";
+    if (mode === "schedule") return active ? nextRun() : "스케줄 중지됨";
+    const picked = events.filter((e) => ev[e.key]).map((e) => e.short).join("·");
+    return picked ? "이벤트: " + picked : "예약 없음";
+  };
+  // controlled 모드(onChange 제공): 변경을 상위(평가 계획 draft)로 방출 → 통합 저장/ dirty. 마운트 시엔 생략.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!controlled) return;
+    if (!mounted.current) { mounted.current = true; return; }
+    onChange({ mode, freq, time, dow, dom, cron, tz, active, ev, summary: summaryOf() });
+  }, [mode, freq, time, dow, dom, cron, tz, active, ev]);
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -77,7 +92,7 @@ export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그�
           {freq === "cron" && <Field label="Cron 표현식"><Input value={cron} onChange={(e) => setCron(e.target.value)} placeholder="0 9 * * 1" /></Field>}
           <div className="flex items-center justify-between rounded-lg bg-slate-800 p-3">
             <div className="text-sm"><span className="text-slate-500">다음 실행 </span><span className="text-teal-300 font-medium">{nextRun()}</span> <span className="text-slate-600">·</span> <span className="font-mono text-xs text-slate-400">{cronExpr()}</span></div>
-            <Btn kind="primary" icon={RefreshCw} onClick={saveSchedule}>저장</Btn>
+            {!controlled && <Btn kind="primary" icon={RefreshCw} onClick={saveSchedule}>저장</Btn>}
           </div>
         </div>
       )}
@@ -87,7 +102,7 @@ export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그�
           {events.map((e) => (
             <div key={e.key} className="rounded-lg bg-slate-800 p-3">
               <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={!!ev[e.key]} onChange={() => setEv({ ...ev, [e.key]: !ev[e.key] })} className="accent-teal-500 mt-0.5" />
+                <input type={singleSelect ? "radio" : "checkbox"} name={singleSelect ? "sched-event" : undefined} checked={!!ev[e.key]} onChange={() => setEv(singleSelect ? Object.fromEntries(events.map((x) => [x.key, x.key === e.key])) : { ...ev, [e.key]: !ev[e.key] })} className="accent-teal-500 mt-0.5" />
                 <div><div className="text-sm text-slate-200">{e.label}</div><div className="text-xs text-slate-500">{e.desc}</div></div>
               </label>
               {ev[e.key] && e.fields && (
@@ -106,7 +121,7 @@ export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그�
               )}
             </div>
           ))}
-          <div className="flex justify-end"><Btn kind="primary" icon={RefreshCw} onClick={saveEvent}>저장</Btn></div>
+          {!controlled && <div className="flex justify-end"><Btn kind="primary" icon={RefreshCw} onClick={saveEvent}>저장</Btn></div>}
         </div>
       )}
     </div>

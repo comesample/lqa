@@ -7,7 +7,7 @@ import {
   Smartphone, Sparkles, ChevronRight, ChevronDown, Server, Trash2,
 } from "lucide-react";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
-import { Card, Badge, Btn, Seg, Field, Input, Select, Toast, useToast, PageToolbar, backTo } from "../common/ui.jsx";
+import { Card, Badge, Btn, Seg, Field, Input, Select, Toast, useToast, PageToolbar, backTo, RunTime, nowStamp } from "../common/ui.jsx";
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
 import { useApp } from "../common/context.js";
 import { VarRefInput } from "../common/VarRefInput.jsx";
@@ -869,7 +869,7 @@ export function FqaRunScreen({ nav }) {
   const suiteEnabled = (name) => { const su = fqaSuites.find((x) => x.name === name); return !su || su.enabled !== false; };
   const runPlatOf = (target) => { const nm = String(target || "").split(" · ")[0]; const sy = (fqaSystems || []).find((x) => x.name === nm); return sy ? sy.platform : "Web"; };
   const buildTcs = (plan) => { const inSuite = (c) => (plan.suites === "전체" || c.suite === plan.suites) && !c.quarantined && suiteEnabled(c.suite); const appr = fqaCases.filter((c) => inSuite(c) && c.status === "승인"); const src = appr.length ? appr : fqaCases.filter(inSuite); return src.map((c) => ({ id: c.id, name: c.name, v: c.last === "FAIL" ? "FAIL" : "PASS", dur: (Math.round((Math.random() * 3 + 0.3) * 10) / 10) + "s" })); };
-  const runImmediate = (plan) => { if (!gateSuite(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, platform: runPlatOf(plan.target), brow: runPlatOf(plan.target) === "API" ? "" : ((plan.brow && plan.brow[0]) || "Chrome"), trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
+  const runImmediate = (plan) => { if (!gateSuite(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); const st = nowStamp(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, platform: runPlatOf(plan.target), brow: runPlatOf(plan.target) === "API" ? "" : ((plan.brow && plan.brow[0]) || "Chrome"), trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", startedAt: st, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", endedAt: nowStamp(), pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
   const runDeferred = (plan, when) => { if (!gateSuite(plan)) return; const total = fqaCases.filter((c) => (plan.suites === "전체" || c.suite === plan.suites) && c.status === "승인" && !c.quarantined && suiteEnabled(c.suite)).length; const id = nextId(); addFqaRun({ id, plan: plan.name, name: plan.name, suite: plan.suites, platform: runPlatOf(plan.target), brow: runPlatOf(plan.target) === "API" ? "" : ((plan.brow && plan.brow[0]) || "Chrome"), trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: when + " 실행 예정", dur: "-", at: when, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] }); setRunOpen(false); flash(plan.name + " " + when + " 지연 실행 예약 · " + id); };
   const [runOpen, setRunOpen] = useState(false);
   const [rf, setRf] = useState({ plan: planNames[0] || "", mode: "즉시", when: "10분 후" });
@@ -968,20 +968,19 @@ export function FqaHistoryScreen({ nav }) {
       </div>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">플랫폼</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">판정</th><th className="font-medium">결과</th><th className="font-medium">소요</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">플랫폼</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">판정</th><th className="font-medium">결과</th><th></th></tr></thead>
           <tbody>
-            {hist.length === 0 && (<tr><td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
+            {hist.length === 0 && (<tr><td colSpan={9} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
             {hist.map((r) => (
               <tr key={r.id} onClick={() => openRun(r)} className="cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                 <td className="px-4 py-3 font-mono text-xs text-teal-400">{r.id}</td>
                 <td className="text-slate-200">{r.plan || r.name}</td>
                 <td><Badge kind={PLAT_K[r.platform || "Web"] || "info"}>{r.platform || "Web"}</Badge></td>
                 <td><Badge kind={tK[r.trig]}>{r.trig}</Badge></td>
-                <td className="text-xs text-slate-400">{r.at}</td>
+                <td><RunTime start={r.startedAt} end={r.endedAt} /></td>
                 <td><Badge kind={hK[r.status]}>{r.status}</Badge></td>
                 <td>{verdict(r) === "-" ? <span className="text-xs text-slate-600">-</span> : <Badge kind={vK[verdict(r)]}>{verdict(r)}</Badge>}</td>
                 <td className="text-xs text-slate-400">{r.status === "완료" ? r.pass + "/" + r.total : "-"}</td>
-                <td className="text-xs text-slate-400">{r.dur}</td>
                 <td className="pr-4 text-right">{r.status === "완료" && <button onClick={(e) => { e.stopPropagation(); openRun(r); }} className="text-xs text-slate-400 hover:text-teal-400">상세</button>}</td>
               </tr>
             ))}
@@ -994,7 +993,7 @@ export function FqaHistoryScreen({ nav }) {
 }
 /* ═══════════ 7. 결과 상세 ═══════════ */
 export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }) {
-  const { fqaRuns, defects, addDefect, fqaPlans, fqaCases, updateFqaCase } = useApp();
+  const { fqaRuns, defects, addDefect, fqaPlans, fqaCases, updateFqaCase, jiraConfig } = useApp();
   const [msg, flash] = useToast();
   const [filt, setFilt] = useState("전체");
   const [selId, setSelId] = useState(null);
@@ -1004,6 +1003,8 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const approveHeal = (t) => { const c = fqaCases.find((x) => x.id === t.id); if (c && c.steps) updateFqaCase(t.id, { steps: c.steps.map((st) => (st.loc === t.heal.from ? Object.assign({}, st, { loc: t.heal.to }) : st)) }); setHealState((h) => Object.assign({}, h, { [t.id]: "승인됨" })); flash(t.id + " 보정 승인 · 로케이터 갱신"); };
   const rejectHeal = (t) => { setHealState((h) => Object.assign({}, h, { [t.id]: "거절됨" })); flash(t.id + " 보정 거절 · 원본 유지"); };
   const run = fqaRuns.find((r) => r.id === runId) || fqaRuns.find((r) => r.id === "FRUN-502") || fqaRuns[0] || { id: "-", tcs: [], total: 0, pass: 0, fail: 0, warn: 0, heal: 0, dur: "-" };
+  const jr = (() => { if (!(jiraConfig && jiraConfig.connected !== false)) return {}; const pl = (fqaPlans || []).find((p) => p.name === run.plan); return (pl && pl.jira && pl.jira.override) ? pl.jira : jiraConfig; })(); // 결함 라우팅: 미연동 시 내부 결함
+  const dkey = (base) => (jr.project || "DEF") + "-" + base;
   const tcs = run.tcs || [];
   const cur = tcs.find((t) => t.id === selId) || tcs[0] || null;
   const passRate = run.total ? Math.round((run.pass / run.total) * 1000) / 10 : 0;
@@ -1037,8 +1038,8 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   };
   const SUM = [["전체 TC", run.total, "text-slate-100"], ["통과", run.pass, "text-emerald-400"], ["실패", run.fail, "text-red-400"], ["경고", run.warn, "text-amber-400"]].concat(run.platform === "API" ? [] : [["보정 제안", tcs.filter((t) => t.heal).length, "text-teal-400"]]);
   const hasDefect = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
-  const regDefect = (t) => { if (hasDefect(t.id)) { flash(t.id + " 이미 결함 등록됨"); return; } const key = "DEF-" + (1900 + defects.length); addDefect({ key, tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" }); flash(t.id + " 결함 등록 · " + key); };
-  const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !hasDefect(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다"); return; } tgt.forEach((t, i) => addDefect({ key: "DEF-" + (1900 + defects.length + i), tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
+  const regDefect = (t) => { if (hasDefect(t.id)) { flash(t.id + " 이미 결함 등록됨"); return; } const key = dkey(1900 + defects.length); addDefect({ key, tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" }); flash(t.id + " 결함 등록 · " + key); };
+  const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !hasDefect(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다"); return; } tgt.forEach((t, i) => addDefect({ key: dkey(1900 + defects.length + i), tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
   const FLAKY = fqaCases.filter((c) => c.hist && c.hist.length >= 3).map((c) => {
     const h = c.hist; const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length;
     const flips = h.slice(1).reduce((n, v, i) => n + (v !== h[i] ? 1 : 0), 0);
@@ -1052,7 +1053,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const flakyN = FLAKY.filter((r) => r.flaky).length;
   const persistN = FLAKY.filter((r) => r.persistent).length;
   const hasDefFQA = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
-  const regFail = (r) => { if (hasDefFQA(r.id)) { flash(r.id + " 이미 결함 등록됨"); return; } addDefect({ key: "DEF-" + (1970 + defects.length), tc: r.id, sev: "Major", title: "지속 실패: " + r.name, status: "Open", domain: "FQA" }); flash(r.id + " 결함 등록"); };
+  const regFail = (r) => { if (hasDefFQA(r.id)) { flash(r.id + " 이미 결함 등록됨"); return; } addDefect({ key: dkey(1970 + defects.length), tc: r.id, sev: "Major", title: "지속 실패: " + r.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" }); flash(r.id + " 결함 등록"); };
   const toggleQuar = (r) => { updateFqaCase(r.id, { quarantined: !r.quarantined }); flash(r.id + (r.quarantined ? " 격리 해제 — 차단 실행에 복귀" : " 격리(quarantine) — 차단 실행에서 제외")); };
   const vK = { PASS: "pass", FAIL: "fail", HEAL: "teal", WARN: "warn" };
   const shown = tcs.filter((t) => filt === "전체" || (filt === "실패만" && t.v === "FAIL") || (filt === "통과만" && t.v === "PASS") || (filt === "보정 제안" && t.heal));
@@ -1770,7 +1771,7 @@ const TG = ({ on, onClick }) => (
   <button onClick={onClick} className={"relative h-5 w-9 rounded-full transition " + (on ? "bg-teal-600" : "bg-slate-700")}><span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all" style={{ left: on ? 18 : 2 }} /></button>
 );
 export function FqaPlanScreen({ nav }) {
-  const { fqaSuites, fqaSystems, fqaCases, fqaRuns, addFqaRun, updateFqaRun, fqaPlans, addFqaPlan, updateFqaPlan, removeFqaPlan } = useApp();
+  const { fqaSuites, fqaSystems, fqaCases, fqaRuns, addFqaRun, updateFqaRun, fqaPlans, addFqaPlan, updateFqaPlan, removeFqaPlan, jiraConfig } = useApp();
   const [msg, flash] = useToast();
   const targetOpts = (fqaSystems || []).flatMap((sy) => (sy.envs || []).map((e) => sy.name + " · " + e.env));
   const platOf = (t) => { const nm = String(t || "").split(" · ")[0]; const sy = (fqaSystems || []).find((s) => s.name === nm); return sy ? sy.platform : "Web"; };
@@ -1793,10 +1794,14 @@ export function FqaPlanScreen({ nav }) {
   const [apiTimeout, setApiTimeout] = useState(sel.timeout || 30);
   const [gate, setGate] = useState(sel.gate != null ? sel.gate : 95);
   const [planStatus, setPlanStatus] = useState(sel.status || "초안");
+  const [jira, setJira] = useState(sel.jira || { override: false });
+  const jgc = jiraConfig || {};
+  const enableJira = (on) => setJira(on ? { override: true, project: jira.project || jgc.project || "", issueType: jira.issueType || jgc.issueType || "Bug", assignee: jira.assignee != null ? jira.assignee : (jgc.assignee || ""), labels: jira.labels != null ? jira.labels : (jgc.labels || ""), titleTpl: jira.titleTpl || jgc.titleTpl || "", cond: jira.cond || "fail" } : { override: false });
+  const setJf = (patch) => setJira((j) => ({ ...j, ...patch }));
   const toggleB = (b) => setBrow(brow.includes(b) ? brow.filter((x) => x !== b) : [...brow, b]);
-  const pick = (p) => { setSelId(p.id); setTarget(p.target); setSuites(p.suites); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setHeadless(p.headless !== false); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setApiTimeout(p.timeout != null ? p.timeout : 30); setGate(p.gate != null ? p.gate : 95); setPlanStatus(p.status || "초안"); };
-  const saveCfg = () => { updateFqaPlan(sel.id, { target, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus }); flash(sel.name + " 설정 저장됨"); };
-  const dirty = JSON.stringify({ target, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus }) !== JSON.stringify({ target: sel.target, suites: sel.suites, tags: sel.tags, brow: sel.brow || ["Chrome"], res: sel.res || "1920×1080", headless: sel.headless !== false, workers: sel.workers || "4", retry: sel.retry != null ? sel.retry : 1, onfail: sel.onfail || "계속 진행", video: sel.video || "실패 시만", timeout: sel.timeout != null ? sel.timeout : 30, gate: sel.gate != null ? sel.gate : 95, status: sel.status || "초안" });
+  const pick = (p) => { setSelId(p.id); setTarget(p.target); setSuites(p.suites); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setHeadless(p.headless !== false); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setApiTimeout(p.timeout != null ? p.timeout : 30); setGate(p.gate != null ? p.gate : 95); setPlanStatus(p.status || "초안"); setJira(p.jira || { override: false }); };
+  const saveCfg = () => { updateFqaPlan(sel.id, { target, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus, jira }); flash(sel.name + " 설정 저장됨"); };
+  const dirty = JSON.stringify({ target, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus, jira }) !== JSON.stringify({ target: sel.target, suites: sel.suites, tags: sel.tags, brow: sel.brow || ["Chrome"], res: sel.res || "1920×1080", headless: sel.headless !== false, workers: sel.workers || "4", retry: sel.retry != null ? sel.retry : 1, onfail: sel.onfail || "계속 진행", video: sel.video || "실패 시만", timeout: sel.timeout != null ? sel.timeout : 30, gate: sel.gate != null ? sel.gate : 95, status: sel.status || "초안", jira: sel.jira || { override: false } });
   const choosePlan = (p) => { if (p.id === sel.id) return; if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; pick(p); };
   const createPlan = () => { const nm = nf.name.trim(); if (!nm) { flash("계획 이름을 입력하세요"); return; } const id = Math.max(0, ...fqaPlans.map((x) => x.id)) + 1; const np = { id, name: nm, target: nf.target, suites: nf.suites, tags: nf.tags, sched: "예약 없음", status: "초안", brow: ["Chrome"], res: "1920×1080", headless: true, workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", timeout: 30, gate: 95 }; addFqaPlan(np); pick(np); setAddOpen(false); setNf({ name: "", target: "T월드 웹 · 스테이징", suites: "전체", tags: "" }); flash(nm + " 계획 생성 (초안)"); };
   const delPlan = (pl) => { if (!window.confirm(pl.name + " 계획을 삭제할까요?")) return; removeFqaPlan(pl.id); if (selId === pl.id) { const rest = fqaPlans.filter((x) => x.id !== pl.id); setSelId(rest[0] ? rest[0].id : null); } flash(pl.name + " 삭제됨"); };
@@ -1879,6 +1884,30 @@ export function FqaPlanScreen({ nav }) {
               <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2.5 text-xs text-amber-300">이 계획은 <span className="font-semibold">초안</span>입니다 — 스케줄·이벤트(무인) 실행 설정은 <span className="font-semibold">활성화</span> 후 가능합니다. 초안 상태에서는 수동 실행만 됩니다.</div>
             )}
           </div>
+          {(jgc.connected !== false) && (
+          <div className="mt-5 border-t border-slate-800 pt-5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-200">결함 트래커 (Jira)</div>
+              <div className="flex items-center gap-2 text-xs text-slate-400">이 계획 재정의 <TG on={!!jira.override} onClick={() => enableJira(!jira.override)} /></div>
+            </div>
+            {!jira.override ? (
+              <div className="mt-2 rounded-lg bg-slate-800 p-3 text-xs text-slate-400">전역 Jira 설정 사용 · 프로젝트 <span className="text-slate-300">{jgc.project || "—"}</span> · 이슈유형 {jgc.issueType || "—"} <span className="text-slate-600">(결함 화면의 Jira 연동에서 관리)</span></div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                <div className="text-xs text-slate-500">연결(URL·인증)은 전역, 이 계획의 결함 라우팅만 재정의합니다.</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Field label="프로젝트 키"><Input value={jira.project || ""} onChange={(e) => setJf({ project: e.target.value })} placeholder="WEBQA" /></Field>
+                  <Field label="이슈 유형"><Select value={jira.issueType || "Bug"} onChange={(e) => setJf({ issueType: e.target.value })}><option>Bug</option><option>Task</option><option>Story</option></Select></Field>
+                  <Field label="기본 담당자"><Input value={jira.assignee || ""} onChange={(e) => setJf({ assignee: e.target.value })} placeholder="assignee" /></Field>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="라벨 (쉼표 구분)"><Input value={jira.labels || ""} onChange={(e) => setJf({ labels: e.target.value })} placeholder="fqa, web" /></Field>
+                  <Field label="자동 등록 조건"><Select value={jira.cond || "fail"} onChange={(e) => setJf({ cond: e.target.value })}><option value="fail">실패 시</option><option value="manual">자동 등록 안 함</option></Select></Field>
+                </div>
+              </div>
+            )}
+          </div>
+          )}
         </Card>
       </div>
       {addOpen && (

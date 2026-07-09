@@ -8,16 +8,17 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useApp } from "../common/context.js";
 import { VarRefInput } from "../common/VarRefInput.jsx";
 import { C, vKind, KIND } from "../common/theme.js";
-import { Badge, ScoreBar, Card, Field, Btn, Input, Select, Toggle, PageToolbar, EmptyState, SearchInput } from "../common/ui.jsx";
+import { Badge, ScoreBar, Card, Field, Btn, Input, Select, Toggle, PageToolbar, EmptyState, SearchInput, RunTime, nowStamp } from "../common/ui.jsx";
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
 const LQA_EVENTS = [
   { key: "model", label: "챗봇 모델 업데이트 시", desc: "모델 버전이 바뀌면 회귀 평가 자동 수행 (권장)", short: "모델 업데이트",
-    fields: [{ k: "target", type: "readonly", label: "대상", value: "계획의 대상 챗봇 (상속)" }, { k: "detect", type: "select", label: "감지 기준", options: ["모델 버전 변경 감지", "배포 웹훅 알림"] }] },
-  { key: "deploy", label: "배포(릴리스) 시", desc: "운영 배포 직후 품질 게이트 평가", short: "배포",
-    fields: [{ k: "env", type: "select", label: "대상 환경", options: ["운영", "스테이징"] }, { k: "signal", type: "select", label: "배포 신호", options: ["릴리스 태그(v*)", "CD 배포 완료 웹훅", "이미지 태그 push"] }] },
-  { key: "ci", label: "CI Webhook (PR · 커밋)", desc: "GitLab/Jenkins 파이프라인에서 트리거", short: "CI",
-    fields: [{ k: "repo", type: "readonly", label: "저장소", value: "대상·환경 연동에서 상속" }, { k: "branch", type: "text", label: "브랜치/ref 필터", value: "main" }, { k: "kind", type: "select", label: "이벤트", options: ["커밋 push", "PR open", "PR merge"] }] },
+    fields: [{ k: "target", type: "readonly", label: "대상", value: "계획의 대상 챗봇 (상속)" }, { k: "detect", type: "readonly", label: "감지 방식", value: "챗봇 연결의 ‘모델 버전 감지 방식’에서 정의 (상속)" }] },
+  { key: "deploy", label: "배포(릴리스) 시", desc: "대상 챗봇 배포 직후 품질 게이트 평가", short: "배포",
+    fields: [{ k: "env", type: "readonly", label: "대상 환경", value: "계획의 대상 챗봇 환경 (상속)" }, { k: "signal", type: "select", label: "배포 신호", options: ["CD 배포 완료 웹훅", "릴리스 태그(v*)", "이미지 태그 push"] }] },
 ];
+const DEFAULT_SCHED = { mode: "manual", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: {}, summary: "예약 없음" };
+// 스케줄 정규화 키(요약·거짓 ev키 제외) — dirty 비교가 표기 차이에 흔들리지 않도록
+const schedKey = (s) => { s = s || {}; return JSON.stringify([s.mode, s.freq, s.time, s.dow, s.dom, s.cron, s.tz, s.active, Object.keys(s.ev || {}).filter((k) => s.ev[k]).sort()]); };
 import { TREND, METRICS, mkResults, PROMPT_VARS, INIT_PROMPTS } from "./data.js";
 
 export function NewPlanForm({ close, data }) {
@@ -32,7 +33,7 @@ export function NewPlanForm({ close, data }) {
   const toggleAll = () => setPicked(allOn ? new Set() : new Set(approved.map((c) => c.id)));
   const submit = () => {
     if (picked.size === 0) { toast("테스트케이스를 1개 이상 선택하세요", "warn"); return; }
-    addPlan({ id: Date.now(), name: name || "새 평가 계획", status: "초안", tc: picked.size, judges: 2, score: null, last: "-", sched: "예약 없음", bot, promptTpl: (INIT_PROMPTS.find((p) => p.active) || {}).name || "", passScore: 85, weights: METRICS.map((m) => m.w), opts: { hall: true, bert: true }, judgeList: ["Claude (sonnet-4-6)", "GPT-4o"] });
+    addPlan({ id: Date.now(), name: name || "새 평가 계획", status: "초안", tc: picked.size, judges: 2, score: null, last: "-", sched: "예약 없음", schedule: DEFAULT_SCHED, bot, promptTpl: (INIT_PROMPTS[0] || {}).name || "", passScore: 85, weights: METRICS.map((m) => m.w), opts: { hall: true, bert: true }, judgeList: ["Claude (sonnet-4-6)", "GPT-4o"] });
     toast("평가 계획 생성됨 · 테스트케이스 " + picked.size + "개", "ok"); close(); goto("plans");
   };
   return (
@@ -66,7 +67,6 @@ export function AiGenForm({ close }) {
   const [phase, setPhase] = useState("config");
   const [files, setFiles] = useState([]);
   const [bot, setBot] = useState((chatbots[0] && chatbots[0].name) || "");
-  const [scope, setScope] = useState("전체 문서");
   const [catMode, setCatMode] = useState("자동 분류");
   const [cat, setCat] = useState(categories[0] || "미분류");
   const [types, setTypes] = useState({ 정상: true, 패러프레이즈: true, "경계/모호": true, 적대적: true, 노이즈: false });
@@ -145,16 +145,13 @@ export function AiGenForm({ close }) {
   return (
     <div className="space-y-4">
       <Field label="지식 소스 업로드 (필수)">
-        <input type="file" multiple accept=".pdf,.docx,.hwp,.txt,.xlsx" onChange={onFile} className="block w-full text-xs text-slate-300" />
+        <input type="file" multiple accept=".pdf,.docx,.xlsx" onChange={onFile} className="block w-full text-xs text-slate-300" />
         {files.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{files.map((fn) => (
           <span key={fn} className="flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">{fn}<button onClick={() => setFiles(files.filter((x) => x !== fn))} className="text-slate-500 hover:text-red-400"><X size={11} /></button></span>
         ))}</div>}
-        <div className="text-xs text-slate-500 mt-1">PDF·DOCX·HWP·TXT·FAQ(xlsx) · 로컬 임베딩 인덱싱(외부 전송 없음, PII 마스킹)</div>
+        <div className="text-xs text-slate-500 mt-1">PDF·DOCX·XLSX · 사내 임베딩 인덱싱(외부 전송 없음)</div>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="대상 챗봇"><Select value={bot} onChange={(e) => setBot(e.target.value)}>{[...new Set(chatbots.map((c) => c.name))].map((n) => <option key={n}>{n}</option>)}</Select></Field>
-        <Field label="문서 범위"><Select value={scope} onChange={(e) => setScope(e.target.value)}><option>전체 문서</option><option>선택 문서만</option></Select></Field>
-      </div>
+      <Field label="대상 챗봇"><Select value={bot} onChange={(e) => setBot(e.target.value)}>{[...new Set(chatbots.map((c) => c.name))].map((n) => <option key={n}>{n}</option>)}</Select></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="카테고리"><Select value={catMode} onChange={(e) => setCatMode(e.target.value)}><option>자동 분류</option><option>지정</option></Select></Field>
         {catMode === "지정"
@@ -185,13 +182,22 @@ export function AiGenForm({ close }) {
   );
 }
 
-export function NewCaseForm({ close }) {
-  const { addCases, categories, toast } = useApp();
-  const [q, setQ] = useState(""); const [g, setG] = useState(""); const [pre, setPre] = useState("");
-  const [cat, setCat] = useState(categories[0] || "미분류"); const [pri, setPri] = useState("중간");
+export function NewCaseForm({ close, data }) {
+  const { addCases, updateCase, categories, toast } = useApp();
+  const edit = !!data;
+  const [q, setQ] = useState(edit ? (data.q || "") : ""); const [g, setG] = useState(edit ? (data.golden || "") : ""); const [pre, setPre] = useState(edit ? (data.pre || "") : "");
+  const [cat, setCat] = useState(edit ? (data.cat || categories[0] || "미분류") : (categories[0] || "미분류")); const [pri, setPri] = useState(edit ? (data.pri || "중간") : "중간");
+  const [type, setType] = useState(edit ? (data.type || "정상") : "정상");
   const submit = () => {
-    addCases([{ id: "TC-" + Math.floor(100 + Math.random() * 900), q: q || "신규 발화", golden: g, pre, cat, pri, status: "승인", type: "정상", source: "수기 작성", verdict: "PASS", score: 0, actual: "", scores: {}, judge: "미실행", safety: { 환각: "PASS", PII: "PASS" } }]);
-    toast("테스트케이스가 등록되었습니다", "ok"); close();
+    if (edit) {
+      const revert = (data.status || "승인") === "승인";
+      updateCase(data.id, { q: q || "신규 발화", golden: g, pre, cat, pri, type, ...(revert ? { status: "검토중" } : {}) });
+      toast(data.id + " 수정되었습니다" + (revert ? " · 재검토 필요(검토중)" : ""), "ok");
+    } else {
+      addCases([{ id: "TC-" + Math.floor(100 + Math.random() * 900), q: q || "신규 발화", golden: g, pre, cat, pri, status: "승인", type, source: "수기 작성", verdict: "PASS", score: 0, actual: "", scores: {}, judge: "미실행", safety: { 환각: "PASS", PII: "PASS" } }]);
+      toast("테스트케이스가 등록되었습니다", "ok");
+    }
+    close();
   };
   return (
     <div className="space-y-4">
@@ -202,14 +208,18 @@ export function NewCaseForm({ close }) {
         <Field label="카테고리"><Select value={cat} onChange={(e) => setCat(e.target.value)}>{categories.map((c) => <option key={c}>{c}</option>)}</Select></Field>
         <Field label="우선순위"><Select value={pri} onChange={(e) => setPri(e.target.value)}><option>높음</option><option>중간</option><option>낮음</option></Select></Field>
       </div>
-      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>등록</Btn></div>
+      <Field label="발화 유형"><Select value={type} onChange={(e) => setType(e.target.value)}><option>정상</option><option>패러프레이즈</option><option>경계/모호</option><option>적대적</option><option>노이즈</option></Select>
+        <div className="text-xs text-slate-500 mt-1">테스트 성격 · 정상(일반) · 패러프레이즈(다른 표현) · 경계/모호 · 적대적(탈옥·인젝션) · 노이즈(오타·구어)</div>
+      </Field>
+      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "등록"}</Btn></div>
     </div>
   );
 }
 
 export function JiraForm({ close, data }) {
-  const { addDefect, toast, notify, domain } = useApp();
+  const { addDefect, toast, notify, domain, jiraConfig } = useApp();
   const d = data || {};
+  const jconn = (jiraConfig || {}).connected !== false;
   const prioMap = { Critical: "Highest", Major: "High", Minor: "Medium" };
   const [dom, setDom] = useState(d.domain || domain || "LQA");
   const [proj, setProj] = useState("TWORLD");
@@ -225,7 +235,7 @@ export function JiraForm({ close, data }) {
   const [actual, setActual] = useState(d.actual || "");
   const [attach, setAttach] = useState({ conv: true, judge: true, safety: true });
   const [files, setFiles] = useState([]);
-  const [jira, setJira] = useState(true);
+  const [jira, setJira] = useState(jconn);
   const autoArtifacts = d.q ? [
     { k: "conv", label: "대화 로그", file: "conversation.txt", size: "2 KB" },
     { k: "judge", label: "평가 근거", file: "judge_result.json", size: "1 KB" },
@@ -235,7 +245,8 @@ export function JiraForm({ close, data }) {
   const submit = () => {
     if (!title.trim()) { toast("제목을 입력하세요", "warn"); return; }
     const key = jira ? (proj + "-" + Math.floor(1850 + Math.random() * 99)) : ("DEF-" + Math.floor(1000 + Math.random() * 9000));
-    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open", domain: dom });
+    const evidence = [...autoArtifacts.filter((a) => attach[a.k]).map((a) => a.label), ...files.map((f) => f.name)];
+    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open", domain: dom, project: jira ? proj : "", assignee: assignee === "미지정" ? "" : assignee, desc, steps, expected, actual, evidence });
     if (jira) { toast("결함 등록 · Jira 이슈 " + key + " 생성", "ok"); notify({ icon: "bug", text: "Jira 이슈 " + key + " 생성 (" + (d.tc || "수동") + ")" }); }
     else { toast("결함 " + key + " 등록 완료", "ok"); notify({ icon: "bug", text: "결함 " + key + " 등록 (" + (d.tc || "수동") + ")" }); }
     close();
@@ -245,19 +256,19 @@ export function JiraForm({ close, data }) {
       <div className="grid grid-cols-2 gap-4 items-start">
         <div className="space-y-3.5">
       <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800 p-3">
-        <div><div className="text-sm font-semibold text-slate-200">Jira 이슈 생성</div><div className="text-xs text-slate-500">{jira ? "결함을 등록하면서 Jira 티켓도 함께 생성합니다." : "결함만 내부에 기록하고 Jira 티켓은 생성하지 않습니다."}</div></div>
-        <Toggle on={jira} onClick={() => setJira(!jira)} />
+        <div><div className="text-sm font-semibold text-slate-200">Jira 이슈 생성</div><div className="text-xs text-slate-500">{jira ? "결함을 등록하면서 Jira 티켓도 함께 생성합니다." : (jconn ? "결함만 내부에 기록하고 Jira 티켓은 생성하지 않습니다." : "Jira 미연동 — 결함만 내부에 기록됩니다.")}</div></div>
+        <Toggle on={jira} onClick={() => { if (!jconn) { toast("Jira 미연동 — 결함 화면의 ‘Jira 연동’에서 먼저 연결하세요", "warn"); return; } setJira(!jira); }} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></Field>
         <Field label="심각도"><Select value={sev} onChange={(e) => { setSev(e.target.value); setPrio(prioMap[e.target.value] || "High"); }}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
+        <Field label="담당자"><Select value={assignee} onChange={(e) => setAssignee(e.target.value)}><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
       </div>
       {jira && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="프로젝트"><Select value={proj} onChange={(e) => setProj(e.target.value)}><option>TWORLD</option><option>AICC</option></Select></Field>
             <Field label="이슈 유형"><Select value={itype} onChange={(e) => setItype(e.target.value)}><option>Bug</option><option>Security</option><option>Task</option></Select></Field>
-            <Field label="담당자"><Select value={assignee} onChange={(e) => setAssignee(e.target.value)}><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="우선순위"><Select value={prio} onChange={(e) => setPrio(e.target.value)}><option>Highest</option><option>High</option><option>Medium</option><option>Low</option></Select></Field>
@@ -323,28 +334,27 @@ export function JiraForm({ close, data }) {
 export function AddPromptForm({ close, data }) {
   const { addPrompt, updatePrompt, toast } = useApp();
   const edit = !!data;
-  const RUBRIC_CATALOG = ["관련성", "정확성", "안전성", "일관성", "완전성", "톤/공손", "환각", "PII 노출", "정책 위반"];
-  const SAMPLE = { question: "5G를 LTE로 바꾸면 위약금 있나요?", expected: "약정 내 변경 시 할인반환금 발생 가능, 나의 T월드에서 확인", actual: "네, 위약금 없이 바로 바꿔드릴 수 있어요.", domain: "요금제", policy: "과잉 약속 금지·정확 안내", context: "로그인 상태" };
+  // 점수화 가능한 채점 기준만(안전 게이트 환각·PII·정책 위반은 평가 계획의 평가 옵션으로 이동)
+  const RUBRIC_CATALOG = ["관련성", "정확성", "완전성", "일관성", "톤/공손", "안전성"];
   const [name, setName] = useState(edit ? data.name : "");
-  const [system, setSystem] = useState(edit ? (data.system || "") : "당신은 통신사 상담 챗봇의 응답 품질을 평가하는 전문 평가자입니다. 아래 지표별로 0~100점으로 채점하고 근거를 제시하세요.");
+  const [system, setSystem] = useState(edit ? (data.system || "") : "당신은 통신사 상담 챗봇의 응답 품질을 평가하는 전문 평가자입니다. 아래 지표별로 0~100점으로 채점하고 근거를 제시하세요.\n\n[평가 입력]\n- 발화: {{question}}\n- 기대 답변: {{expected}}\n- 챗봇 응답: {{actual}}");
   const [rubric, setRubric] = useState(edit && data.rubric ? data.rubric : ["관련성", "정확성", "안전성", "일관성"]);
-  const [vars, setVars] = useState(edit && data.vars ? data.vars : ["question", "expected", "actual"]);
-  const [preview, setPreview] = useState(false);
   const toggleR = (v) => setRubric(rubric.includes(v) ? rubric.filter((x) => x !== v) : [...rubric, v]);
-  const toggleV = (v) => setVars(vars.includes(v) ? vars.filter((x) => x !== v) : [...vars, v]);
-  const insertVar = (k) => { setSystem((t) => t + " {{" + k + "}}"); if (!vars.includes(k)) setVars((v) => [...v, k]); };
+  const [newRub, setNewRub] = useState("");
+  const addRub = () => { const v = newRub.trim(); if (v && !rubric.includes(v)) setRubric([...rubric, v]); setNewRub(""); };
+  // 팔레트 + 현재 선택된(팔레트 밖 커스텀 포함) 기준의 합집합 — 선택 항목이 항상 보이고 해제 가능
+  const allRubric = [...new Set([...RUBRIC_CATALOG, ...rubric])];
+  // 사용 변수 = System Prompt 본문의 {{토큰}}에서 자동 도출(단일 원천). 삽입 버튼은 본문에 토큰을 넣을 뿐.
+  const vars = [...system.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).filter((v, i, a) => a.indexOf(v) === i);
+  const knownKeys = PROMPT_VARS.map((v) => v.k);
+  const unknownVars = vars.filter((v) => !knownKeys.includes(v));
+  const insertVar = (k) => setSystem((t) => t + " {{" + k + "}}");
   const schema = '{ "scores": { ' + rubric.map((r) => '"' + r + '": 0~100').join(", ") + ' }, "verdict": "PASS|WARN|FAIL", "rationale": "..." }';
-  const rendered = () => {
-    let t = system.replace(/\{\{(\w+)\}\}/g, (m, k) => (SAMPLE[k] != null ? SAMPLE[k] : m));
-    t += "\n\n[평가 입력]\n";
-    vars.forEach((k) => { t += "- " + k + ": " + (SAMPLE[k] || "(값 없음)") + "\n"; });
-    return t;
-  };
   const submit = () => {
     if (!name.trim()) { toast("템플릿 이름을 입력하세요", "warn"); return; }
     if (!rubric.length) { toast("채점 지표를 1개 이상 선택하세요", "warn"); return; }
     if (edit) { updatePrompt(data.name, { name: name.trim(), ver: (data.ver || 1) + 1, system, rubric, vars }); toast("Prompt 템플릿이 저장되었습니다 (v" + ((data.ver || 1) + 1) + ")", "ok"); }
-    else { addPrompt({ name: name.trim(), ver: 1, active: false, system, rubric, vars }); toast("Prompt 템플릿이 추가되었습니다 (검토 후 활성화)", "ok"); }
+    else { addPrompt({ name: name.trim(), ver: 1, system, rubric, vars }); toast("Prompt 템플릿이 추가되었습니다", "ok"); }
     close();
   };
   return (
@@ -359,48 +369,50 @@ export function AddPromptForm({ close, data }) {
           ))}
         </div>
       </Field>
-      <Field label="채점 지표 (루브릭)">
+      <Field label="채점 기준">
         <div className="flex flex-wrap gap-1.5">
-          {RUBRIC_CATALOG.map((r) => (
-            <button key={r} onClick={() => toggleR(r)} className={"rounded-lg border px-2 py-1 text-xs " + (rubric.includes(r) ? "border-teal-500 bg-teal-900 text-teal-200" : "border-slate-700 bg-slate-800 text-slate-400")}>{r}</button>
+          {allRubric.map((r) => (
+            <button key={r} onClick={() => toggleR(r)} className={"rounded-lg border px-2 py-1 text-xs " + (rubric.includes(r) ? "border-teal-500 bg-teal-900 text-teal-200" : "border-slate-700 bg-slate-800 text-slate-400")}>{r}{rubric.includes(r) && !RUBRIC_CATALOG.includes(r) ? " ×" : ""}</button>
           ))}
         </div>
-        <div className="text-xs text-slate-500 mt-1">선택 {rubric.length}개 — 각 지표가 0~100점으로 채점되며 평가계획 가중치와 매핑됩니다.</div>
+        <div className="mt-2 flex items-center gap-1.5">
+          <div className="flex-1"><Input value={newRub} onChange={(e) => setNewRub(e.target.value)} placeholder="기준 직접 추가 (예: 충실도)" /></div>
+          <Btn onClick={addRub}>추가</Btn>
+        </div>
+        <div className="text-xs text-slate-500 mt-1">선택 {rubric.length}개 — 각 기준이 0~100점으로 채점되며, 이 계획을 쓰는 평가 계획의 가중치·결과 점수 항목이 됩니다. 팔레트에 없는 기준은 직접 추가할 수 있습니다.</div>
       </Field>
-      <Field label="사용 변수 (런타임 바인딩)">
-        <div className="flex flex-wrap gap-1.5">
-          {PROMPT_VARS.map((v) => (
-            <button key={v.k} onClick={() => toggleV(v.k)} title={v.d} className={"rounded-lg border px-2 py-1 font-mono text-xs " + (vars.includes(v.k) ? "border-teal-500 bg-teal-900 text-teal-200" : "border-slate-700 bg-slate-800 text-slate-400")}>{v.k}</button>
-          ))}
-        </div>
+      <Field label="사용 변수 (본문에서 자동 감지)">
+        {vars.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {vars.map((k) => (<span key={k} title={(PROMPT_VARS.find((v) => v.k === k) || {}).d} className={"rounded-lg border px-2 py-1 font-mono text-xs " + (knownKeys.includes(k) ? "border-teal-500 bg-teal-900 text-teal-200" : "border-amber-500 bg-amber-900 text-amber-200")}>{k}</span>))}
+          </div>
+        ) : (<div className="text-xs text-slate-500">System Prompt에 <span className="font-mono text-teal-400">{"{{변수}}"}</span>를 넣으면 여기에 자동으로 표시됩니다.</div>)}
+        {unknownVars.length > 0 && <div className="text-xs text-amber-400 mt-1">알 수 없는 변수: {unknownVars.map((v) => "{{" + v + "}}").join(", ")} — 위 ‘변수 삽입’의 알려진 변수만 사용하세요.</div>}
         <div className="text-xs text-slate-500 mt-1">실행 시 케이스·챗봇 응답 데이터로 자동 치환됩니다.</div>
       </Field>
       <Field label="출력 스키마 (Judge 응답 형식)">
         <div className="rounded-lg bg-slate-800 border border-slate-700 p-2 text-xs text-slate-300" style={{ fontFamily: "monospace" }}>{schema}</div>
       </Field>
-      <div className="rounded-lg border border-slate-700 bg-slate-800 p-3">
-        <div className="flex items-center justify-between"><span className="text-sm text-slate-200 font-semibold">샘플 미리보기</span><Toggle on={preview} onClick={() => setPreview(!preview)} /></div>
-        {preview && <pre className="mt-2 rounded bg-slate-900 border border-slate-700 p-2 text-xs text-slate-300 whitespace-pre-wrap" style={{ fontFamily: "monospace" }}>{rendered()}</pre>}
-      </div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "추가"}</Btn></div>
     </div>
   );
 }
 
 export function JiraConfigForm({ close }) {
-  const { toast } = useApp();
-  const [deploy, setDeploy] = useState("Cloud");
-  const [url, setUrl] = useState("");
-  const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [project, setProject] = useState("TWORLD");
-  const [issueType, setIssueType] = useState("Bug");
-  const [assignee, setAssignee] = useState("");
-  const [labels, setLabels] = useState("lqa, chatbot");
-  const [sevMap, setSevMap] = useState({ Critical: "Highest", Major: "High", Minor: "Medium" });
-  const [titleTpl, setTitleTpl] = useState("[챗봇] {{tcId}} 평가 실패 ({{score}}점)");
-  const [cond, setCond] = useState("fail");
-  const [dedup, setDedup] = useState(true);
+  const { toast, jiraConfig, setJiraConfig } = useApp();
+  const g = jiraConfig || {};
+  const [deploy, setDeploy] = useState(g.deploy || "Cloud");
+  const [url, setUrl] = useState(g.url || "");
+  const [email, setEmail] = useState(g.email || "");
+  const [token, setToken] = useState(g.token || "");
+  const [project, setProject] = useState(g.project || "TWORLD");
+  const [issueType, setIssueType] = useState(g.issueType || "Bug");
+  const [assignee, setAssignee] = useState(g.assignee || "");
+  const [labels, setLabels] = useState(g.labels || "lqa, chatbot");
+  const [sevMap, setSevMap] = useState(g.sevMap || { Critical: "Highest", Major: "High", Minor: "Medium" });
+  const [titleTpl, setTitleTpl] = useState(g.titleTpl || "[챗봇] {{tcId}} 평가 실패 ({{score}}점)");
+  const [cond, setCond] = useState(g.cond || "fail");
+  const [dedup, setDedup] = useState(g.dedup != null ? g.dedup : true);
   const [test, setTest] = useState(null);
   const PRIOS = ["Highest", "High", "Medium", "Low", "Lowest"];
   const runTest = () => {
@@ -412,6 +424,7 @@ export function JiraConfigForm({ close }) {
   };
   const submit = () => {
     if (!url.trim()) { toast("Base URL을 입력하세요", "warn"); return; }
+    if (setJiraConfig) setJiraConfig({ connected: true, deploy, url, email, token, project, issueType, assignee, labels, sevMap, titleTpl, cond, dedup });
     toast("Jira 연동 설정이 저장되었습니다" + (test && test.s === "ok" ? " (연결 확인됨)" : ""), "ok"); close();
   };
   return (
@@ -457,7 +470,7 @@ export function JiraConfigForm({ close }) {
         <div className="text-xs text-slate-500 mt-1">변수: <span className="font-mono text-teal-400">{"{{tcId}}"}</span> <span className="font-mono text-teal-400">{"{{score}}"}</span> <span className="font-mono text-teal-400">{"{{judge}}"}</span> · 본문에 챗봇 응답·실행 링크 자동 포함</div>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="자동 등록 조건"><Select value={cond} onChange={(e) => setCond(e.target.value)}><option value="fail">FAIL만</option><option value="failwarn">FAIL + WARN</option><option value="manual">수동만</option></Select></Field>
+        <Field label="자동 등록 조건"><Select value={cond} onChange={(e) => setCond(e.target.value)}><option value="fail">FAIL만</option><option value="failwarn">FAIL + WARN</option><option value="manual">자동 등록 안 함</option></Select></Field>
         <div className="flex items-end pb-1"><div className="flex items-center justify-between w-full text-sm text-slate-300"><span>중복 방지(코멘트 추가)</span><Toggle on={dedup} onClick={() => setDedup(!dedup)} /></div></div>
       </div>
       <div className="rounded-lg border border-slate-700 bg-slate-800 p-3">
@@ -468,7 +481,10 @@ export function JiraConfigForm({ close }) {
       </div>
       </div>
       <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">중복 방지 ON 시 같은 TC의 Open 이슈가 있으면 새 이슈 대신 코멘트를 추가합니다. 토큰은 공통 변수 화면에서 관리(마스킹)되며, 등록 호출은 audit_log에 기록됩니다.</div>
-      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>저장</Btn></div>
+      <div className="flex items-center justify-between pt-1">
+        <div>{(jiraConfig && jiraConfig.connected) ? <Btn kind="danger" onClick={() => { if (!window.confirm("Jira 연동을 해제할까요? 이후 결함은 내부에만 기록되고 Jira 이슈는 생성되지 않습니다.")) return; setJiraConfig({ ...jiraConfig, connected: false }); toast("Jira 연동을 해제했습니다", "warn"); close(); }}>연동 해제</Btn> : <span className="text-xs text-amber-300">현재 미연동 — 저장 시 연동됩니다</span>}</div>
+        <div className="flex gap-2"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>{(jiraConfig && jiraConfig.connected) ? "저장" : "연동"}</Btn></div>
+      </div>
     </div>
   );
 }
@@ -520,38 +536,48 @@ function ChatbotDetail({ cb, onDirty }) {
   const { updateChatbot, setChatbotStatus, removeChatbot, toast, variables } = useApp();
   const stK = KIND.targetStatus; const chK = KIND.channel;
   const isRest = cb.channel === "REST API";
+  const DEF_BODY = '{\n  "message": "{{utterance}}",\n  "sessionId": "{{sessionId}}"\n}';
+  const DEF_HEADERS = [{ k: "Content-Type", v: "application/json" }];
+  const DEF_OAUTH = { url: "", id: "", secret: "", scope: "" };
+  const DEF_SEL2 = { input: "", send: "", resp: "", done: "" };
   const [endpoint, setEndpoint] = useState(cb.endpoint || "");
   const [name, setName] = useState(cb.name || "");
   const [authType, setAuthType] = useState(cb.auth || "Bearer Token");
-  const [method, setMethod] = useState("POST");
-  const [headers, setHeaders] = useState([{ k: "Content-Type", v: "application/json" }]);
-  const [tokenVal, setTokenVal] = useState("");
-  const [apiKeyName, setApiKeyName] = useState("X-API-Key");
-  const [oauth, setOauth] = useState({ url: "", id: "", secret: "", scope: "" });
-  const [body, setBody] = useState(`{
-  "message": "{{utterance}}",
-  "sessionId": "{{sessionId}}"
-}`);
-  const [answerPath, setAnswerPath] = useState("$.data.answer");
-  const [sessionPath, setSessionPath] = useState("$.data.sessionId");
-  const [respMode, setRespMode] = useState("동기");
-  const [pollUrl, setPollUrl] = useState(""); const [doneField, setDoneField] = useState("$.status");
-  const [timeoutS, setTimeoutS] = useState(30);
+  const [method, setMethod] = useState(cb.method || "POST");
+  const [headers, setHeaders] = useState(cb.headers || DEF_HEADERS);
+  const [tokenVal, setTokenVal] = useState(cb.tokenVal || "");
+  const [apiKeyName, setApiKeyName] = useState(cb.apiKeyName || "X-API-Key");
+  const [oauth, setOauth] = useState(cb.oauth || DEF_OAUTH);
+  const [body, setBody] = useState(cb.body || DEF_BODY);
+  const [answerPath, setAnswerPath] = useState(cb.answerPath || "$.data.answer");
+  const [sessionPath, setSessionPath] = useState(cb.sessionPath || "$.data.sessionId");
+  const [respMode, setRespMode] = useState(cb.respMode || "동기");
+  const [pollUrl, setPollUrl] = useState(cb.pollUrl || ""); const [doneField, setDoneField] = useState(cb.doneField || "$.status");
+  const [timeoutS, setTimeoutS] = useState(cb.timeoutS || 30);
   const [needLogin, setNeedLogin] = useState(cb.auth === "로그인 세션");
-  const [sel2, setSel2] = useState({ input: "", send: "", resp: "", done: "" });
-  const [iframe, setIframe] = useState(false);
-  const [modelSrc, setModelSrc] = useState("API 버전 필드 폴링");
-  const [verPath, setVerPath] = useState("$.model.version");
+  const [sel2, setSel2] = useState(cb.sel2 || DEF_SEL2);
+  const [iframe, setIframe] = useState(cb.iframe || false);
+  const [modelSrc, setModelSrc] = useState(cb.modelSrc || "API 버전 필드 폴링");
+  const [verPath, setVerPath] = useState(cb.verPath || "$.model.version");
   const [test, setTest] = useState(null);
   const deployHook = "https://xq.skt/api/hooks/model-" + (cb.name.trim() ? cb.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "chatbot") + "-9c1e";
   const setH = (i, key, val) => setHeaders(headers.map((h, j) => (j === i ? { ...h, [key]: val } : h)));
   const secretRef = (val, setVal, ph) => <VarRefInput value={val} onChange={setVal} placeholder={ph} />;
-  useEffect(() => { setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setName(cb.name || ""); setTest(null); }, [cb.id]);
+  useEffect(() => {
+    setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setName(cb.name || "");
+    setMethod(cb.method || "POST"); setHeaders(cb.headers || DEF_HEADERS); setTokenVal(cb.tokenVal || ""); setApiKeyName(cb.apiKeyName || "X-API-Key"); setOauth(cb.oauth || DEF_OAUTH);
+    setBody(cb.body || DEF_BODY); setAnswerPath(cb.answerPath || "$.data.answer"); setSessionPath(cb.sessionPath || "$.data.sessionId"); setRespMode(cb.respMode || "동기"); setPollUrl(cb.pollUrl || ""); setDoneField(cb.doneField || "$.status"); setTimeoutS(cb.timeoutS || 30);
+    setSel2(cb.sel2 || DEF_SEL2); setIframe(cb.iframe || false); setModelSrc(cb.modelSrc || "API 버전 필드 폴링"); setVerPath(cb.verPath || "$.model.version"); setTest(null);
+  }, [cb.id]);
   const baseAuth = isRest ? (cb.auth || "Bearer Token") : (cb.auth === "로그인 세션" ? "로그인 세션" : "없음");
   const effAuth = isRest ? authType : (needLogin ? "로그인 세션" : "없음");
-  const dirty = endpoint !== (cb.endpoint || "") || effAuth !== baseAuth || name !== (cb.name || "");
+  // 얕은 설정(name/endpoint/auth)뿐 아니라 응답 처리·모델 소스·헤더·본문까지 전부 dirty·저장에 포함
+  const cfgArr = (o) => JSON.stringify([o.endpoint, o.auth, o.name, o.method, o.headers, o.body, o.answerPath, o.sessionPath, o.respMode, o.pollUrl, o.doneField, o.timeoutS, o.modelSrc, o.verPath, o.apiKeyName, o.tokenVal, o.oauth, o.sel2, o.iframe]);
+  const curCfg = { endpoint, auth: effAuth, name, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, apiKeyName, tokenVal, oauth, sel2, iframe };
+  const savedCfg = { endpoint: cb.endpoint || "", auth: baseAuth, name: cb.name || "", method: cb.method || "POST", headers: cb.headers || DEF_HEADERS, body: cb.body || DEF_BODY, answerPath: cb.answerPath || "$.data.answer", sessionPath: cb.sessionPath || "$.data.sessionId", respMode: cb.respMode || "동기", pollUrl: cb.pollUrl || "", doneField: cb.doneField || "$.status", timeoutS: cb.timeoutS || 30, modelSrc: cb.modelSrc || "API 버전 필드 폴링", verPath: cb.verPath || "$.model.version", apiKeyName: cb.apiKeyName || "X-API-Key", tokenVal: cb.tokenVal || "", oauth: cb.oauth || DEF_OAUTH, sel2: cb.sel2 || DEF_SEL2, iframe: cb.iframe || false };
+  const dirty = cfgArr(curCfg) !== cfgArr(savedCfg);
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
-  const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
+  const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, apiKeyName, tokenVal, oauth, sel2, iframe }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
   const runTest = () => {
     setTest({ state: "running" });
     setTimeout(() => { setTest({ state: "ok", latency: 700 + Math.floor(Math.random() * 700), answer: isRest ? "나의 T월드 → 요금제 변경 탭에서 LTE 요금제를 선택해 신청하시면 됩니다. (당월 1회 제한)" : "(웹 챗 위젯 응답 캡처) 나의 T월드에서 요금제를 변경할 수 있습니다." }); setChatbotStatus(cb.id, "연결됨"); }, 950);
@@ -627,7 +653,8 @@ function ChatbotDetail({ cb, onDirty }) {
             {modelSrc === "배포 웹훅 알림" && <Field label="배포 알림 수신 웹훅 URL"><div className="flex items-center gap-2"><Input value={deployHook} readOnly className="font-mono text-xs" /><Btn icon={Copy} onClick={() => { try { navigator.clipboard.writeText(deployHook); } catch (e) {} toast("웹훅 URL을 복사했습니다", "ok"); }}>복사</Btn></div></Field>}
           </Card>
           <Card className="p-4">
-            <div className="flex items-center justify-between gap-2"><div className="text-sm font-semibold text-slate-200">연결 테스트</div><Btn icon={Link2} onClick={runTest}>{test && test.state === "running" ? "테스트 중…" : "샘플 발화로 테스트"}</Btn></div>
+            <div className="text-sm font-semibold text-slate-200">연결 테스트 결과</div>
+            {!test && <div className="mt-2 text-xs text-slate-500">상단 <span className="text-slate-300">‘연결 테스트’</span>를 눌러 샘플 발화로 응답을 확인하세요.</div>}
             {test && test.state === "running" && <div className="mt-2 text-xs text-slate-400">샘플 발화 전송 중…</div>}
             {test && test.state === "ok" && (<div className="mt-2 space-y-1"><div className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />연결 성공 · 응답 {test.latency}ms</div><div className="rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">응답 미리보기: {test.answer}</div></div>)}
           </Card>
@@ -673,7 +700,7 @@ export function Targets() {
 
 /* ============================ screens ============================ */
 export function Dashboard() {
-  const { goto, runs, plans, cases, defects } = useApp();
+  const { goto, runs, plans, cases, defects, setRunIntent, toast } = useApp();
   const doneRuns = runs.filter((r) => r.status === "완료");
   const avg = (arr) => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : 0);
   const avgScore = avg(doneRuns.map((r) => r.score)).toFixed(1);
@@ -749,7 +776,7 @@ export function Dashboard() {
           <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2 font-medium">평가 계획</th><th className="font-medium">트리거</th><th className="font-medium">TC</th><th className="font-medium">종합</th><th className="font-medium">상태</th><th className="font-medium">시각</th></tr></thead>
           <tbody className="text-slate-300">
             {runs.slice(0, 5).map((r) => (
-              <tr key={r.id} onClick={() => goto("history")} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer"><td className="py-2.5 font-medium text-slate-200">{r.planName}</td><td><Badge kind={trigKind[r.trigger]}>{r.trigger}</Badge></td><td>{r.cases}</td><td className="font-semibold">{r.score != null ? r.score : "—"}</td><td><Badge kind={stKind[r.status]}>{r.status}</Badge></td><td className="text-slate-500">{r.startedAt}</td></tr>
+              <tr key={r.id} onClick={() => { if (r.status !== "완료") { toast(r.id + " 오류로 종료 — 상세 결과 없음", "info"); return; } setRunIntent({ type: "view", runId: r.id }); goto("lqa-result"); }} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer"><td className="py-2.5 font-medium text-slate-200">{r.planName}</td><td><Badge kind={trigKind[r.trigger]}>{r.trigger}</Badge></td><td>{r.cases}</td><td className="font-semibold">{r.score != null ? r.score : "—"}</td><td><Badge kind={stKind[r.status]}>{r.status}</Badge></td><td className="text-slate-500">{r.startedAt}</td></tr>
             ))}
           </tbody>
         </table>
@@ -758,19 +785,26 @@ export function Dashboard() {
   );
 }
 export function Plans() {
-  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent } = useApp();
+  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent, jiraConfig } = useApp();
   const [sel, setSel] = useState(plans[0]);
   const cur = plans.find((p) => p.id === sel.id) || plans[0];
   const defJudges = (p) => { const o = {}; (p.judgeList || ["Claude (sonnet-4-6)", "GPT-4o"]).forEach((n) => (o[n] = true)); return o; };
   const [jsel, setJsel] = useState(() => defJudges(cur));
   const [hall, setHall] = useState(cur.opts ? cur.opts.hall : true);
   const [bert, setBert] = useState(cur.opts ? cur.opts.bert : true);
-  const [tpl, setTpl] = useState(cur.promptTpl || (prompts.find((p) => p.active) || prompts[0] || {}).name || "");
+  const [pii, setPii] = useState(cur.opts ? !!cur.opts.pii : false);
+  const [policy, setPolicy] = useState(cur.opts ? !!cur.opts.policy : false);
+  const [tpl, setTpl] = useState(cur.promptTpl || (prompts[0] || {}).name || "");
   const [pass, setPass] = useState(cur.passScore || 85);
   const [bot, setBot] = useState(cur.bot || (chatbots[0] && chatbots[0].name) || "");
   const [planStatus, setPlanStatus] = useState(cur.status || "초안");
   const [weights, setWeights] = useState({});
   const [wSnap, setWSnap] = useState("");
+  const [sched, setSched] = useState(cur.schedule || DEFAULT_SCHED);
+  const [jira, setJira] = useState(cur.jira || { override: false });
+  const jgc = jiraConfig || {};
+  const enableJira = (on) => setJira(on ? { override: true, project: jira.project || jgc.project || "", issueType: jira.issueType || jgc.issueType || "Bug", assignee: jira.assignee != null ? jira.assignee : (jgc.assignee || ""), labels: jira.labels != null ? jira.labels : (jgc.labels || ""), titleTpl: jira.titleTpl || jgc.titleTpl || "", cond: jira.cond || jgc.cond || "fail" } : { override: false });
+  const setJf = (patch) => setJira((j) => ({ ...j, ...patch }));
   const tplObj = prompts.find((p) => p.name === tpl);
   const dims = (tplObj && tplObj.rubric && tplObj.rubric.length) ? tplObj.rubric : METRICS.map((m) => m.key);
   const wsum = dims.reduce((acc, d) => acc + (weights[d] || 0), 0);
@@ -785,14 +819,18 @@ export function Plans() {
   const [lastId, setLastId] = useState(cur.id);
   if (cur.id !== lastId) {
     setLastId(cur.id);
-    const seedTpl = cur.promptTpl || (prompts.find((p) => p.active) || prompts[0] || {}).name || "";
+    const seedTpl = cur.promptTpl || (prompts[0] || {}).name || "";
     setJsel(defJudges(cur));
     setHall(cur.opts ? cur.opts.hall : true);
     setBert(cur.opts ? cur.opts.bert : true);
+    setPii(cur.opts ? !!cur.opts.pii : false);
+    setPolicy(cur.opts ? !!cur.opts.policy : false);
     setTpl(seedTpl);
     setPass(cur.passScore || 85);
     setBot(cur.bot || (chatbots[0] && chatbots[0].name) || "");
     setPlanStatus(cur.status || "초안");
+    setSched(cur.schedule || DEFAULT_SCHED);
+    setJira(cur.jira || { override: false });
     const o = seedWeights(seedTpl);
     setWeights(o); setWSnap(JSON.stringify(o));
   }
@@ -803,18 +841,22 @@ export function Plans() {
   }, [tpl]);
   const saveCfg = () => {
     const judgeList = Object.keys(jsel).filter((k) => jsel[k]);
-    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert }, judgeList, judges: judgeList.length, status: planStatus });
+    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert, pii, policy }, judgeList, judges: judgeList.length, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
     toast(cur.name + " 설정이 저장되었습니다", "ok");
   };
   const baseJudges = defJudges(cur);
   const dirty =
     bot !== (cur.bot || (chatbots[0] && chatbots[0].name) || "") ||
     planStatus !== (cur.status || "초안") ||
-    tpl !== (cur.promptTpl || ((prompts.find((p) => p.active) || prompts[0] || {}).name) || "") ||
+    tpl !== (cur.promptTpl || ((prompts[0] || {}).name) || "") ||
     pass !== (cur.passScore || 85) ||
     hall !== (cur.opts ? cur.opts.hall : true) ||
     bert !== (cur.opts ? cur.opts.bert : true) ||
+    pii !== (cur.opts ? !!cur.opts.pii : false) ||
+    policy !== (cur.opts ? !!cur.opts.policy : false) ||
     JSON.stringify(Object.keys(jsel).filter((k) => jsel[k]).sort()) !== JSON.stringify(Object.keys(baseJudges).filter((k) => baseJudges[k]).sort()) ||
+    schedKey(sched) !== schedKey(cur.schedule || DEFAULT_SCHED) ||
+    JSON.stringify(jira) !== JSON.stringify(cur.jira || { override: false }) ||
     (wSnap !== "" && JSON.stringify(weights) !== wSnap);
   const chooseSel = (p) => { if (p.id === cur.id) return; if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setSel(p); };
   return (
@@ -857,17 +899,18 @@ export function Plans() {
                 ))}
               </div>
             </Field>
-            <Field label="평가 옵션">
-              <div className="flex items-center justify-between text-sm text-slate-300 mb-2"><span>Hallucination 탐지</span><Toggle on={hall} onClick={() => setHall(!hall)} /></div>
-              <div className="flex items-center justify-between text-sm text-slate-300"><span>유사도 BERTScore 가중</span><Toggle on={bert} onClick={() => setBert(!bert)} /></div>
+            <Field label="안전 게이트">
+              <div className="text-xs text-slate-500 -mt-1 mb-2">위반 시 점수와 무관하게 해당 케이스 즉시 불합격</div>
+              <div className="flex items-center justify-between text-sm text-slate-300 mb-2"><span>환각(Hallucination) 탐지</span><Toggle on={hall} onClick={() => setHall(!hall)} /></div>
+              <div className="flex items-center justify-between text-sm text-slate-300 mb-2"><span>PII 노출 탐지</span><Toggle on={pii} onClick={() => setPii(!pii)} /></div>
+              <div className="flex items-center justify-between text-sm text-slate-300"><span>정책 위반 탐지</span><Toggle on={policy} onClick={() => setPolicy(!policy)} /></div>
             </Field>
-            <Field label="PASS 기준 점수"><Input type="number" value={pass} onChange={(e) => setPass(+e.target.value || 0)} className="w-24" /></Field>
           </div>
           <div>
             <div className="text-xs font-semibold text-slate-400 mb-1">Prompt 템플릿</div>
-            <Select value={tpl} onChange={(e) => setTpl(e.target.value)}>{prompts.map((p) => <option key={p.name}>{p.name}{p.active ? "" : " (비활성)"}</option>)}</Select>
+            <Select value={tpl} onChange={(e) => setTpl(e.target.value)}>{prompts.map((p) => <option key={p.name}>{p.name}</option>)}</Select>
             <div className="mt-1 text-xs text-slate-500">변수: {(tplObj && (tplObj.vars || []).map((v) => "{{" + v + "}}").join(" ")) || "—"}</div>
-            <div className="text-sm font-semibold text-slate-200 mb-1 mt-4">평가 지표 가중치 <span className="text-xs font-normal text-slate-500">· 템플릿 루브릭 기준</span></div>
+            <div className="text-sm font-semibold text-slate-200 mb-1 mt-4">채점 기준 가중치 <span className="text-xs font-normal text-slate-500">· 템플릿에서 정의</span></div>
             <div className="text-xs mb-3" style={{ color: wsum === 100 ? "#34d399" : "#fbbf24" }}>합계 {wsum}% {wsum === 100 ? "✓" : "(100% 권장)"}</div>
             {dims.map((d) => (
               <div key={d} className="mb-3">
@@ -875,9 +918,38 @@ export function Plans() {
                 <input type="range" min="0" max="60" value={weights[d] || 0} onChange={(ev) => setWeights({ ...weights, [d]: +ev.target.value })} className="w-full accent-teal-500" />
               </div>
             ))}
+            <div className="text-sm font-semibold text-slate-200 mb-2 mt-4">채점 보조</div>
+            <div className="flex items-center justify-between text-sm text-slate-300"><span>유사도 BERTScore 가중</span><Toggle on={bert} onClick={() => setBert(!bert)} /></div>
+            <div className="text-sm font-semibold text-slate-200 mb-1 mt-4">PASS 기준 점수</div>
+            <Input type="number" value={pass} onChange={(e) => setPass(+e.target.value || 0)} className="w-24" />
           </div>
         </div>
-        <div className="mt-5 pt-5 border-t border-slate-800"><ScheduleConfig events={LQA_EVENTS} manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." onSave={(sum) => { if (cur) updatePlan(cur.id, { sched: sum }); }} toast={toast} /></div>
+        <div className="mt-5 pt-5 border-t border-slate-800"><ScheduleConfig key={cur.id} value={sched} onChange={setSched} events={LQA_EVENTS} singleSelect manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." toast={toast} /></div>
+        {(jgc.connected !== false) && (
+        <div className="mt-5 pt-5 border-t border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Bug size={15} className="text-amber-400" />결함 트래커 (Jira)</div>
+            <div className="flex items-center gap-2 text-xs text-slate-400">이 계획 재정의 <Toggle on={!!jira.override} onClick={() => enableJira(!jira.override)} /></div>
+          </div>
+          {!jira.override ? (
+            <div className="mt-2 rounded-lg bg-slate-800 p-3 text-xs text-slate-400">전역 Jira 설정 사용 · 프로젝트 <span className="text-slate-300">{jgc.project || "—"}</span> · 이슈유형 {jgc.issueType || "—"} · 담당자 {jgc.assignee || "—"} <span className="text-slate-600">(결함 화면의 Jira 연동에서 관리)</span></div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <div className="text-xs text-slate-500">연결(URL·인증)은 전역을 그대로 쓰고, 이 계획의 결함 라우팅만 재정의합니다.</div>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="프로젝트 키"><Input value={jira.project || ""} onChange={(e) => setJf({ project: e.target.value })} placeholder="TWORLD" /></Field>
+                <Field label="이슈 유형"><Select value={jira.issueType || "Bug"} onChange={(e) => setJf({ issueType: e.target.value })}><option>Bug</option><option>Task</option><option>Story</option></Select></Field>
+                <Field label="기본 담당자"><Input value={jira.assignee || ""} onChange={(e) => setJf({ assignee: e.target.value })} placeholder="assignee" /></Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="라벨 (쉼표 구분)"><Input value={jira.labels || ""} onChange={(e) => setJf({ labels: e.target.value })} placeholder="lqa, chatbot" /></Field>
+                <Field label="자동 등록 조건"><Select value={jira.cond || "fail"} onChange={(e) => setJf({ cond: e.target.value })}><option value="fail">FAIL만</option><option value="failwarn">FAIL + WARN</option><option value="manual">자동 등록 안 함</option></Select></Field>
+              </div>
+              <Field label="이슈 제목 템플릿"><Input value={jira.titleTpl || ""} onChange={(e) => setJf({ titleTpl: e.target.value })} placeholder="[챗봇] {{tcId}} 평가 실패 ({{score}}점)" /></Field>
+            </div>
+          )}
+        </div>
+        )}
       </Card>
     </div>
     </div>
@@ -909,7 +981,7 @@ export function RunHistory() {
                 <td className="py-3 px-4 font-mono text-teal-400">{r.id}</td>
                 <td className="text-slate-200">{r.planName}</td>
                 <td><Badge kind={trigKind[r.trigger]}>{r.trigger}</Badge></td>
-                <td className="text-slate-400">{r.startedAt}</td>
+                <td><RunTime start={r.startedAt} end={r.finishedAt} /></td>
                 <td><Badge kind={stKind[r.status]}>{r.status}</Badge></td>
                 <td>{r.cases}</td>
                 <td className="font-semibold text-slate-100">{r.score != null ? r.score : "—"}</td>
@@ -1022,11 +1094,9 @@ export function PlanCasesForm({ close, data }) {
   const plan = plans.find((p) => p.id === data.planId) || {};
   const [picked, setPicked] = useState(() => new Set(plan.caseIds ? plan.caseIds : cases.filter((c) => c.status === "승인").map((c) => c.id)));
   const [q, setQ] = useState("");
-  const [onlyApproved, setOnlyApproved] = useState(false);
   const priKind = KIND.priority; const stKind = KIND.caseStatus;
   const toggle = (id) => setPicked((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const base = cases.filter((c) => (!onlyApproved || (c.status || "승인") === "승인"));
-  const filtered = base.filter((c) => (c.q + c.id + c.cat).toLowerCase().includes(q.toLowerCase()));
+  const filtered = cases.filter((c) => (c.q + c.id + c.cat).toLowerCase().includes(q.toLowerCase()));
   const allPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id));
   const toggleAll = () => setPicked((prev) => { const n = new Set(prev); if (allPicked) filtered.forEach((c) => n.delete(c.id)); else filtered.forEach((c) => n.add(c.id)); return n; });
   const approvedPicked = cases.filter((c) => picked.has(c.id) && (c.status || "승인") === "승인").length;
@@ -1034,10 +1104,7 @@ export function PlanCasesForm({ close, data }) {
   return (
     <div className="space-y-3">
       <div className="text-sm text-slate-400">이 평가 계획에 포함할 테스트케이스를 선택합니다. <span className="text-slate-500">실행 시에는 이 중 <span className="text-slate-300">승인</span> 상태 케이스만 평가됩니다.</span></div>
-      <div className="flex items-center gap-2">
-        <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="발화·ID·카테고리 검색" className="flex-1" />
-        <label className="flex items-center gap-1.5 text-xs text-slate-400 whitespace-nowrap cursor-pointer"><input type="checkbox" checked={onlyApproved} onChange={() => setOnlyApproved(!onlyApproved)} className="accent-teal-500" />승인만</label>
-      </div>
+      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="발화·ID·카테고리 검색" />
       <Card className="overflow-hidden">
         <div className="max-h-80 overflow-y-auto">
           <table className="w-full text-sm">
@@ -1127,12 +1194,12 @@ export function Cases() {
               <div><div className="text-xs text-slate-500 mb-1">사전조건</div><div className="rounded-lg bg-slate-800 p-3 text-slate-300">{open.pre || "—"}</div></div>
               <div><div className="text-xs text-slate-500 mb-1">기대 응답 (Golden Set)</div><div className="rounded-lg bg-slate-800 p-3 text-slate-300">{open.golden}</div></div>
               {open.source && <div><div className="text-xs text-slate-500 mb-1">출처</div><div className="text-slate-400 text-xs">{open.source}</div></div>}
-              <div className="flex flex-wrap gap-2"><Badge kind="info">{open.cat}</Badge><Badge kind={priKind[open.pri]}>{open.pri}</Badge>{open.type && <Badge kind={open.type === "적대적" ? "crit" : "info"}>{open.type}</Badge>}<Badge kind={stKind[open.status] || "active"}>{open.status || "승인"}</Badge></div>
+              <div className="flex flex-wrap gap-2"><Badge kind="info">{open.cat}</Badge><Badge kind={priKind[open.pri]}>{open.pri}</Badge>{open.type && <Badge kind={open.type === "적대적" ? "crit" : "info"}>유형 {open.type}</Badge>}<Badge kind={stKind[open.status] || "active"}>{open.status || "승인"}</Badge></div>
               <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400 space-y-0.5"><div>생성 <span className="text-slate-300">{open.createdBy || "—"}</span> · {open.createdAt || "—"}</div><div>수정 <span className="text-slate-300">{open.updatedBy || "—"}</span> · {open.updatedAt || "—"}</div></div>
               {(open.status || "승인") !== "승인"
                 ? <div className="flex gap-2"><Btn kind="primary" icon={CheckCircle2} className="flex-1" onClick={() => { setCaseStatus(open.id, "승인"); setOpen({ ...open, status: "승인" }); toast(open.id + " 승인되었습니다", "ok"); }}>승인</Btn><Btn className="flex-1" onClick={() => { setCaseStatus(open.id, "초안"); setOpen({ ...open, status: "초안" }); toast(open.id + " 초안으로 반려됨", "warn"); }}>반려</Btn></div>
                 : <div><Btn className="w-full" onClick={() => { setCaseStatus(open.id, "검토중"); setOpen({ ...open, status: "검토중" }); toast(open.id + " 검토중으로 되돌림", "info"); }}>검토중으로 되돌리기</Btn></div>}
-              <div className="flex gap-2 pt-2"><Btn className="flex-1" onClick={() => toast(open.id + " 수정 모드 (데모)", "info")}>수정</Btn><Btn kind="danger" className="flex-1" onClick={() => { toast(open.id + " 삭제됨 (데모)", "warn"); setOpen(null); }}>삭제</Btn></div>
+              <div className="flex gap-2 pt-2"><Btn className="flex-1" onClick={() => { openModal("newCase", open); setOpen(null); }}>수정</Btn><Btn kind="danger" className="flex-1" onClick={() => { if (window.confirm(open.id + " 테스트케이스를 삭제할까요?")) { removeCase(open.id); toast(open.id + " 삭제됨", "ok"); setOpen(null); } }}>삭제</Btn></div>
             </div>
           </div>
         </div>
@@ -1141,10 +1208,11 @@ export function Cases() {
   );
 }
 export function Run() {
-  const { cases, plans, runs, defects, addDefect, addRun, updateRun, updatePlan, toast, notify, openModal, runIntent, setRunIntent, goto } = useApp();
+  const { cases, plans, prompts, runs, defects, addDefect, addRun, updateRun, updatePlan, toast, notify, openModal, runIntent, setRunIntent, goto, jiraConfig } = useApp();
   const runningRuns = runs.filter((r) => r.status === "진행중");
   const approved = cases.filter((c) => c.status === "승인");
-  const [planId, setPlanId] = useState(plans[0] && plans[0].id);
+  const runnablePlans = plans.filter((p) => p.status === "활성");
+  const [planId, setPlanId] = useState((runnablePlans[0] || plans[0] || {}).id);
   const [mode, setMode] = useState("idle");
   const [prog, setProg] = useState(0);
   const [activeRun, setActiveRun] = useState(null);
@@ -1153,20 +1221,28 @@ export function Run() {
   const [revF, setRevF] = useState("검토 필요");
   const timer = useRef(null);
   useEffect(() => () => clearInterval(timer.current), []);
-  const curPlan = plans.find((p) => p.id === planId) || plans[0];
+  const curPlan = plans.find((p) => p.id === planId) || runnablePlans[0] || plans[0];
 
   const finish = (plan, trigger) => {
-    const res = mkResults(approved.length ? approved : cases, Date.now() % 97);
+    const planTpl = prompts.find((p) => p.name === plan.promptTpl);
+    const dims = (planTpl && planTpl.rubric && planTpl.rubric.length) ? planTpl.rubric : (plan.weights && !Array.isArray(plan.weights) ? Object.keys(plan.weights) : null);
+    const gates = plan.opts ? { hall: !!plan.opts.hall, pii: !!plan.opts.pii, policy: !!plan.opts.policy } : undefined;
+    const jr = (jiraConfig && jiraConfig.connected !== false) ? ((plan.jira && plan.jira.override) ? plan.jira : jiraConfig) : {}; // 결함 라우팅: 미연동 시 내부 결함, 연동 시 계획 재정의 > 전역
+    const res = mkResults(approved.length ? approved : cases, Date.now() % 97, dims, gates);
     const pass = res.filter((r) => r.verdict === "PASS").length;
     const fail = res.filter((r) => r.verdict === "FAIL").length;
     const warn = res.length - pass - fail;
     const score = +(res.reduce((a, b) => a + b.score, 0) / (res.length || 1)).toFixed(1);
-    const run = { id: "R-" + Date.now().toString().slice(-5), planId: plan.id, planName: plan.name, trigger, startedAt: "방금 전", finishedAt: "방금 전", status: "완료", cases: res.length, score, passRate: Math.round((pass / (res.length || 1)) * 100), pass, warn, fail, snapshot: { model: (plan.judgeList && plan.judgeList[0]) || "Claude sonnet-4-6", promptVer: "v1", caseVer: "최신" }, results: res };
+    const _st = nowStamp();
+    const run = { id: "R-" + Date.now().toString().slice(-5), planId: plan.id, planName: plan.name, trigger, startedAt: _st, finishedAt: _st, status: "완료", cases: res.length, score, passRate: Math.round((pass / (res.length || 1)) * 100), pass, warn, fail, snapshot: { model: (plan.judgeList && plan.judgeList[0]) || "Claude sonnet-4-6", promptTpl: plan.promptTpl || "—", promptVer: planTpl ? ("v" + planTpl.ver) : "v1", caseVer: "최신" }, results: res };
     addRun(run); updatePlan(plan.id, { score, last: "방금 전" });
     let made = 0;
     res.filter((r) => r.verdict === "FAIL").forEach((r) => {
       if (!defects.some((d) => d.tc === r.id && d.status !== "Resolved")) {
-        addDefect({ key: "AUTO-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (r.judge || "평가 실패").slice(0, 40), status: "Open", domain: "LQA" });
+        addDefect({ key: (jr.project || "AUTO") + "-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (r.judge || "평가 실패").slice(0, 40), status: "Open", domain: "LQA", project: jr.project || "", assignee: jr.assignee || "",
+          desc: "[요약] " + (r.judge || "-") + "\n[점수] " + (r.score != null ? r.score + "점" : "-") + "\n[안전성] 환각 " + ((r.safety && r.safety.환각) || "-") + " · PII " + ((r.safety && r.safety.PII) || "-"),
+          steps: r.q ? "1. 사전조건: " + (r.pre || "없음") + "\n2. 발화 입력: \"" + r.q + "\"\n3. 챗봇 응답 확인" : "",
+          expected: r.golden || "", actual: r.actual || "", evidence: ["대화 로그", "평가 근거", "안전성 결과"] });
         made++;
       }
     });
@@ -1177,6 +1253,7 @@ export function Run() {
   };
   const start = (plan, trigger) => {
     if (mode === "running") return;
+    if (!plan || plan.status !== "활성") { toast("활성 상태의 평가 계획만 실행할 수 있습니다 — 계획을 먼저 활성화하세요", "warn"); return; }
     if (!approved.length) { toast("승인된 테스트케이스가 없습니다 — 케이스를 먼저 승인하세요", "warn"); return; }
     setMode("running"); setProg(0); setActiveRun(null); setSel(null); setFromHistory(false);
     timer.current = setInterval(() => { setProg((p) => { if (p >= 100) { clearInterval(timer.current); finish(plan, trigger); return 100; } return p + 5; }); }, 80);
@@ -1214,14 +1291,15 @@ export function Run() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-sm flex-wrap">
             <div className="flex items-center gap-2"><span className="text-slate-500 text-xs">평가 계획</span>
-              <select value={planId} onChange={(e) => setPlanId(+e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+              <select value={planId} onChange={(e) => setPlanId(+e.target.value)} disabled={!runnablePlans.length} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-sm">{runnablePlans.length ? runnablePlans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>) : <option value="">활성 계획 없음</option>}</select>
             </div>
+            {!runnablePlans.length && <span className="text-xs text-amber-400">활성 상태의 평가 계획이 없습니다 — 계획을 활성화하세요</span>}
             <span className="text-slate-600">·</span>
             <div><span className="text-slate-500">Judge</span> <span className="text-slate-200 font-medium">{(curPlan && curPlan.judgeList && curPlan.judgeList.join(", ")) || "—"}</span></div>
             <span className="text-slate-600">·</span>
             <div><span className="text-slate-500">대상</span> <span className="text-slate-200 font-medium">승인 {approved.length}건</span></div>
           </div>
-          <Btn kind="primary" icon={Play} onClick={() => start(curPlan, "수동")}>{mode === "running" ? "실행 중…" : "평가 실행"}</Btn>
+          <Btn kind="primary" icon={Play} disabled={!runnablePlans.length} onClick={() => start(curPlan, "수동")}>{mode === "running" ? "실행 중…" : "평가 실행"}</Btn>
         </div>
         {(mode === "running" || (mode === "done" && prog > 0)) && (
           <div className="mt-3"><div className="flex justify-between text-xs mb-1"><span className="text-slate-400">{mode === "running" ? "평가 수행 중…" : "완료"}</span><span className="text-teal-400 font-semibold">{prog}%</span></div><div className="h-2 rounded bg-slate-800"><div className="h-2 rounded" style={{ width: prog + "%", background: C.teal, transition: "width .1s" }} /></div></div>
@@ -1283,7 +1361,7 @@ export function Run() {
                     <Block label="실제 챗봇 응답" tone={sel.verdict === "FAIL" ? "err" : "plain"}>{sel.actual}</Block>
                     {sel.scores && Object.keys(sel.scores).length > 0 && (<div><div className="text-xs text-slate-500 mb-2">LLM Judge 다차원 채점</div><div className="grid grid-cols-2 gap-x-5">{Object.entries(sel.scores).map(([k, v]) => (<ScoreBar key={k} label={k} value={v} color={v >= 80 ? C.teal : v >= 60 ? C.warn : C.err} />))}</div></div>)}
                     <Block label="Judge 평가 근거" tone="plain"><span className="text-slate-400">{sel.judge}</span></Block>
-                    <div className="flex items-center gap-2"><span className="text-xs text-slate-500">안전성:</span><Badge kind={vKind(sel.safety.환각)}>환각 {sel.safety.환각}</Badge><Badge kind={vKind(sel.safety.PII)}>PII {sel.safety.PII}</Badge></div>
+                    <div className="flex items-center gap-2 flex-wrap"><span className="text-xs text-slate-500">안전 게이트:</span>{[["환각", sel.safety.환각], ["PII 노출", sel.safety.PII], ["정책 위반", sel.safety.정책]].filter(([, v]) => v && v !== "미검사").map(([k, v]) => <Badge key={k} kind={vKind(v)}>{k} {v}</Badge>)}{[sel.safety.환각, sel.safety.PII, sel.safety.정책].every((v) => !v || v === "미검사") && <span className="text-xs text-slate-600">활성 게이트 없음</span>}</div>
                     <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
                       <span className="text-xs text-slate-500 flex-1">HITL 검토 <span className="text-slate-600">(예외 케이스 중심)</span></span>
                       <button onClick={() => { setHitl(sel.id, "approved"); toast(sel.id + " 승인됨", "ok"); }} className={"inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm " + (sel.hitl === "approved" ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}><CheckCircle2 size={14} />승인</button>
@@ -1357,7 +1435,7 @@ export function Compare() {
   if (sig["점수하락"].length) recs.push("점수 하락 관찰 " + sig["점수하락"].length + "건은 다음 실행에서 재현 여부 확인");
   recs.push("경계 판정(WARN) 케이스는 사람 검토(HITL) 우선 배정");
   const hasDef = (id) => defects.some((d) => d.tc === id && (d.domain || "LQA") === "LQA");
-  const regAllLQA = () => { const tgt = regressed.filter((r) => !hasDef(r.id)); if (!tgt.length) { toast("등록할 신규 회귀 결함이 없습니다", "info"); return; } tgt.forEach((r, i) => addDefect({ key: "DEF-" + (1950 + defects.length + i), tc: r.id, sev: "Major", title: "회귀: " + (r.q || r.id), status: "Open", domain: "LQA" })); toast("유의미 회귀 " + tgt.length + "건 결함 등록", "ok"); };
+  const regAllLQA = () => { const tgt = regressed.filter((r) => !hasDef(r.id)); if (!tgt.length) { toast("등록할 신규 회귀 결함이 없습니다", "info"); return; } tgt.forEach((r, i) => addDefect({ key: "DEF-" + (1950 + defects.length + i), tc: r.id, sev: "Major", title: "회귀: " + (r.q || r.id), status: "Open", domain: "LQA", desc: "이전 실행 대비 유의미한 점수 하락(회귀)이 감지되었습니다.", steps: r.q ? "발화: \"" + r.q + "\"" : "", expected: r.golden || "", actual: r.actual || "", evidence: ["회귀 비교"] })); toast("유의미 회귀 " + tgt.length + "건 결함 등록", "ok"); };
   return (
     <div className="space-y-4">
       <PageToolbar desc="같은 평가 계획의 두 실행 비교 · 케이스 회귀 분석" />
@@ -1431,7 +1509,15 @@ export function Compare() {
   );
 }
 export function Defects() {
-  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setDefectAssignee, setFqaEditTc, users } = useApp();
+  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setDefectAssignee, updateDefect, setFqaEditTc, users, jiraConfig } = useApp();
+  const jc = jiraConfig || {};
+  const [edit, setEdit] = useState(false);
+  const [ef, setEf] = useState({});
+  const [evAdd, setEvAdd] = useState("");
+  const startEdit = (d) => { setEf({ desc: d.desc || "", steps: d.steps || "", expected: d.expected || "", actual: d.actual || "", evidence: [...(d.evidence || [])] }); setEvAdd(""); setEdit(true); };
+  const saveEdit = () => { updateDefect(sel.key, { desc: ef.desc, steps: ef.steps, expected: ef.expected, actual: ef.actual, evidence: ef.evidence }); setSel({ ...sel, ...ef }); setEdit(false); toast(sel.key + " 내용이 저장되었습니다", "ok"); };
+  const addEv = (label) => { const v = String(label || "").trim(); if (!v) return; setEf((f) => ({ ...f, evidence: [...(f.evidence || []), v] })); setEvAdd(""); };
+  const onEvFile = (e) => { const fs = Array.from(e.target.files || []).map((x) => x.name); if (fs.length) setEf((f) => ({ ...f, evidence: [...(f.evidence || []), ...fs] })); };
   const sev = KIND.severity;
   const st = KIND.issueStatus;
   const domKind = KIND.domain;
@@ -1455,20 +1541,22 @@ export function Defects() {
       <PageToolbar desc="GitLab / Jira 연계 · 전 도메인 공통">
         <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></div>
         <div style={{ width: 130 }}><Select value={stf} onChange={(e) => setStf(e.target.value)}><option value="전체">전체 상태</option><option value="Open">Open</option><option value="In Progress">In Progress</option><option value="Resolved">Resolved</option></Select></div>
+        <Btn icon={SlidersHorizontal} onClick={() => openModal("jiraConfig")}>Jira 연동</Btn>
         <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
       </PageToolbar>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-400">{jc.connected ? <><Badge kind="active">Jira 연결됨</Badge><span className="font-mono text-slate-300">{jc.url || "—"}</span><span className="text-slate-600">·</span><span>기본 프로젝트 <span className="text-slate-300">{jc.project || "—"}</span> · 이슈유형 {jc.issueType || "—"}</span><span className="text-slate-600">·</span><span>계획별로 재정의 가능</span></> : <><Badge kind="draft">Jira 미연동</Badge><span>결함은 내부에만 기록됩니다 — <span className="text-teal-400 cursor-pointer" onClick={() => openModal("jiraConfig")}>Jira 연동 설정</span>에서 연결하세요.</span></>}</div>
       <div className="flex items-center gap-3 text-sm text-slate-400"><span>미해결 <span className="font-semibold text-red-300">{openN}</span></span><span className="text-slate-600">·</span><span>해결 <span className="font-semibold text-emerald-300">{resN}</span></span><span className="text-slate-600">·</span><span className="text-slate-500">총 {list.length}건</span></div>
       <Card>
       <table className="w-full text-sm">
         <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th className="font-medium">담당자</th><th className="font-medium">보고 / 수정</th><th></th></tr></thead>
         <tbody className="text-slate-300">
           {list.map((d) => (
-            <tr key={d.key} onClick={() => setSel(d)} className={"cursor-pointer border-b border-slate-800 hover:bg-slate-800 " + (d.status === "Resolved" ? "opacity-60" : "")}>
+            <tr key={d.key} onClick={() => { setEdit(false); setSel(d); }} className={"cursor-pointer border-b border-slate-800 hover:bg-slate-800 " + (d.status === "Resolved" ? "opacity-60" : "")}>
               <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td>
               <td><Badge kind={st[d.status] || "info"}>{d.status || "Open"}</Badge></td>
               <td className="text-slate-400">{d.assignee || <span className="text-slate-600">미지정</span>}</td>
               <td className="pr-2 text-xs leading-tight text-slate-500"><div>{d.createdBy || "—"} · {d.createdAt || "—"}</div>{d.updatedAt && d.updatedAt !== d.createdAt && <div className="text-slate-400">수정 {d.updatedBy} · {d.updatedAt}</div>}</td>
-              <td className="pr-4" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-2"><button onClick={() => reverify(d)} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button><button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button></div></td>
+              <td className="pr-4" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-2"><button onClick={() => reverify(d)} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button>{jc.connected && <button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button>}</div></td>
             </tr>
           ))}
           {list.length === 0 && <tr><td colSpan={8}><EmptyState icon={Bug} title="해당 조건의 결함이 없습니다" hint="평가/실행 실패 시 자동·수동으로 이슈를 등록하세요" /></td></tr>}
@@ -1476,20 +1564,47 @@ export function Defects() {
       </table>
       </Card>
       {sel && (
-        <div className="fixed inset-0 z-30 flex justify-end bg-black bg-opacity-50" onClick={() => setSel(null)}>
+        <div className="fixed inset-0 z-30 flex justify-end bg-black bg-opacity-50" onClick={() => { setEdit(false); setSel(null); }}>
           <div className="h-full w-full max-w-md overflow-y-auto border-l border-slate-800 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between"><span className="font-mono text-teal-400">{sel.key}</span><button onClick={() => setSel(null)} className="text-slate-500 hover:text-slate-300"><X size={20} /></button></div>
+            <div className="mb-4 flex items-center justify-between"><span className="font-mono text-teal-400">{sel.key}</span><div className="flex items-center gap-2">{edit ? (<><Btn kind="primary" onClick={saveEdit}>저장</Btn><Btn kind="ghost" onClick={() => setEdit(false)}>취소</Btn></>) : (<Btn icon={Wrench} kind="ghost" onClick={() => startEdit(sel)}>편집</Btn>)}<button onClick={() => { setEdit(false); setSel(null); }} className="text-slate-500 hover:text-slate-300"><X size={20} /></button></div></div>
             <div className="space-y-4 text-sm">
               <div className="text-base text-slate-100">{sel.title}</div>
               <div className="flex flex-wrap gap-1.5"><Badge kind={domKind[sel.domain || "LQA"] || "info"}>{domLabel[sel.domain || "LQA"]}</Badge><Badge kind={sev[sel.sev]}>{sel.sev}</Badge><Badge kind={st[sel.status] || "info"}>{sel.status || "Open"}</Badge></div>
               <div><div className="mb-1 text-xs text-slate-500">연결 TC</div><div className="font-mono text-slate-300">{sel.tc}</div></div>
+              {sel.project && <div><div className="mb-1 text-xs text-slate-500">Jira 프로젝트</div><div className="font-mono text-slate-300">{sel.project}{sel.key ? " · " + sel.key : ""}</div></div>}
+              {edit ? (
+                <>
+                  <div><div className="mb-1 text-xs text-slate-500">설명</div><textarea rows={3} value={ef.desc} onChange={(e) => setEf({ ...ef, desc: e.target.value })} className="w-full rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-sm text-slate-200 focus:border-teal-500 focus:outline-none" placeholder="결함 설명" /></div>
+                  <div><div className="mb-1 text-xs text-slate-500">재현 절차</div><textarea rows={4} value={ef.steps} onChange={(e) => setEf({ ...ef, steps: e.target.value })} className="w-full rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-sm text-slate-200 focus:border-teal-500 focus:outline-none" placeholder="1. …&#10;2. …" /></div>
+                  <div><div className="mb-1 text-xs text-slate-500">기대 결과</div><textarea rows={2} value={ef.expected} onChange={(e) => setEf({ ...ef, expected: e.target.value })} className="w-full rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-sm text-slate-200 focus:border-teal-500 focus:outline-none" placeholder="기대 결과" /></div>
+                  <div><div className="mb-1 text-xs text-slate-500">실제 결과</div><textarea rows={2} value={ef.actual} onChange={(e) => setEf({ ...ef, actual: e.target.value })} className="w-full rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-sm text-slate-200 focus:border-teal-500 focus:outline-none" placeholder="실제 결과" /></div>
+                  <div>
+                    <div className="mb-1 text-xs text-slate-500">증적</div>
+                    {ef.evidence && ef.evidence.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{ef.evidence.map((e, i) => <span key={i} className="inline-flex items-center gap-1 rounded-full bg-slate-700 px-2 py-0.5 text-xs text-slate-200">{e}<button onClick={() => setEf({ ...ef, evidence: ef.evidence.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-rose-400"><X size={12} /></button></span>)}</div>}
+                    <div className="flex gap-2">
+                      <input value={evAdd} onChange={(e) => setEvAdd(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEv(evAdd); } }} placeholder="링크·로그 등 입력 후 추가" className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-200 focus:border-teal-500 focus:outline-none" />
+                      <Btn icon={Plus} kind="ghost" onClick={() => addEv(evAdd)}>추가</Btn>
+                      <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-sm text-slate-300 hover:border-teal-500"><Upload size={14} />파일<input type="file" multiple className="hidden" onChange={onEvFile} /></label>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {sel.desc && <div><div className="mb-1 text-xs text-slate-500">설명</div><div className="whitespace-pre-wrap rounded-lg bg-slate-800 p-3 text-slate-300">{sel.desc}</div></div>}
+                  {sel.steps && <div><div className="mb-1 text-xs text-slate-500">재현 절차</div><div className="whitespace-pre-wrap rounded-lg bg-slate-800 p-3 text-slate-300">{sel.steps}</div></div>}
+                  {sel.expected && <div><div className="mb-1 text-xs text-slate-500">기대 결과</div><div className="whitespace-pre-wrap rounded-lg bg-slate-800 p-3 text-slate-300">{sel.expected}</div></div>}
+                  {sel.actual && <div><div className="mb-1 text-xs text-slate-500">실제 결과</div><div className="whitespace-pre-wrap rounded-lg bg-slate-800 p-3 text-slate-300">{sel.actual}</div></div>}
+                  {sel.evidence && sel.evidence.length > 0 && <div><div className="mb-1 text-xs text-slate-500">증적</div><div className="flex flex-wrap gap-1.5">{sel.evidence.map((e, i) => <Badge key={i} kind="info">{e}</Badge>)}</div></div>}
+                  {!sel.desc && !sel.steps && !sel.expected && !sel.actual && (!sel.evidence || !sel.evidence.length) && <div className="rounded-lg border border-slate-800 bg-slate-800 p-3 text-xs text-slate-500">상세 재현 정보가 없는 결함입니다 — 우측 상단 ‘편집’으로 내용을 보완하세요.</div>}
+                </>
+              )}
               <div><div className="mb-1 text-xs text-slate-500">담당자</div><Select value={sel.assignee || ""} onChange={(e) => { setDefectAssignee(sel.key, e.target.value); setSel({ ...sel, assignee: e.target.value }); toast(sel.key + " 담당자: " + (e.target.value || "미지정"), "ok"); }}><option value="">미지정</option>{(users || []).map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</Select></div>
               <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400 space-y-0.5"><div>보고 <span className="text-slate-300">{sel.createdBy || "—"}</span> · {sel.createdAt || "—"}</div><div>수정 <span className="text-slate-300">{sel.updatedBy || "—"}</span> · {sel.updatedAt || "—"}</div></div>
               <div>
                 <div className="mb-1.5 text-xs text-slate-500">상태 변경</div>
                 <div className="flex flex-wrap gap-2">{(TRANS[sel.status || "Open"] || []).map(([label, next]) => <Btn key={label} kind={next === "Resolved" ? "primary" : "ghost"} onClick={() => { setDefectStatus(sel.key, next); setSel({ ...sel, status: next }); toast(sel.key + " → " + next, "ok"); }}>{label}</Btn>)}</div>
               </div>
-              <div className="flex gap-2 border-t border-slate-800 pt-3"><Btn icon={RefreshCw} onClick={() => reverify(sel)}>재검증</Btn><Btn icon={ExternalLink} onClick={() => toast(sel.key + " 이슈 트래커로 이동 (데모)", "info")}>이슈 트래커</Btn></div>
+              <div className="flex gap-2 border-t border-slate-800 pt-3"><Btn icon={RefreshCw} onClick={() => reverify(sel)}>재검증</Btn>{jc.connected && <Btn icon={ExternalLink} onClick={() => toast(sel.key + " 이슈 트래커로 이동 (데모)", "info")}>이슈 트래커</Btn>}</div>
             </div>
           </div>
         </div>
@@ -1502,17 +1617,19 @@ export function Report() {
   const [ch, setCh] = useState({ slack: true, teams: false, email: true });
   const [cond, setCond] = useState("fail");
   const [autoJira, setAutoJira] = useState(true);
-  const [periodic, setPeriodic] = useState(true);
+  const [scope, setScope] = useState("통합 (전체 도메인)");
+  const [rsched, setRsched] = useState({ on: true, freq: "weekly", time: "09:00", dow: 1, dom: 1 });
+  const dowK = ["일", "월", "화", "수", "목", "금", "토"];
+  const nextRun = () => rsched.freq === "daily" ? "매일 " + rsched.time : rsched.freq === "monthly" ? "매월 " + rsched.dom + "일 " + rsched.time : "매주 " + dowK[rsched.dow] + "요일 " + rsched.time;
   const [hist, setHist] = useState([
     { t: "14:36", ch: "Slack", txt: "요금/청구 평가 완료 — PASS율 79% (▲)", ok: true },
-    { t: "14:36", ch: "Jira", txt: "DEF-1842 자동 등록 (TC-018 PII)", ok: true },
     { t: "09:25", ch: "Email", txt: "주간 품질 리포트 발송 (수신 6명)", ok: true },
   ]);
   const sendTest = (channel) => {
     const row = { t: "now", ch: channel, txt: "테스트 알림 발송", ok: true };
     setHist([row, ...hist]); toast(channel + " 테스트 알림 발송 완료", "ok"); notify({ icon: "send", text: channel + " 테스트 알림 발송" });
   };
-  const genReport = (fmt) => { toast(fmt + " 리포트 생성 완료", "ok"); setHist([{ t: "now", ch: "Report", txt: fmt + " 리포트 생성", ok: true }, ...hist]); };
+  const genReport = () => { toast("HTML 리포트 생성 완료 · " + scope, "ok"); setHist([{ t: "now", ch: "Report", txt: scope + " HTML 리포트 생성", ok: true }, ...hist]); };
   const chCfg = [
     { key: "slack", label: "Slack", icon: Slack, ph: "https://hooks.slack.com/services/...", desc: "채널 Incoming Webhook · 지정 채널에 게시" },
     { key: "teams", label: "Microsoft Teams", icon: Megaphone, ph: "Teams Workflow(Power Automate) URL", desc: "채널 Webhook · 최신 연동 방식 확인 필요" },
@@ -1521,17 +1638,6 @@ export function Report() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="평가 결과 리포트 생성 및 알림 채널 설정" />
-      <Card className="p-5">
-        <div className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2"><FileText size={16} className="text-teal-400" />리포트</div>
-        <div className="flex flex-wrap gap-2">
-          <Btn icon={FileDown} onClick={() => genReport("PDF")}>PDF 생성</Btn>
-          <Btn icon={FileDown} onClick={() => genReport("Excel")}>Excel 생성</Btn>
-          <Btn icon={FileDown} onClick={() => genReport("HTML")}>HTML 생성</Btn>
-          <div className="flex-1" />
-          <div className="flex items-center gap-2 text-sm text-slate-300"><Calendar size={15} className="text-slate-500" />정기 리포트(주 1회 월 09:00)<Toggle on={periodic} onClick={() => { setPeriodic(!periodic); toast("정기 리포트 " + (!periodic ? "활성화" : "비활성화"), "info"); }} /></div>
-        </div>
-      </Card>
-
       <div>
         <div className="text-sm font-semibold text-slate-200 mb-1">알림 채널</div>
         <div className="text-xs text-slate-500 mb-2">Slack · Teams는 워크스페이스의 <span className="text-slate-300">지정 채널에 메시지를 게시</span>합니다(단방향 Incoming Webhook). 멘션·스레드·다중 채널 분기는 Bot 연동이 필요합니다.</div>
@@ -1551,33 +1657,43 @@ export function Report() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 items-start">
-      <Card className="p-5">
-        <div className="text-sm font-semibold text-slate-200 mb-1">알림 발송 조건</div>
-        <div className="text-xs text-slate-500 mb-3">위 채널(Slack · Teams · Email)에 어떤 경우 알림을 보낼지 정합니다.</div>
-        <div className="space-y-3">
-          <Field label="알림 발송 시점">
-            <div className="space-y-2 text-sm text-slate-300">
-              {[["always", "항상 발송"], ["fail", "실패/경고가 있을 때만"], ["drop", "점수 하락(회귀) 시에만"]].map(([k, lab]) => (
-                <label key={k} className="flex items-center gap-2 cursor-pointer"><input type="radio" name="cond" checked={cond === k} onChange={() => setCond(k)} className="accent-teal-500" />{lab}</label>
-              ))}
+        <Card className="p-5">
+          <div className="text-sm font-semibold text-slate-200 mb-1">알림 발송 조건</div>
+          <div className="text-xs text-slate-500 mb-3">위 채널(Slack · Teams · Email)에 어떤 경우 알림을 보낼지 정합니다.</div>
+          <div className="space-y-3">
+            <Field label="알림 발송 시점">
+              <div className="space-y-2 text-sm text-slate-300">
+                {[["always", "항상 발송"], ["fail", "실패/경고가 있을 때만"], ["drop", "점수 하락(회귀) 시에만"]].map(([k, lab]) => (
+                  <label key={k} className="flex items-center gap-2 cursor-pointer"><input type="radio" name="cond" checked={cond === k} onChange={() => setCond(k)} className="accent-teal-500" />{lab}</label>
+                ))}
+              </div>
+            </Field>
+            <div>
+              <div className="text-xs text-slate-500 mb-1">현재 설정</div>
+              <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">활성 채널 {Object.values(ch).filter(Boolean).length}개 · 조건 “{cond === "always" ? "항상" : cond === "fail" ? "실패 시만" : "회귀 시만"}”</div>
             </div>
-          </Field>
-          <div>
-            <div className="text-xs text-slate-500 mb-1">현재 설정</div>
-            <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">활성 채널 {Object.values(ch).filter(Boolean).length}개 · 조건 “{cond === "always" ? "항상" : cond === "fail" ? "실패 시만" : "회귀 시만"}”</div>
           </div>
-        </div>
-      </Card>
-      <Card className="p-5">
-        <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Bug size={16} className="text-amber-400" />Jira 연동 <span className="text-xs font-normal text-slate-500">· 결함 자동 등록</span></div><Badge kind="active">연결됨</Badge></div>
-        <div className="grid grid-cols-1 gap-y-2 text-sm text-slate-300">
-          <div className="flex justify-between"><span className="text-slate-500">배포 유형</span><span>Jira Cloud</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Base URL</span><span className="font-mono text-xs text-slate-400">skt.atlassian.net</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">프로젝트 / 이슈유형</span><span>TWORLD · Bug</span></div>
-          <div className="flex items-center justify-between"><span>평가 실패 시 이슈 자동 등록</span><Toggle on={autoJira} onClick={() => setAutoJira(!autoJira)} /></div>
-        </div>
-        <Btn icon={SlidersHorizontal} className="mt-3" onClick={() => openModal("jiraConfig")}>연동 설정</Btn>
-      </Card>
+        </Card>
+        <Card className="p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Calendar size={16} className="text-teal-400" />정기 리포트</div>
+            <Toggle on={rsched.on} onClick={() => setRsched({ ...rsched, on: !rsched.on })} />
+          </div>
+          <div className="-mt-1 text-xs text-slate-500">선택 범위 대시보드 지표를 <span className="text-slate-300">기간 스냅샷 + 직전 대비 델타 + 주요 실패·회귀·신규 결함 하이라이트</span>로 취합해 지정된 알림 채널로 발송합니다.</div>
+          {rsched.on && (
+            <div className="space-y-3">
+              <Field label="범위"><Select value={scope} onChange={(e) => setScope(e.target.value)}><option>AI 품질</option><option>기능 QA</option><option>비기능 QA · 부하</option><option>통합 (전체 도메인)</option></Select></Field>
+              <Field label="형식"><div className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">HTML <span className="text-xs text-slate-500">· PDF·Excel은 후속 지원</span></div></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="주기"><Select value={rsched.freq} onChange={(e) => setRsched({ ...rsched, freq: e.target.value })}><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option></Select></Field>
+                <Field label="시각"><Input type="time" value={rsched.time} onChange={(e) => setRsched({ ...rsched, time: e.target.value })} /></Field>
+              </div>
+              {rsched.freq === "monthly" && <Field label="일(day)"><Input type="number" value={rsched.dom} onChange={(e) => setRsched({ ...rsched, dom: Math.min(31, Math.max(1, parseInt(e.target.value) || 1)) })} /></Field>}
+              {rsched.freq === "weekly" && <div><div className="mb-1.5 text-xs font-semibold text-slate-400">요일</div><div className="flex gap-1.5">{dowK.map((d, i) => <button key={i} onClick={() => setRsched({ ...rsched, dow: i })} className={"h-8 w-8 rounded-lg text-sm " + (rsched.dow === i ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>{d}</button>)}</div></div>}
+              <div className="rounded-lg bg-slate-800 p-3 text-sm"><span className="text-slate-500">다음 발송 </span><span className="font-medium text-teal-300">{nextRun()}</span> <span className="text-slate-600">· 활성 채널로 push</span></div>
+            </div>
+          )}
+        </Card>
       </div>
 
       <Card>
@@ -1600,7 +1716,7 @@ export function SegBtn({ on, onClick, children }) {
 
 
 export function Settings() {
-  const { models, prompts, openModal, toast, removePrompt } = useApp();
+  const { models, prompts, plans, openModal, toast, removePrompt } = useApp();
   const [use, setUse] = useState(() => { const mm = {}; models.forEach((x) => (mm[x.id] = x.status === "활성")); return mm; });
   return (
     <div className="space-y-4">
@@ -1625,12 +1741,15 @@ export function Settings() {
       <Card className="p-5">
         <div className="text-sm font-semibold text-slate-200 mb-3">Prompt 템플릿</div>
         <div className="space-y-2">
-          {prompts.map((p) => (
+          {prompts.map((p) => {
+            const usedBy = (plans || []).filter((pl) => pl.promptTpl === p.name);
+            return (
             <div key={p.name} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2.5">
-              <div><div className="text-sm text-slate-100">{p.name} <span className="text-xs text-slate-500">v{p.ver}</span> {p.active && <Badge kind="active">활성</Badge>}</div><div className="text-xs text-slate-500">지표: {(p.rubric || []).join(", ")}</div><div className="text-xs text-slate-500">변수: {(p.vars || []).map((v) => "{{" + v + "}}").join(" ")}</div></div>
-              <div className="flex items-center gap-3"><button onClick={() => openModal("addPrompt", { name: p.name, system: p.system, rubric: p.rubric, vars: p.vars, ver: p.ver })} className="text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => { if (p.active) { toast("활성 템플릿은 삭제할 수 없습니다 — 먼저 비활성화하세요", "warn"); return; } if (window.confirm(p.name + " 템플릿을 삭제할까요?")) { removePrompt(p.name); toast(p.name + " 삭제됨", "ok"); } }} className="text-xs text-slate-500 hover:text-red-400">삭제</button></div>
+              <div><div className="text-sm text-slate-100">{p.name} <span className="text-xs text-slate-500">v{p.ver}</span></div><div className="text-xs text-slate-500">채점 기준: {(p.rubric || []).join(", ")}</div><div className="text-xs text-slate-500">변수: {(p.vars || []).map((v) => "{{" + v + "}}").join(" ")}</div><div className="text-xs mt-0.5">{usedBy.length ? <span className="text-teal-400">사용 중: {usedBy.map((pl) => pl.name).join(" · ")}</span> : <span className="text-slate-600">사용 계획 없음</span>}</div></div>
+              <div className="flex items-center gap-3"><button onClick={() => openModal("addPrompt", { name: p.name, system: p.system, rubric: p.rubric, vars: p.vars, ver: p.ver })} className="text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => { if (usedBy.length) { toast("사용 중인 계획이 있어 삭제할 수 없습니다 — " + usedBy.map((pl) => pl.name).join(", "), "warn"); return; } if (window.confirm(p.name + " 템플릿을 삭제할까요?")) { removePrompt(p.name); toast(p.name + " 삭제됨", "ok"); } }} className="text-xs text-slate-500 hover:text-red-400">삭제</button></div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
     </div>

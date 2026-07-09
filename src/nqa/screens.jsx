@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useApp } from "../common/context.js";
 import { VarRefInput } from "../common/VarRefInput.jsx";
 import { DatasetPicker } from "../common/DatasetPicker.jsx";
-import { Card, PageToolbar, Badge, Btn, Field, Input, Select, Toggle, Seg, Toast, useToast } from "../common/ui.jsx";
+import { Card, PageToolbar, Badge, Btn, Field, Input, Select, Toggle, Seg, Toast, useToast, RunTime, stampPlus } from "../common/ui.jsx";
 import { Gauge, Plus, X, Save, Smartphone, Cpu, Wifi, Package, Upload, Link2, CheckCircle2, Globe, Monitor, Server, Zap, Activity, AlertTriangle, TrendingUp, Bug } from "lucide-react";
 import { NQA_SUBTYPES, NQA_PLATFORMS, NQA_PLAT_K, NQA_TIERS, NQA_TOOLS, NQA_TOOL_METRICS, NQA_NETWORKS, NQA_STARTS, NQA_THERMAL_LEVELS, NQA_PROVIDERS, NQA_DEV_STATUS, NQA_DEV_ST_K, NQA_CAP_LABELS, NQA_PROVIDER_CAPS, NQA_SCN_SOURCES, NQA_SCN_SRC_K, NQA_MARKERS, NQA_SCN_TEMPLATES, NQA_BROWSERS, NQA_VIEWPORTS, NQA_WEB_NET, NQA_CPU_THROTTLE, NQA_CACHE, NQA_PROTOCOLS, NQA_LOAD_ENVS, NQA_HTTP_METHODS, NQA_AUTH_TYPES, NQA_MAX_AGENTS, NQA_LOAD_UNITS, NQA_LOAD_SHAPES } from "./data.js";
 
@@ -159,11 +159,12 @@ function ShapeChart({ shape }) {
   );
 }
 export function NqaScenarioScreen() {
-  const { nqaScenarios, addNqaScenario, updateNqaScenario, removeNqaScenario, nqaSystems, datasets } = useApp();
+  const { nqaScenarios, addNqaScenario, updateNqaScenario, removeNqaScenario, nqaSystems, datasets, nqaScnFocus, setNqaScnFocus } = useApp();
   const [msg, flash] = useToast();
   const list = nqaScenarios || [];
   const systems = (nqaSystems || []).filter((s) => s.subtype === "load");
   const [sel, setSel] = useState(0);
+  useEffect(() => { if (nqaScnFocus != null) { const i = list.findIndex((s) => s.id === nqaScnFocus); if (i >= 0) setSel(i); if (setNqaScnFocus) setNqaScnFocus(null); } }, [nqaScnFocus]);
   const scn = list[sel] || list[0] || {};
   const [draft, setDraft] = useState({});
   const cfg = { ...scn, ...draft };
@@ -383,7 +384,7 @@ export function NqaScenarioScreen() {
 }
 
 export function NqaPlanScreen() {
-  const { nqaPlans, addNqaPlan, updateNqaPlan, removeNqaPlan, nqaScenarios, nqaSystems } = useApp();
+  const { nqaPlans, addNqaPlan, updateNqaPlan, removeNqaPlan, nqaScenarios, nqaSystems, jiraConfig } = useApp();
   const [msg, flash] = useToast();
   const list = nqaPlans || [];
   const scns = nqaScenarios || [];
@@ -395,6 +396,10 @@ export function NqaPlanScreen() {
   const dirty = Object.keys(draft).length > 0;
   const setPlan = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const setSla = (patch) => setPlan({ sla: { ...(cfg.sla || {}), ...patch } });
+  const jgc = jiraConfig || {};
+  const cjira = cfg.jira || { override: false };
+  const setJira = (patch) => setPlan({ jira: { ...cjira, ...patch } });
+  const toggleJira = () => setPlan({ jira: cjira.override ? { override: false } : { override: true, project: cjira.project || jgc.project || "", issueType: cjira.issueType || jgc.issueType || "Bug", assignee: cjira.assignee != null ? cjira.assignee : (jgc.assignee || ""), labels: cjira.labels != null ? cjira.labels : (jgc.labels || ""), titleTpl: cjira.titleTpl || jgc.titleTpl || "", cond: cjira.cond || "fail" } });
   const scn = scns.find((s) => s.id === cfg.scenarioId) || {};
   const sut = systems.find((s) => s.id === scn.sutId) || {};
   const sla = cfg.sla || {};
@@ -472,6 +477,30 @@ export function NqaPlanScreen() {
             <div className="text-xs text-slate-500">측정 구간 = 워밍업(초기 램프업) 제외, 목표 부하 도달 이후 구간에서 집계 · 지표 = 전체 트랜잭션 기준 p95/p99·에러율·처리량 · 에러 = 연결 실패·타임아웃·HTTP 5xx·검증 실패.</div>
             <div className="rounded-lg border border-emerald-900 bg-emerald-950 px-2.5 py-1.5 text-xs text-emerald-300">합격 조건: <span className="text-emerald-100">{slaText}</span> 를 모두 만족</div>
           </Card>
+          {(jgc.connected !== false) && (
+          <Card className="mt-3 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Bug size={15} className="text-amber-400" />결함 트래커 (Jira)</div>
+              <div className="flex items-center gap-2 text-xs text-slate-400">이 계획 재정의 <Toggle on={!!cjira.override} onClick={toggleJira} /></div>
+            </div>
+            {!cjira.override ? (
+              <div className="mt-2 rounded-lg bg-slate-800 p-3 text-xs text-slate-400">전역 Jira 설정 사용 · 프로젝트 <span className="text-slate-300">{jgc.project || "—"}</span> · 이슈유형 {jgc.issueType || "—"} <span className="text-slate-600">(결함 화면의 Jira 연동에서 관리)</span></div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                <div className="text-xs text-slate-500">연결(URL·인증)은 전역, 이 계획의 결함 라우팅만 재정의합니다.</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Field label="프로젝트 키"><Input value={cjira.project || ""} onChange={(e) => setJira({ project: e.target.value })} placeholder="PERFQA" /></Field>
+                  <Field label="이슈 유형"><Select value={cjira.issueType || "Bug"} onChange={(e) => setJira({ issueType: e.target.value })}><option>Bug</option><option>Task</option><option>Story</option></Select></Field>
+                  <Field label="기본 담당자"><Input value={cjira.assignee || ""} onChange={(e) => setJira({ assignee: e.target.value })} placeholder="assignee" /></Field>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="라벨 (쉼표 구분)"><Input value={cjira.labels || ""} onChange={(e) => setJira({ labels: e.target.value })} placeholder="nqa, load" /></Field>
+                  <Field label="자동 등록 조건"><Select value={cjira.cond || "fail"} onChange={(e) => setJira({ cond: e.target.value })}><option value="fail">불합격만</option><option value="regress">회귀 시</option><option value="manual">자동 등록 안 함</option></Select></Field>
+                </div>
+              </div>
+            )}
+          </Card>
+          )}
         </div>
       </div>
       {modal && (
@@ -512,7 +541,8 @@ const simResult = (scn, sla) => {
 };
 
 export function NqaRunScreen({ nav }) {
-  const { nqaPlans, nqaScenarios, nqaSystems, nqaRuns, addNqaRun, updateNqaRun, removeNqaRun, currentUser, defects, addDefect } = useApp();
+  const { nqaPlans, nqaScenarios, nqaSystems, nqaRuns, addNqaRun, updateNqaRun, removeNqaRun, currentUser, defects, addDefect, jiraConfig } = useApp();
+  const jrOf = (pl) => ((jiraConfig && jiraConfig.connected !== false) ? ((pl && pl.jira && pl.jira.override) ? pl.jira : jiraConfig) : {});
   const [msg, flash] = useToast();
   const plans = (nqaPlans || []).filter((p) => p.status === "활성");
   const [planId, setPlanId] = useState((plans[0] || {}).id || 0);
@@ -537,7 +567,7 @@ export function NqaRunScreen({ nav }) {
       prog += 12 + Math.random() * 8;
       if (prog >= 100) {
         setLive((l) => ({ ...(l || {}), progress: 100, rps: target.rps, err: target.errRate, p95: target.p95, done: true }));
-        addNqaRun({ id: runId, planId: plan.id, no, startedAt: nqaNow(), durationSec: durMin * 60, status: "완료", by: currentUser || "이민준", result: target });
+        addNqaRun({ id: runId, planId: plan.id, no, startedAt: nqaNow(), endedAt: stampPlus(durMin * 60), durationSec: durMin * 60, status: "완료", by: currentUser || "이민준", result: target });
         flash("측정 완료 · " + target.verdict);
         return;
       }
@@ -550,7 +580,7 @@ export function NqaRunScreen({ nav }) {
   const regDefect = () => {
     if (!live || !live.done || live.target.verdict !== "불합격") return;
     if ((defects || []).some((d) => d.tc === live.runId)) { flash("이미 결함이 등록된 실행입니다"); return; }
-    addDefect({ key: "DEF-" + (2000 + (defects || []).length), tc: live.runId, sev: "Major", title: "SLA 불합격 · " + (plan.name || "부하") + " · " + live.target.breaches.join(", "), status: "Open", domain: "NQA" });
+    { const jr = jrOf(plan); addDefect({ key: (jr.project || "DEF") + "-" + (2000 + (defects || []).length), tc: live.runId, sev: "Major", title: "SLA 불합격 · " + (plan.name || "부하") + " · " + live.target.breaches.join(", "), status: "Open", domain: "NQA", project: jr.project || "", assignee: jr.assignee || "" }); }
     flash("결함 등록됨 · " + live.runId);
   };
   const padz = (n) => String(n).padStart(2, "0");
@@ -567,7 +597,7 @@ export function NqaRunScreen({ nav }) {
     addNqaRun({ id: "RUN-" + when.replace(/[-T:]/g, "").slice(0, 12), planId: plan.id, no: (nqaRuns || []).filter((r) => r.planId === plan.id).length + 1, status: "예약", scheduledAt: at, by: currentUser || "이민준" });
     setResv(false); flash("예약됨 · " + at);
   };
-  const promote = (r) => { const p = (nqaPlans || []).find((x) => x.id === r.planId) || {}; const s = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {}; const target = simResult(s, p.sla || {}); updateNqaRun(r.id, { status: "완료", startedAt: nqaNow(), result: target }); flash("실행 완료 · " + target.verdict); };
+  const promote = (r) => { const p = (nqaPlans || []).find((x) => x.id === r.planId) || {}; const s = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {}; const target = simResult(s, p.sla || {}); updateNqaRun(r.id, { status: "완료", startedAt: nqaNow(), endedAt: stampPlus(900), durationSec: 900, result: target }); flash("실행 완료 · " + target.verdict); };
   const cancelResv = (r) => { removeNqaRun(r.id); flash("예약 취소됨"); };
   if (!plans.length) return <div className="space-y-4"><PageToolbar desc="부하 주입 + 실시간 관측(RPS/에러율/p95)" /><SubSwitch /><div className="p-8 text-center text-sm text-slate-500">활성 상태인 측정 계획이 없습니다 — 측정 계획에서 계획을 활성화하세요.</div></div>;
   return (
@@ -645,25 +675,25 @@ export function NqaRunScreen({ nav }) {
 }
 
 export function NqaHistoryScreen() {
-  const { nqaRuns, nqaPlans, defects, addDefect } = useApp();
+  const { nqaRuns, nqaPlans, defects, addDefect, jiraConfig } = useApp();
   const [msg, flash] = useToast();
   const runs = (nqaRuns || []).filter((r) => r.status === "완료");
   const [open, setOpen] = useState(null);
   const planName = (id) => ((nqaPlans || []).find((p) => p.id === id) || {}).name || "-";
-  const regDefect = (r) => { if ((r.result || {}).verdict !== "불합격") return; if ((defects || []).some((d) => d.tc === r.id)) { flash("이미 결함이 등록된 실행입니다"); return; } addDefect({ key: "DEF-" + (2000 + (defects || []).length), tc: r.id, sev: "Major", title: "SLA 불합격 · " + planName(r.planId) + " · " + ((r.result || {}).breaches || []).join(", "), status: "Open", domain: "NQA" }); flash("결함 등록됨 · " + r.id); };
+  const regDefect = (r) => { if ((r.result || {}).verdict !== "불합격") return; if ((defects || []).some((d) => d.tc === r.id)) { flash("이미 결함이 등록된 실행입니다"); return; } const jr = (() => { if (!(jiraConfig && jiraConfig.connected !== false)) return {}; const pl = (nqaPlans || []).find((p) => p.id === r.planId); return (pl && pl.jira && pl.jira.override) ? pl.jira : jiraConfig; })(); addDefect({ key: (jr.project || "DEF") + "-" + (2000 + (defects || []).length), tc: r.id, sev: "Major", title: "SLA 불합격 · " + planName(r.planId) + " · " + ((r.result || {}).breaches || []).join(", "), status: "Open", domain: "NQA", project: jr.project || "", assignee: jr.assignee || "" }); flash("결함 등록됨 · " + r.id); };
   return (
     <div className="space-y-4">
       <PageToolbar desc="부하 실행 이력 · 처리량·p95·에러율·SLA 결과" />
       <SubSwitch />
       <Card className="overflow-hidden p-0">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">회차</th><th className="px-3 py-2 text-left">계획</th><th className="px-3 py-2 text-left">시작</th><th className="px-3 py-2 text-right">처리량</th><th className="px-3 py-2 text-right">p95</th><th className="px-3 py-2 text-right">에러율</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">회차</th><th className="px-3 py-2 text-left">계획</th><th className="px-3 py-2 text-left">시각</th><th className="px-3 py-2 text-right">처리량</th><th className="px-3 py-2 text-right">p95</th><th className="px-3 py-2 text-right">에러율</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
           <tbody>
             {runs.length === 0 ? <tr><td colSpan={7} className="px-3 py-6 text-center text-xs text-slate-600">실행 이력이 없습니다.</td></tr> : runs.map((r) => (
               <tr key={r.id} className="cursor-pointer border-b border-slate-800 last:border-0 hover:bg-slate-800/50" onClick={() => setOpen(r)}>
                 <td className="px-3 py-2 font-mono text-xs text-slate-300">{r.id}</td>
                 <td className="px-3 py-2 text-slate-300">{planName(r.planId)} <span className="text-xs text-slate-500">#{r.no}</span></td>
-                <td className="px-3 py-2 text-xs text-slate-500">{r.startedAt}</td>
+                <td className="px-3 py-2 text-xs"><RunTime start={r.startedAt} end={r.endedAt} /></td>
                 <td className="px-3 py-2 text-right text-slate-300">{(r.result || {}).rps} RPS</td>
                 <td className="px-3 py-2 text-right text-slate-300">{(r.result || {}).p95}ms</td>
                 <td className="px-3 py-2 text-right text-slate-300">{(r.result || {}).errRate}%</td>

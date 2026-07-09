@@ -63,6 +63,8 @@ export default function App() {
   const [fqaResultRun, setFqaResultRun] = useState("FRUN-502");
   const [runnerConnected, setRunnerConnected] = useState(true);
   const [fqaEditTc, setFqaEditTc] = useState(null);
+  const [nqaScnFocus, setNqaScnFocus] = useState(null);
+  const [jiraConfig, setJiraConfig] = useState({ connected: true, deploy: "Cloud", url: "skt.atlassian.net", email: "qa@skt.com", token: "${jira_token}", project: "TWORLD", issueType: "Bug", assignee: "QA Lead", labels: "lqa, chatbot", titleTpl: "[챗봇] {{tcId}} 평가 실패 ({{score}}점)", cond: "fail", dedup: true, sevMap: { Critical: "Highest", Major: "High", Minor: "Medium" } });
   const [fqaResultFrom, setFqaResultFrom] = useState("fqa-history");
   const [judges, setJudges] = useState(INIT_JUDGES);
   const [prompts, setPrompts] = useState(INIT_PROMPTS);
@@ -92,12 +94,13 @@ export default function App() {
     goto: setView, env, setEnv, toast, notify, openModal: (type, data) => setModal({ type, data }),
     cases, addCases: (arr) => setCases((c) => [...arr.map(withCreate), ...c]),
     setCaseStatus: (id, status) => setCases((c) => c.map((x) => (x.id === id ? { ...x, ...withUpdate({ status }) } : x))),
+    updateCase: (id, patch) => setCases((c) => c.map((x) => (x.id === id ? { ...x, ...withUpdate(patch) } : x))),
     removeCase: (id) => setCases((c) => c.filter((x) => x.id !== id)),
     categories, addCategory: (n) => setCategories((x) => (x.includes(n) ? x : [...x, n])), removeCategory: (n) => setCategories((x) => x.filter((c) => c !== n)),
     plans, addPlan: (p) => setPlans((x) => [...x, withCreate(p)]), updatePlan: (id, patch) => setPlans((x) => x.map((p) => (p.id === id ? { ...p, ...withUpdate(patch) } : p))), removePlan: (id) => setPlans((x) => x.filter((p) => p.id !== id)),
     runs, addRun: (r) => setRuns((x) => [r, ...x]), updateRun: (id, patch) => setRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
     runIntent, setRunIntent,
-    defects, addDefect: (d) => setDefects((x) => [withCreate(d), ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ status }) } : d))), setDefectAssignee: (key, assignee) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ assignee }) } : d))),
+    defects, addDefect: (d) => setDefects((x) => [withCreate(d), ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ status }) } : d))), setDefectAssignee: (key, assignee) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ assignee }) } : d))), updateDefect: (key, patch) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate(patch) } : d))),
     fqaCases, addFqaCase: (c) => setFqaCases((x) => [withCreate(c), ...x]), updateFqaCase: (id, patch) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), setFqaCaseStatus: (id, status) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate({ status }) } : c))), removeFqaCase: (id) => setFqaCases((x) => x.filter((c) => c.id !== id)),
     fqaSuites, addFqaSuite: (su) => setFqaSuites((x) => [...x, withCreate(su)]), updateFqaSuite: (id, patch) => setFqaSuites((x) => x.map((su) => (su.id === id ? { ...su, ...withUpdate(patch) } : su))), removeFqaSuite: (id) => setFqaSuites((x) => x.filter((su) => su.id !== id)),
     fqaSystems, addFqaSystem: (sy) => setFqaSystems((x) => [...x, withCreate(sy)]), updateFqaSystem: (id, patch) => setFqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...withUpdate(patch) } : sy))), removeFqaSystem: (id) => setFqaSystems((x) => x.filter((sy) => sy.id !== id)),
@@ -112,6 +115,8 @@ export default function App() {
     fqaResultRun, setFqaResultRun,
     runnerConnected, setRunnerConnected,
     fqaEditTc, setFqaEditTc,
+    nqaScnFocus, setNqaScnFocus,
+    jiraConfig, setJiraConfig,
     judges, toggleJudge: (name) => setJudges((x) => x.map((j) => (j.name === name ? { ...j, enabled: !j.enabled } : j))),
     prompts, addPrompt: (p) => setPrompts((x) => [...x, p]), updatePrompt: (name, patch) => setPrompts((x) => x.map((pp) => (pp.name === name ? { ...pp, ...patch } : pp))), removePrompt: (name) => setPrompts((x) => x.filter((pp) => pp.name !== name)),
     chatbots, addChatbot: (c) => setChatbots((x) => [...x, withCreate(c)]), updateChatbot: (id, patch) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), removeChatbot: (id) => setChatbots((x) => x.filter((c) => c.id !== id)),
@@ -219,7 +224,7 @@ export default function App() {
           const map = {
             newPlan: ["새 평가 계획", <NewPlanForm close={close} data={modal.data} />],
             aiGen: ["AI 발화 생성", <AiGenForm close={close} />],
-            newCase: ["테스트케이스 등록", <NewCaseForm close={close} />],
+            newCase: ["테스트케이스 " + (modal.data ? "수정" : "등록"), <NewCaseForm close={close} data={modal.data} />],
             catMgr: ["카테고리 관리", <CategoryManager close={close} />],
             importCases: ["Excel 일괄 업로드", <ImportCasesForm close={close} />],
             jira: ["결함 등록", <JiraForm close={close} data={modal.data} />, true],

@@ -119,6 +119,24 @@ export function Seg({ options, value, onChange }) {
   );
 }
 
+// 현재 시각을 "YYYY-MM-DD HH:mm" 로 포맷 (실행 이력 시각 표기 통일용)
+export const fmtTs = (d) => { const z = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); };
+export const nowStamp = () => fmtTs(new Date());
+export const stampPlus = (sec) => fmtTs(new Date(Date.now() + (sec || 0) * 1000));
+
+// 실행 이력 "시각" 셀 — 시작(전체 일시) / 종료(같은 날이면 시간만) 2줄 표시 (전 도메인 공통)
+export function RunTime({ start, end }) {
+  if (!start || start === "-") return <span className="text-slate-600">-</span>;
+  let endTxt = "";
+  if (end && end !== "-") endTxt = end.slice(0, 10) === start.slice(0, 10) ? end.slice(11) : end;
+  return (
+    <div className="leading-tight">
+      <div className="text-slate-300">{start}</div>
+      <div className="text-xs text-slate-500">{endTxt ? "~ " + endTxt : "~ —"}</div>
+    </div>
+  );
+}
+
 // 로컬 토스트 (화면 자체 알림용) — 전역 context toast와 별개로 필요한 화면에서 사용
 export function useToast() { const [m, setM] = useState(""); return [m, (t) => { setM(t); setTimeout(() => setM(""), 2000); }]; }
 export function Toast({ msg }) { return msg ? <div className="fixed bottom-5 right-5 z-50 rounded-lg border border-teal-700 bg-teal-900 px-4 py-2.5 text-sm text-teal-100 shadow-xl">{msg}</div> : null; }
