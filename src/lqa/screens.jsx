@@ -10,12 +10,22 @@ import { VarRefInput } from "../common/VarRefInput.jsx";
 import { C, vKind, KIND } from "../common/theme.js";
 import { Badge, ScoreBar, Card, Field, Btn, Input, Select, Toggle, PageToolbar, EmptyState, SearchInput, RunTime, nowStamp } from "../common/ui.jsx";
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
-const LQA_EVENTS = [
-  { key: "model", label: "챗봇 모델 업데이트 시", desc: "모델 버전이 바뀌면 회귀 평가 자동 수행 (권장)", short: "모델 업데이트",
-    fields: [{ k: "target", type: "readonly", label: "대상", value: "계획의 대상 챗봇 (상속)" }, { k: "detect", type: "readonly", label: "감지 방식", value: "챗봇 연결의 ‘모델 버전 감지 방식’에서 정의 (상속)" }] },
-  { key: "deploy", label: "배포(릴리스) 시", desc: "대상 챗봇 배포 직후 품질 게이트 평가", short: "배포",
-    fields: [{ k: "env", type: "readonly", label: "대상 환경", value: "계획의 대상 챗봇 환경 (상속)" }, { k: "signal", type: "select", label: "배포 신호", options: ["CD 배포 완료 웹훅", "릴리스 태그(v*)", "이미지 태그 push"] }] },
-];
+// 이벤트 트리거는 정보성(읽기전용) — 감지 방식은 챗봇 연결 "모델·배포 소스"에서 정의된 값을 상속만 표시.
+const lqaEvents = (bot) => {
+  const src = (bot && bot.modelSrc) || "API 버전 필드 폴링";
+  const detect = src === "배포 웹훅 알림"
+    ? "배포 웹훅 알림 · 챗봇 연결에서 정의 (상속)"
+    : src === "수동"
+    ? "수동 — 자동 감지 없음 · 이 이벤트는 발동하지 않습니다 (챗봇 연결에서 변경)"
+    : "API 버전 필드 폴링 · " + ((bot && bot.verPath) || "$.model.version") + " · 챗봇 연결에서 정의 (상속)";
+  return [
+    { key: "model", label: "챗봇 배포·모델 업데이트 시", desc: "대상 챗봇의 모델/프롬프트 버전이 바뀌면 회귀 평가를 자동 실행합니다 (권장)", short: "배포·모델 업데이트",
+      fields: [
+        { k: "target", type: "readonly", label: "대상", value: (bot && bot.name ? bot.name : "계획의 대상 챗봇") + " · 환경 (상속)" },
+        { k: "detect", type: "readonly", label: "감지 방식", value: detect },
+      ] },
+  ];
+};
 const DEFAULT_SCHED = { mode: "manual", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: {}, summary: "예약 없음" };
 // 스케줄 정규화 키(요약·거짓 ev키 제외) — dirty 비교가 표기 차이에 흔들리지 않도록
 const schedKey = (s) => { s = s || {}; return JSON.stringify([s.mode, s.freq, s.time, s.dow, s.dom, s.cron, s.tz, s.active, Object.keys(s.ev || {}).filter((k) => s.ev[k]).sort()]); };
@@ -559,25 +569,28 @@ function ChatbotDetail({ cb, onDirty }) {
   const [iframe, setIframe] = useState(cb.iframe || false);
   const [modelSrc, setModelSrc] = useState(cb.modelSrc || "API 버전 필드 폴링");
   const [verPath, setVerPath] = useState(cb.verPath || "$.model.version");
+  const [verUrl, setVerUrl] = useState(cb.verUrl || "");
+  const [verInterval, setVerInterval] = useState(cb.verInterval || "15분");
   const [test, setTest] = useState(null);
   const deployHook = "https://xq.skt/api/hooks/model-" + (cb.name.trim() ? cb.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "chatbot") + "-9c1e";
+  const deploySecret = "whsec_" + deployHook.slice(-4) + "e1b7d4f60a2c";
   const setH = (i, key, val) => setHeaders(headers.map((h, j) => (j === i ? { ...h, [key]: val } : h)));
   const secretRef = (val, setVal, ph) => <VarRefInput value={val} onChange={setVal} placeholder={ph} />;
   useEffect(() => {
     setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setName(cb.name || "");
     setMethod(cb.method || "POST"); setHeaders(cb.headers || DEF_HEADERS); setTokenVal(cb.tokenVal || ""); setApiKeyName(cb.apiKeyName || "X-API-Key"); setOauth(cb.oauth || DEF_OAUTH);
     setBody(cb.body || DEF_BODY); setAnswerPath(cb.answerPath || "$.data.answer"); setSessionPath(cb.sessionPath || "$.data.sessionId"); setRespMode(cb.respMode || "동기"); setPollUrl(cb.pollUrl || ""); setDoneField(cb.doneField || "$.status"); setTimeoutS(cb.timeoutS || 30);
-    setSel2(cb.sel2 || DEF_SEL2); setIframe(cb.iframe || false); setModelSrc(cb.modelSrc || "API 버전 필드 폴링"); setVerPath(cb.verPath || "$.model.version"); setTest(null);
+    setSel2(cb.sel2 || DEF_SEL2); setIframe(cb.iframe || false); setModelSrc(cb.modelSrc || "API 버전 필드 폴링"); setVerPath(cb.verPath || "$.model.version"); setVerUrl(cb.verUrl || ""); setVerInterval(cb.verInterval || "15분"); setTest(null);
   }, [cb.id]);
   const baseAuth = isRest ? (cb.auth || "Bearer Token") : (cb.auth === "로그인 세션" ? "로그인 세션" : "없음");
   const effAuth = isRest ? authType : (needLogin ? "로그인 세션" : "없음");
   // 얕은 설정(name/endpoint/auth)뿐 아니라 응답 처리·모델 소스·헤더·본문까지 전부 dirty·저장에 포함
-  const cfgArr = (o) => JSON.stringify([o.endpoint, o.auth, o.name, o.method, o.headers, o.body, o.answerPath, o.sessionPath, o.respMode, o.pollUrl, o.doneField, o.timeoutS, o.modelSrc, o.verPath, o.apiKeyName, o.tokenVal, o.oauth, o.sel2, o.iframe]);
-  const curCfg = { endpoint, auth: effAuth, name, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, apiKeyName, tokenVal, oauth, sel2, iframe };
-  const savedCfg = { endpoint: cb.endpoint || "", auth: baseAuth, name: cb.name || "", method: cb.method || "POST", headers: cb.headers || DEF_HEADERS, body: cb.body || DEF_BODY, answerPath: cb.answerPath || "$.data.answer", sessionPath: cb.sessionPath || "$.data.sessionId", respMode: cb.respMode || "동기", pollUrl: cb.pollUrl || "", doneField: cb.doneField || "$.status", timeoutS: cb.timeoutS || 30, modelSrc: cb.modelSrc || "API 버전 필드 폴링", verPath: cb.verPath || "$.model.version", apiKeyName: cb.apiKeyName || "X-API-Key", tokenVal: cb.tokenVal || "", oauth: cb.oauth || DEF_OAUTH, sel2: cb.sel2 || DEF_SEL2, iframe: cb.iframe || false };
+  const cfgArr = (o) => JSON.stringify([o.endpoint, o.auth, o.name, o.method, o.headers, o.body, o.answerPath, o.sessionPath, o.respMode, o.pollUrl, o.doneField, o.timeoutS, o.modelSrc, o.verPath, o.verUrl, o.verInterval, o.apiKeyName, o.tokenVal, o.oauth, o.sel2, o.iframe]);
+  const curCfg = { endpoint, auth: effAuth, name, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe };
+  const savedCfg = { endpoint: cb.endpoint || "", auth: baseAuth, name: cb.name || "", method: cb.method || "POST", headers: cb.headers || DEF_HEADERS, body: cb.body || DEF_BODY, answerPath: cb.answerPath || "$.data.answer", sessionPath: cb.sessionPath || "$.data.sessionId", respMode: cb.respMode || "동기", pollUrl: cb.pollUrl || "", doneField: cb.doneField || "$.status", timeoutS: cb.timeoutS || 30, modelSrc: cb.modelSrc || "API 버전 필드 폴링", verPath: cb.verPath || "$.model.version", verUrl: cb.verUrl || "", verInterval: cb.verInterval || "15분", apiKeyName: cb.apiKeyName || "X-API-Key", tokenVal: cb.tokenVal || "", oauth: cb.oauth || DEF_OAUTH, sel2: cb.sel2 || DEF_SEL2, iframe: cb.iframe || false };
   const dirty = cfgArr(curCfg) !== cfgArr(savedCfg);
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
-  const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, apiKeyName, tokenVal, oauth, sel2, iframe }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
+  const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
   const runTest = () => {
     setTest({ state: "running" });
     setTimeout(() => { setTest({ state: "ok", latency: 700 + Math.floor(Math.random() * 700), answer: isRest ? "나의 T월드 → 요금제 변경 탭에서 LTE 요금제를 선택해 신청하시면 됩니다. (당월 1회 제한)" : "(웹 챗 위젯 응답 캡처) 나의 T월드에서 요금제를 변경할 수 있습니다." }); setChatbotStatus(cb.id, "연결됨"); }, 950);
@@ -604,7 +617,6 @@ function ChatbotDetail({ cb, onDirty }) {
                   {authType === "API Key" && <div className="mt-2 space-y-1.5"><Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="헤더명 (X-API-Key)" />{secretRef(tokenVal, setTokenVal, "${api_key}")}</div>}
                   {authType === "Bearer Token" && <div className="mt-2">{secretRef(tokenVal, setTokenVal, "${stg_tworld_token}")}</div>}
                   {authType === "OAuth 2.0" && <div className="mt-2 space-y-1.5"><div className="grid grid-cols-2 gap-2"><Input value={oauth.url} onChange={(e) => setOauth({ ...oauth, url: e.target.value })} placeholder="토큰 URL" /><Input value={oauth.scope} onChange={(e) => setOauth({ ...oauth, scope: e.target.value })} placeholder="scope" /><Input value={oauth.id} onChange={(e) => setOauth({ ...oauth, id: e.target.value })} placeholder="client id" /></div>{secretRef(oauth.secret, (val) => setOauth({ ...oauth, secret: val }), "${client_secret}")}</div>}
-                  {authType !== "None" && <div className="mt-1.5 text-xs text-slate-500">시크릿은 공통 <span className="text-slate-300">변수</span> 화면의 값을 <span className="font-mono text-teal-400">{"${키}"}</span>로 참조 · 실행 시 환경 값으로 치환됩니다.</div>}
                 </Field>
                 <Field label="요청 헤더">
                   {headers.map((h, i) => (<div key={i} className="mb-1.5 flex gap-2"><Input value={h.k} onChange={(e) => setH(i, "k", e.target.value)} placeholder="Header" /><Input value={h.v} onChange={(e) => setH(i, "v", e.target.value)} placeholder="Value" /><button onClick={() => setHeaders(headers.filter((_, j) => j !== i))} className="px-1 text-slate-500 hover:text-red-400"><X size={14} /></button></div>))}
@@ -649,8 +661,22 @@ function ChatbotDetail({ cb, onDirty }) {
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Wrench size={14} className="text-teal-400" />모델·배포 소스</div>
             <div className="text-xs text-slate-500"><span className="text-slate-300">평가 계획 › 이벤트 트리거</span>의 "챗봇 모델 업데이트 시"가 여기서 정의한 소스를 상속합니다.</div>
             <Field label="모델 버전 감지 방식"><Select value={modelSrc} onChange={(e) => setModelSrc(e.target.value)}><option>API 버전 필드 폴링</option><option>배포 웹훅 알림</option><option>수동</option></Select></Field>
-            {modelSrc === "API 버전 필드 폴링" && <Field label="버전 필드 (JSON Path)"><Input value={verPath} onChange={(e) => setVerPath(e.target.value)} placeholder="$.model.version" /></Field>}
-            {modelSrc === "배포 웹훅 알림" && <Field label="배포 알림 수신 웹훅 URL"><div className="flex items-center gap-2"><Input value={deployHook} readOnly className="font-mono text-xs" /><Btn icon={Copy} onClick={() => { try { navigator.clipboard.writeText(deployHook); } catch (e) {} toast("웹훅 URL을 복사했습니다", "ok"); }}>복사</Btn></div></Field>}
+            {modelSrc === "API 버전 필드 폴링" && (
+              <div className="space-y-2.5 rounded-lg border border-slate-800 p-3">
+                <Field label="폴링 대상 URL" hint="비우면 챗봇 엔드포인트로 질의 · 인증은 챗봇 인증 재사용"><Input value={verUrl} onChange={(e) => setVerUrl(e.target.value)} placeholder={endpoint || "https://chatbot.api/health"} className="font-mono text-xs" /></Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="버전 필드 (JSON Path)"><Input value={verPath} onChange={(e) => setVerPath(e.target.value)} placeholder="$.model.version" /></Field>
+                  <Field label="폴링 주기"><Select value={verInterval} onChange={(e) => setVerInterval(e.target.value)}><option>5분</option><option>15분</option><option>1시간</option><option>6시간</option><option>24시간</option></Select></Field>
+                </div>
+                <div className="text-xs text-slate-500">주기마다 위 URL을 질의해 <span className="font-mono text-slate-400">{verPath || "$.model.version"}</span> 값이 직전과 달라지면 이벤트 발동.</div>
+              </div>
+            )}
+            {modelSrc === "배포 웹훅 알림" && (
+              <div className="space-y-2.5 rounded-lg border border-slate-800 p-3">
+                <Field label="배포 알림 수신 웹훅 URL (플랫폼 발급)"><div className="flex items-center gap-2"><Input value={deployHook} readOnly className="font-mono text-xs" /><Btn icon={Copy} onClick={() => { try { navigator.clipboard.writeText(deployHook); } catch (e) {} toast("웹훅 URL을 복사했습니다", "ok"); }}>복사</Btn></div></Field>
+                <Field label="서명 시크릿 (HMAC 검증)" hint="URL과 함께 CD 담당 조직에 전달 · 재발급 시 기존 값은 무효화"><div className="flex items-center gap-2"><div className="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 font-mono text-xs text-slate-400">whsec_••••••••••••</div><Btn icon={Copy} onClick={() => { try { navigator.clipboard.writeText(deploySecret); } catch (e) {} toast("서명 시크릿을 복사했습니다", "ok"); }}>복사</Btn><Btn onClick={() => toast("서명 시크릿이 재발급되었습니다 · CD 담당 조직에 갱신 전달 필요", "ok")}>재발급</Btn></div></Field>
+              </div>
+            )}
           </Card>
           <Card className="p-4">
             <div className="text-sm font-semibold text-slate-200">연결 테스트 결과</div>
@@ -660,7 +686,6 @@ function ChatbotDetail({ cb, onDirty }) {
           </Card>
         </div>
       </div>
-      <div className="text-xs text-slate-500">인증 시크릿은 공통 <span className="text-slate-400">변수</span> 화면에서 관리되며 <span className="font-mono">{"${키}"}</span>로 참조됩니다. 수집 대화는 Judge 호출 전 PII 마스킹됩니다.</div>
     </div>
   );
 }
@@ -949,7 +974,7 @@ export function Plans() {
             <Input type="number" value={pass} onChange={(e) => setPass(+e.target.value || 0)} className="w-24" />
           </div>
         </div>
-        <div className="mt-5 pt-5 border-t border-slate-800"><ScheduleConfig key={cur.id} value={sched} onChange={setSched} events={LQA_EVENTS} singleSelect manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." toast={toast} /></div>
+        <div className="mt-5 pt-5 border-t border-slate-800"><ScheduleConfig key={cur.id} value={sched} onChange={setSched} events={lqaEvents((chatbots || []).find((c) => c.name === cur.bot))} singleSelect manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." toast={toast} /></div>
         {(jgc.connected !== false) && (
         <div className="mt-5 pt-5 border-t border-slate-800">
           <div className="flex items-center justify-between">
