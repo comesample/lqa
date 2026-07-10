@@ -701,47 +701,71 @@ export function Targets() {
 /* ============================ screens ============================ */
 export function Dashboard() {
   const { goto, runs, plans, cases, defects, setRunIntent, toast } = useApp();
-  const doneRuns = runs.filter((r) => r.status === "완료");
+  const toISO = (d) => { const z = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()); };
+  const [today] = useState(() => toISO(new Date()));
+  const [defFrom] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 6); return toISO(d); });
+  const [planF, setPlanF] = useState("전체");
+  const [from, setFrom] = useState(defFrom);
+  const [to, setTo] = useState(today);
+  const parseD = (s) => { const t = Date.parse((s || "").slice(0, 10)); return isNaN(t) ? null : t; };
+  const minFromOf = (t) => { const d = new Date(t); d.setMonth(d.getMonth() - 6); return toISO(d); };
+  const setRange = (nf, nt) => { if (nf > nt) nf = nt; const mf = minFromOf(nt); if (nf < mf) { nf = mf; toast("기간은 최대 6개월까지 지정할 수 있습니다", "info"); } setFrom(nf); setTo(nt); };
+  const inPlan = (r) => planF === "전체" || r.planName === planF;
+  const inPeriod = (r) => { const ds = (r.startedAt || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return true; return ds >= from && ds <= to; };
+  const fruns = runs.filter((r) => inPlan(r) && inPeriod(r));
+  const doneRuns = fruns.filter((r) => r.status === "완료");
+  const errRuns = fruns.filter((r) => r.status === "오류").length;
   const avg = (arr) => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : 0);
-  const avgScore = avg(doneRuns.map((r) => r.score)).toFixed(1);
-  const avgPass = Math.round(avg(doneRuns.map((r) => r.passRate)));
+  const avgScore = doneRuns.length ? avg(doneRuns.map((r) => r.score)).toFixed(1) : "—";
+  const avgPass = doneRuns.length ? Math.round(avg(doneRuns.map((r) => r.passRate))) : null;
   const openDefects = defects.filter((d) => d.status === "Open").length;
-  const running = runs.filter((r) => r.status === "진행중").length;
+  const running = fruns.filter((r) => r.status === "진행중").length;
   const pending = cases.filter((c) => c.status === "검토중" || c.status === "초안").length;
   const scheduled = plans.filter((p) => p.sched && p.sched !== "예약 없음");
   const halluc = cases.filter((c) => c.safety && (c.safety.환각 === "WARN" || c.safety.환각 === "FAIL")).length;
   const pii = cases.filter((c) => c.safety && (c.safety.PII === "WARN" || c.safety.PII === "FAIL")).length;
   const trigKind = KIND.trigger;
   const stKind = KIND.runStatus;
+  const planNames = [...new Set(runs.map((r) => r.planName))];
+  const filtered = planF !== "전체" || from !== defFrom || to !== today;
+  const chartData = doneRuns.slice().sort((a, b) => (parseD(a.startedAt) || 0) - (parseD(b.startedAt) || 0)).map((r) => ({ d: (r.startedAt || "").slice(5, 10).replace("-", "/"), score: r.score, pass: r.passRate }));
   const kpis = [
-    { label: "총 평가 실행", value: String(runs.length), delta: "+12.3%", up: true },
-    { label: "평균 종합 점수", value: avgScore, delta: "+2.2", up: true },
-    { label: "PASS율", value: avgPass + "%", delta: "+2.1%p", up: true },
-    { label: "미결 결함", value: String(openDefects), delta: running ? running + "건 실행 중" : "안정", up: false },
+    { label: "총 평가 실행", value: String(fruns.length), sub: "완료 " + doneRuns.length + " · 오류 " + errRuns },
+    { label: "평균 종합 점수", value: avgScore, sub: doneRuns.length ? doneRuns.length + "개 완료 평균" : "완료 실행 없음" },
+    { label: "PASS율", value: avgPass != null ? avgPass + "%" : "—", sub: doneRuns.length ? "완료 실행 평균" : "—" },
+    { label: "미결 결함", value: String(openDefects), sub: running ? running + "건 실행 중" : "전체 도메인 · 현재" },
   ];
   return (
     <div className="space-y-5">
-      <PageToolbar desc="AI 품질 현황 요약 · 최근 실행과 안전성 지표" />
+      <PageToolbar desc="AI 품질 현황 요약 · 최근 실행과 안전성 지표">
+        <div style={{ width: 190 }}><Select value={planF} onChange={(e) => setPlanF(e.target.value)}><option value="전체">전체 계획</option>{planNames.map((n) => <option key={n} value={n}>{n}</option>)}</Select></div>
+        <input type="date" value={from} min={minFromOf(to)} max={to} onChange={(e) => setRange(e.target.value, to)} className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" />
+        <span className="text-slate-500">~</span>
+        <input type="date" value={to} min={from} max={today} onChange={(e) => setRange(from, e.target.value)} className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" />
+      </PageToolbar>
+      {filtered && <div className="flex items-center gap-2 text-xs text-slate-400"><Badge kind="teal">필터</Badge><span>{planF === "전체" ? "전체 계획" : planF} · {from} ~ {to} — 실행 {fruns.length}건</span><button onClick={() => { setPlanF("전체"); setFrom(defFrom); setTo(today); }} className="text-slate-500 hover:text-teal-400">초기화</button></div>}
       <div className="grid grid-cols-4 gap-4">
         {kpis.map((k) => (
           <Card key={k.label} className="p-4">
             <div className="text-xs text-slate-400">{k.label}</div>
             <div className="mt-1 text-3xl font-bold text-slate-50">{k.value}</div>
-            <div className={"mt-1 flex items-center gap-1 text-xs " + (k.up ? "text-emerald-400" : "text-slate-400")}>{k.up ? <TrendingUp size={13} /> : <TrendingDown size={13} />}{k.delta} <span className="text-slate-500">전주 대비</span></div>
+            <div className="mt-1 text-xs text-slate-500">{k.sub}</div>
           </Card>
         ))}
       </div>
       <div className="grid grid-cols-3 gap-4">
         <Card className="col-span-2 p-4">
-          <div className="text-sm font-semibold text-slate-200 mb-3">주간 품질 추이</div>
+          <div className="mb-3 text-sm font-semibold text-slate-200">품질 추이 <span className="text-xs font-normal text-slate-500">· 완료 실행 기준</span></div>
+          {chartData.length ? (
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={TREND}>
+            <LineChart data={chartData}>
               <CartesianGrid stroke={C.grid} vertical={false} /><XAxis dataKey="d" stroke={C.axis} fontSize={11} /><YAxis stroke={C.axis} fontSize={11} domain={[50, 100]} />
               <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }} /><Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="score" name="종합 점수" stroke={C.teal} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="pass" name="PASS율" stroke={C.blue} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="score" name="종합 점수" stroke={C.teal} strokeWidth={2} dot={{ r: 2 }} />
+              <Line type="monotone" dataKey="pass" name="PASS율" stroke={C.blue} strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
+          ) : <div className="flex items-center justify-center" style={{ height: 220 }}><EmptyState icon={TrendingUp} title="해당 조건의 완료 실행이 없습니다" hint="계획·기간 필터를 조정하세요" /></div>}
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold text-slate-200">안전성 이슈</div><button onClick={() => goto("defects")} className="text-xs text-teal-400">결함 보기</button></div>
@@ -775,9 +799,10 @@ export function Dashboard() {
         <table className="w-full text-sm">
           <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2 font-medium">평가 계획</th><th className="font-medium">트리거</th><th className="font-medium">TC</th><th className="font-medium">종합</th><th className="font-medium">상태</th><th className="font-medium">시각</th></tr></thead>
           <tbody className="text-slate-300">
-            {runs.slice(0, 5).map((r) => (
+            {fruns.slice(0, 5).map((r) => (
               <tr key={r.id} onClick={() => { if (r.status !== "완료") { toast(r.id + " 오류로 종료 — 상세 결과 없음", "info"); return; } setRunIntent({ type: "view", runId: r.id }); goto("lqa-result"); }} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer"><td className="py-2.5 font-medium text-slate-200">{r.planName}</td><td><Badge kind={trigKind[r.trigger]}>{r.trigger}</Badge></td><td>{r.cases}</td><td className="font-semibold">{r.score != null ? r.score : "—"}</td><td><Badge kind={stKind[r.status]}>{r.status}</Badge></td><td className="text-slate-500">{r.startedAt}</td></tr>
             ))}
+            {fruns.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-xs text-slate-500">해당 조건의 실행이 없습니다</td></tr>}
           </tbody>
         </table>
       </Card>
