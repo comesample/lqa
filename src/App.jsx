@@ -64,11 +64,12 @@ export default function App() {
   const [runnerConnected, setRunnerConnected] = useState(true);
   const [fqaEditTc, setFqaEditTc] = useState(null);
   const [nqaScnFocus, setNqaScnFocus] = useState(null);
-  const [jiraConfig, setJiraConfig] = useState({ connected: true, deploy: "Cloud", url: "skt.atlassian.net", email: "qa@skt.com", token: "${jira_token}", project: "TWORLD", issueType: "Bug", assignee: "QA Lead", labels: "lqa, chatbot", titleTpl: "[챗봇] {{tcId}} 평가 실패 ({{score}}점)", cond: "fail", dedup: true, sevMap: { Critical: "Highest", Major: "High", Minor: "Medium" } });
+  const [jiraConfig, setJiraConfig] = useState({ connected: true, deploy: "Cloud", url: "skt.atlassian.net", email: "qa@skt.com", token: "${jira_token}", project: "TWORLD", issueType: "Bug", assignee: "QA Lead", labels: "lqa, chatbot", titleTpl: "[챗봇] {{tcId}} 평가 실패 ({{score}}점)", dedup: true, sevMap: { Critical: "Highest", Major: "High", Minor: "Medium" } });
   const [fqaResultFrom, setFqaResultFrom] = useState("fqa-history");
   const [judges, setJudges] = useState(INIT_JUDGES);
   const [prompts, setPrompts] = useState(INIT_PROMPTS);
   const [chatbots, setChatbots] = useState(stampSeeds(INIT_CHATBOTS));
+  const [pendingSelect, setPendingSelect] = useState(null);
   const [role, setRole] = useState("admin");
   const [space, setSpace] = useState("product");
   const [domain, setDomain] = useState("LQA");
@@ -97,7 +98,7 @@ export default function App() {
     updateCase: (id, patch) => setCases((c) => c.map((x) => (x.id === id ? { ...x, ...withUpdate(patch) } : x))),
     removeCase: (id) => setCases((c) => c.filter((x) => x.id !== id)),
     categories, addCategory: (n) => setCategories((x) => (x.includes(n) ? x : [...x, n])), removeCategory: (n) => setCategories((x) => x.filter((c) => c !== n)),
-    plans, addPlan: (p) => setPlans((x) => [...x, withCreate(p)]), updatePlan: (id, patch) => setPlans((x) => x.map((p) => (p.id === id ? { ...p, ...withUpdate(patch) } : p))), removePlan: (id) => setPlans((x) => x.filter((p) => p.id !== id)),
+    plans, addPlan: (p) => { setPlans((x) => [...x, withCreate(p)]); setPendingSelect({ kind: "plan", id: p.id }); }, updatePlan: (id, patch) => setPlans((x) => x.map((p) => (p.id === id ? { ...p, ...withUpdate(patch) } : p))), removePlan: (id) => setPlans((x) => x.filter((p) => p.id !== id)),
     runs, addRun: (r) => setRuns((x) => [r, ...x]), updateRun: (id, patch) => setRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
     runIntent, setRunIntent,
     defects, addDefect: (d) => setDefects((x) => [withCreate(d), ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ status }) } : d))), setDefectAssignee: (key, assignee) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ assignee }) } : d))), updateDefect: (key, patch) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate(patch) } : d))),
@@ -119,7 +120,8 @@ export default function App() {
     jiraConfig, setJiraConfig,
     judges, toggleJudge: (name) => setJudges((x) => x.map((j) => (j.name === name ? { ...j, enabled: !j.enabled } : j))),
     prompts, addPrompt: (p) => setPrompts((x) => [...x, p]), updatePrompt: (name, patch) => setPrompts((x) => x.map((pp) => (pp.name === name ? { ...pp, ...patch } : pp))), removePrompt: (name) => setPrompts((x) => x.filter((pp) => pp.name !== name)),
-    chatbots, addChatbot: (c) => setChatbots((x) => [...x, withCreate(c)]), updateChatbot: (id, patch) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), removeChatbot: (id) => setChatbots((x) => x.filter((c) => c.id !== id)),
+    pendingSelect, setPendingSelect,
+    chatbots, addChatbot: (c) => { setChatbots((x) => [...x, withCreate(c)]); setPendingSelect({ kind: "chatbot", id: c.id }); }, updateChatbot: (id, patch) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), removeChatbot: (id) => setChatbots((x) => x.filter((c) => c.id !== id)),
     setChatbotStatus: (id, status) => setChatbots((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate({ status }) } : c))),
     role, setRole, space, setSpace, domain, setDomain, tenants, tenantId, setTenantId,
     addTenant: (t) => setTenants((x) => [...x, t]),

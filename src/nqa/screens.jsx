@@ -399,7 +399,7 @@ export function NqaPlanScreen() {
   const jgc = jiraConfig || {};
   const cjira = cfg.jira || { override: false };
   const setJira = (patch) => setPlan({ jira: { ...cjira, ...patch } });
-  const toggleJira = () => setPlan({ jira: cjira.override ? { override: false } : { override: true, project: cjira.project || jgc.project || "", issueType: cjira.issueType || jgc.issueType || "Bug", assignee: cjira.assignee != null ? cjira.assignee : (jgc.assignee || ""), labels: cjira.labels != null ? cjira.labels : (jgc.labels || ""), titleTpl: cjira.titleTpl || jgc.titleTpl || "", cond: cjira.cond || "fail" } });
+  const toggleJira = () => setPlan({ jira: cjira.override ? { override: false } : { override: true, project: cjira.project || jgc.project || "", issueType: cjira.issueType || jgc.issueType || "Bug", assignee: cjira.assignee != null ? cjira.assignee : (jgc.assignee || ""), labels: cjira.labels != null ? cjira.labels : (jgc.labels || ""), titleTpl: cjira.titleTpl || jgc.titleTpl || "" } });
   const scn = scns.find((s) => s.id === cfg.scenarioId) || {};
   const sut = systems.find((s) => s.id === scn.sutId) || {};
   const sla = cfg.sla || {};
@@ -493,10 +493,7 @@ export function NqaPlanScreen() {
                   <Field label="이슈 유형"><Select value={cjira.issueType || "Bug"} onChange={(e) => setJira({ issueType: e.target.value })}><option>Bug</option><option>Task</option><option>Story</option></Select></Field>
                   <Field label="기본 담당자"><Input value={cjira.assignee || ""} onChange={(e) => setJira({ assignee: e.target.value })} placeholder="assignee" /></Field>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="라벨 (쉼표 구분)"><Input value={cjira.labels || ""} onChange={(e) => setJira({ labels: e.target.value })} placeholder="nqa, load" /></Field>
-                  <Field label="자동 등록 조건"><Select value={cjira.cond || "fail"} onChange={(e) => setJira({ cond: e.target.value })}><option value="fail">불합격만</option><option value="regress">회귀 시</option><option value="manual">자동 등록 안 함</option></Select></Field>
-                </div>
+                <Field label="라벨 (쉼표 구분)"><Input value={cjira.labels || ""} onChange={(e) => setJira({ labels: e.target.value })} placeholder="nqa, load" /></Field>
               </div>
             )}
           </Card>

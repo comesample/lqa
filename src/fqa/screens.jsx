@@ -1796,7 +1796,7 @@ export function FqaPlanScreen({ nav }) {
   const [planStatus, setPlanStatus] = useState(sel.status || "초안");
   const [jira, setJira] = useState(sel.jira || { override: false });
   const jgc = jiraConfig || {};
-  const enableJira = (on) => setJira(on ? { override: true, project: jira.project || jgc.project || "", issueType: jira.issueType || jgc.issueType || "Bug", assignee: jira.assignee != null ? jira.assignee : (jgc.assignee || ""), labels: jira.labels != null ? jira.labels : (jgc.labels || ""), titleTpl: jira.titleTpl || jgc.titleTpl || "", cond: jira.cond || "fail" } : { override: false });
+  const enableJira = (on) => setJira(on ? { override: true, project: jira.project || jgc.project || "", issueType: jira.issueType || jgc.issueType || "Bug", assignee: jira.assignee != null ? jira.assignee : (jgc.assignee || ""), labels: jira.labels != null ? jira.labels : (jgc.labels || ""), titleTpl: jira.titleTpl || jgc.titleTpl || "" } : { override: false });
   const setJf = (patch) => setJira((j) => ({ ...j, ...patch }));
   const toggleB = (b) => setBrow(brow.includes(b) ? brow.filter((x) => x !== b) : [...brow, b]);
   const pick = (p) => { setSelId(p.id); setTarget(p.target); setSuites(p.suites); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setHeadless(p.headless !== false); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setApiTimeout(p.timeout != null ? p.timeout : 30); setGate(p.gate != null ? p.gate : 95); setPlanStatus(p.status || "초안"); setJira(p.jira || { override: false }); };
@@ -1900,10 +1900,7 @@ export function FqaPlanScreen({ nav }) {
                   <Field label="이슈 유형"><Select value={jira.issueType || "Bug"} onChange={(e) => setJf({ issueType: e.target.value })}><option>Bug</option><option>Task</option><option>Story</option></Select></Field>
                   <Field label="기본 담당자"><Input value={jira.assignee || ""} onChange={(e) => setJf({ assignee: e.target.value })} placeholder="assignee" /></Field>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="라벨 (쉼표 구분)"><Input value={jira.labels || ""} onChange={(e) => setJf({ labels: e.target.value })} placeholder="fqa, web" /></Field>
-                  <Field label="자동 등록 조건"><Select value={jira.cond || "fail"} onChange={(e) => setJf({ cond: e.target.value })}><option value="fail">실패 시</option><option value="manual">자동 등록 안 함</option></Select></Field>
-                </div>
+                <Field label="라벨 (쉼표 구분)"><Input value={jira.labels || ""} onChange={(e) => setJf({ labels: e.target.value })} placeholder="fqa, web" /></Field>
               </div>
             )}
           </div>

@@ -66,7 +66,7 @@ export function NewPlanForm({ close, data }) {
           ))}
         </div>
       </div>
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">Judge 모델·가중치·프롬프트·PASS 기준·스케줄은 생성 후 <span className="text-slate-300">상세설정</span>에서 구성합니다.</div>
+      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">Judge 모델·가중치·프롬프트·합격 기준·스케줄은 생성 후 <span className="text-slate-300">상세설정</span>에서 구성합니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>생성</Btn></div>
     </div>
   );
@@ -421,7 +421,6 @@ export function JiraConfigForm({ close }) {
   const [labels, setLabels] = useState(g.labels || "lqa, chatbot");
   const [sevMap, setSevMap] = useState(g.sevMap || { Critical: "Highest", Major: "High", Minor: "Medium" });
   const [titleTpl, setTitleTpl] = useState(g.titleTpl || "[챗봇] {{tcId}} 평가 실패 ({{score}}점)");
-  const [cond, setCond] = useState(g.cond || "fail");
   const [dedup, setDedup] = useState(g.dedup != null ? g.dedup : true);
   const [test, setTest] = useState(null);
   const PRIOS = ["Highest", "High", "Medium", "Low", "Lowest"];
@@ -434,7 +433,7 @@ export function JiraConfigForm({ close }) {
   };
   const submit = () => {
     if (!url.trim()) { toast("Base URL을 입력하세요", "warn"); return; }
-    if (setJiraConfig) setJiraConfig({ connected: true, deploy, url, email, token, project, issueType, assignee, labels, sevMap, titleTpl, cond, dedup });
+    if (setJiraConfig) setJiraConfig({ connected: true, deploy, url, email, token, project, issueType, assignee, labels, sevMap, titleTpl, dedup });
     toast("Jira 연동 설정이 저장되었습니다" + (test && test.s === "ok" ? " (연결 확인됨)" : ""), "ok"); close();
   };
   return (
@@ -479,10 +478,7 @@ export function JiraConfigForm({ close }) {
         <Input value={titleTpl} onChange={(e) => setTitleTpl(e.target.value)} />
         <div className="text-xs text-slate-500 mt-1">변수: <span className="font-mono text-teal-400">{"{{tcId}}"}</span> <span className="font-mono text-teal-400">{"{{score}}"}</span> <span className="font-mono text-teal-400">{"{{judge}}"}</span> · 본문에 챗봇 응답·실행 링크 자동 포함</div>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="자동 등록 조건"><Select value={cond} onChange={(e) => setCond(e.target.value)}><option value="fail">FAIL만</option><option value="failwarn">FAIL + WARN</option><option value="manual">자동 등록 안 함</option></Select></Field>
-        <div className="flex items-end pb-1"><div className="flex items-center justify-between w-full text-sm text-slate-300"><span>중복 방지(코멘트 추가)</span><Toggle on={dedup} onClick={() => setDedup(!dedup)} /></div></div>
-      </div>
+      <div className="flex items-center justify-between text-sm text-slate-300"><span>중복 방지(코멘트 추가)</span><Toggle on={dedup} onClick={() => setDedup(!dedup)} /></div>
       <div className="rounded-lg border border-slate-700 bg-slate-800 p-3">
         <div className="flex items-center justify-between"><span className="text-sm text-slate-200 font-semibold">연결 테스트</span><Btn icon={RefreshCw} onClick={runTest}>{test && test.s === "run" ? "테스트 중…" : "테스트"}</Btn></div>
         {test && test.s === "err" && <div className="mt-2 flex items-center gap-2 text-xs text-red-300"><XCircle size={14} />{test.m}</div>}
@@ -546,10 +542,11 @@ function ChatbotDetail({ cb, onDirty }) {
   const { updateChatbot, setChatbotStatus, removeChatbot, toast, variables } = useApp();
   const stK = KIND.targetStatus; const chK = KIND.channel;
   const isRest = cb.channel === "REST API";
-  const DEF_BODY = '{\n  "message": "{{utterance}}",\n  "sessionId": "{{sessionId}}"\n}';
+  const DEF_BODY = '{\n  "message": "{{utterance}}"\n}';
   const DEF_HEADERS = [{ k: "Content-Type", v: "application/json" }];
   const DEF_OAUTH = { url: "", id: "", secret: "", scope: "" };
-  const DEF_SEL2 = { input: "", send: "", resp: "", done: "" };
+  const DEF_SEL2 = { input: "", send: "", resp: "", done: "", doneMode: "타이핑 표시 사라짐" };
+  const DEF_WEB = { loginMode: "storageState 재사용", loginUrl: "/login", okSel: "", userSel: "#username", pwSel: "#password", acct: "", pwRef: "", respTimeout: 30, resetMode: "새 대화 버튼", resetSel: "" };
   const [endpoint, setEndpoint] = useState(cb.endpoint || "");
   const [name, setName] = useState(cb.name || "");
   const [authType, setAuthType] = useState(cb.auth || "Bearer Token");
@@ -560,14 +557,16 @@ function ChatbotDetail({ cb, onDirty }) {
   const [oauth, setOauth] = useState(cb.oauth || DEF_OAUTH);
   const [body, setBody] = useState(cb.body || DEF_BODY);
   const [answerPath, setAnswerPath] = useState(cb.answerPath || "$.data.answer");
-  const [sessionPath, setSessionPath] = useState(cb.sessionPath || "$.data.sessionId");
   const [respMode, setRespMode] = useState(cb.respMode || "동기");
-  const [pollUrl, setPollUrl] = useState(cb.pollUrl || ""); const [doneField, setDoneField] = useState(cb.doneField || "$.status");
+  const [pollUrl, setPollUrl] = useState(cb.pollUrl || ""); const [doneField, setDoneField] = useState(cb.doneField || "$.status"); const [jobIdPath, setJobIdPath] = useState(cb.jobIdPath || "$.jobId"); const [doneValue, setDoneValue] = useState(cb.doneValue || "completed");
+  const [sseDelta, setSseDelta] = useState(cb.sseDelta || "$.choices[0].delta.content"); const [sseDone, setSseDone] = useState(cb.sseDone || "[DONE]");
   const [timeoutS, setTimeoutS] = useState(cb.timeoutS || 30);
   const [needLogin, setNeedLogin] = useState(cb.auth === "로그인 세션");
-  const [sel2, setSel2] = useState(cb.sel2 || DEF_SEL2);
-  const [iframe, setIframe] = useState(cb.iframe || false);
-  const [modelSrc, setModelSrc] = useState(cb.modelSrc || "API 버전 필드 폴링");
+  const [sel2, setSel2] = useState({ ...DEF_SEL2, ...(cb.sel2 || {}) });
+  const [iframe, setIframe] = useState(cb.iframe || "");
+  const [webCfg, setWebCfg] = useState({ ...DEF_WEB, ...(cb.webCfg || {}) });
+  const setWeb = (patch) => setWebCfg((w) => ({ ...w, ...patch }));
+  const [modelSrc, setModelSrc] = useState(cb.modelSrc || "수동");
   const [verPath, setVerPath] = useState(cb.verPath || "$.model.version");
   const [verUrl, setVerUrl] = useState(cb.verUrl || "");
   const [verInterval, setVerInterval] = useState(cb.verInterval || "15분");
@@ -579,18 +578,18 @@ function ChatbotDetail({ cb, onDirty }) {
   useEffect(() => {
     setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setName(cb.name || "");
     setMethod(cb.method || "POST"); setHeaders(cb.headers || DEF_HEADERS); setTokenVal(cb.tokenVal || ""); setApiKeyName(cb.apiKeyName || "X-API-Key"); setOauth(cb.oauth || DEF_OAUTH);
-    setBody(cb.body || DEF_BODY); setAnswerPath(cb.answerPath || "$.data.answer"); setSessionPath(cb.sessionPath || "$.data.sessionId"); setRespMode(cb.respMode || "동기"); setPollUrl(cb.pollUrl || ""); setDoneField(cb.doneField || "$.status"); setTimeoutS(cb.timeoutS || 30);
-    setSel2(cb.sel2 || DEF_SEL2); setIframe(cb.iframe || false); setModelSrc(cb.modelSrc || "API 버전 필드 폴링"); setVerPath(cb.verPath || "$.model.version"); setVerUrl(cb.verUrl || ""); setVerInterval(cb.verInterval || "15분"); setTest(null);
+    setBody(cb.body || DEF_BODY); setAnswerPath(cb.answerPath || "$.data.answer"); setRespMode(cb.respMode || "동기"); setPollUrl(cb.pollUrl || ""); setDoneField(cb.doneField || "$.status"); setJobIdPath(cb.jobIdPath || "$.jobId"); setDoneValue(cb.doneValue || "completed"); setSseDelta(cb.sseDelta || "$.choices[0].delta.content"); setSseDone(cb.sseDone || "[DONE]"); setTimeoutS(cb.timeoutS || 30);
+    setSel2({ ...DEF_SEL2, ...(cb.sel2 || {}) }); setIframe(cb.iframe || ""); setWebCfg({ ...DEF_WEB, ...(cb.webCfg || {}) }); setModelSrc(cb.modelSrc || "수동"); setVerPath(cb.verPath || "$.model.version"); setVerUrl(cb.verUrl || ""); setVerInterval(cb.verInterval || "15분"); setTest(null);
   }, [cb.id]);
   const baseAuth = isRest ? (cb.auth || "Bearer Token") : (cb.auth === "로그인 세션" ? "로그인 세션" : "없음");
   const effAuth = isRest ? authType : (needLogin ? "로그인 세션" : "없음");
   // 얕은 설정(name/endpoint/auth)뿐 아니라 응답 처리·모델 소스·헤더·본문까지 전부 dirty·저장에 포함
-  const cfgArr = (o) => JSON.stringify([o.endpoint, o.auth, o.name, o.method, o.headers, o.body, o.answerPath, o.sessionPath, o.respMode, o.pollUrl, o.doneField, o.timeoutS, o.modelSrc, o.verPath, o.verUrl, o.verInterval, o.apiKeyName, o.tokenVal, o.oauth, o.sel2, o.iframe]);
-  const curCfg = { endpoint, auth: effAuth, name, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe };
-  const savedCfg = { endpoint: cb.endpoint || "", auth: baseAuth, name: cb.name || "", method: cb.method || "POST", headers: cb.headers || DEF_HEADERS, body: cb.body || DEF_BODY, answerPath: cb.answerPath || "$.data.answer", sessionPath: cb.sessionPath || "$.data.sessionId", respMode: cb.respMode || "동기", pollUrl: cb.pollUrl || "", doneField: cb.doneField || "$.status", timeoutS: cb.timeoutS || 30, modelSrc: cb.modelSrc || "API 버전 필드 폴링", verPath: cb.verPath || "$.model.version", verUrl: cb.verUrl || "", verInterval: cb.verInterval || "15분", apiKeyName: cb.apiKeyName || "X-API-Key", tokenVal: cb.tokenVal || "", oauth: cb.oauth || DEF_OAUTH, sel2: cb.sel2 || DEF_SEL2, iframe: cb.iframe || false };
+  const cfgArr = (o) => JSON.stringify([o.endpoint, o.auth, o.name, o.method, o.headers, o.body, o.answerPath, o.respMode, o.pollUrl, o.doneField, o.jobIdPath, o.doneValue, o.sseDelta, o.sseDone, o.timeoutS, o.modelSrc, o.verPath, o.verUrl, o.verInterval, o.apiKeyName, o.tokenVal, o.oauth, o.sel2, o.iframe, o.webCfg]);
+  const curCfg = { endpoint, auth: effAuth, name, method, headers, body, answerPath, respMode, pollUrl, doneField, jobIdPath, doneValue, sseDelta, sseDone, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe, webCfg };
+  const savedCfg = { endpoint: cb.endpoint || "", auth: baseAuth, name: cb.name || "", method: cb.method || "POST", headers: cb.headers || DEF_HEADERS, body: cb.body || DEF_BODY, answerPath: cb.answerPath || "$.data.answer", respMode: cb.respMode || "동기", pollUrl: cb.pollUrl || "", doneField: cb.doneField || "$.status", jobIdPath: cb.jobIdPath || "$.jobId", doneValue: cb.doneValue || "completed", sseDelta: cb.sseDelta || "$.choices[0].delta.content", sseDone: cb.sseDone || "[DONE]", timeoutS: cb.timeoutS || 30, modelSrc: cb.modelSrc || "수동", verPath: cb.verPath || "$.model.version", verUrl: cb.verUrl || "", verInterval: cb.verInterval || "15분", apiKeyName: cb.apiKeyName || "X-API-Key", tokenVal: cb.tokenVal || "", oauth: cb.oauth || DEF_OAUTH, sel2: { ...DEF_SEL2, ...(cb.sel2 || {}) }, iframe: cb.iframe || "", webCfg: { ...DEF_WEB, ...(cb.webCfg || {}) } };
   const dirty = cfgArr(curCfg) !== cfgArr(savedCfg);
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
-  const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth, method, headers, body, answerPath, sessionPath, respMode, pollUrl, doneField, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
+  const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth, method, headers, body, answerPath, respMode, pollUrl, doneField, jobIdPath, doneValue, sseDelta, sseDone, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe, webCfg }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
   const runTest = () => {
     setTest({ state: "running" });
     setTimeout(() => { setTest({ state: "ok", latency: 700 + Math.floor(Math.random() * 700), answer: isRest ? "나의 T월드 → 요금제 변경 탭에서 LTE 요금제를 선택해 신청하시면 됩니다. (당월 1회 제한)" : "(웹 챗 위젯 응답 캡처) 나의 T월드에서 요금제를 변경할 수 있습니다." }); setChatbotStatus(cb.id, "연결됨"); }, 950);
@@ -608,7 +607,7 @@ function ChatbotDetail({ cb, onDirty }) {
           <Card className="p-4 space-y-3">
             <div className="text-sm font-semibold text-slate-200">요청 · 연결</div>
             <Field label={isRest ? "엔드포인트" : "대상 URL"}>
-              {isRest ? <div className="flex gap-2"><div style={{ width: 92 }}><Select value={method} onChange={(e) => setMethod(e.target.value)}><option>POST</option><option>GET</option><option>PUT</option></Select></div><Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.tworld.co.kr/v2/chat" /></div> : <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://www.tworld.co.kr (챗 위젯 페이지)" />}
+              {isRest ? <div className="flex items-center gap-2"><span className="shrink-0 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 font-mono text-xs text-slate-400" title="챗 추론은 발화를 본문에 담아 보내는 POST입니다">POST</span><Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.tworld.co.kr/v2/chat" /></div> : <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://www.tworld.co.kr (챗 위젯 페이지)" />}
             </Field>
             {isRest ? (
               <>
@@ -624,19 +623,48 @@ function ChatbotDetail({ cb, onDirty }) {
                 </Field>
                 <Field label="요청 본문 템플릿">
                   <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200 outline-none focus:border-teal-500" style={{ fontFamily: "monospace" }} />
-                  <div className="mt-1 text-xs text-slate-500">변수: <span className="font-mono text-teal-400">{"{{utterance}}"}</span> (발화) · <span className="font-mono text-teal-400">{"{{sessionId}}"}</span> (멀티턴)</div>
+                  <div className="mt-1 text-xs text-slate-500">변수: <span className="font-mono text-teal-400">{"{{utterance}}"}</span> (발화)</div>
                 </Field>
               </>
             ) : (
               <>
                 <div className="flex items-center justify-between text-sm text-slate-300"><span>로그인 필요</span><Toggle on={needLogin} onClick={() => setNeedLogin(!needLogin)} /></div>
+                {needLogin && (
+                  <div className="space-y-2.5 rounded-lg border border-slate-800 p-3">
+                    <Field label="로그인 방식"><Select value={webCfg.loginMode} onChange={(e) => setWeb({ loginMode: e.target.value })}><option>storageState 재사용</option><option>폼 로그인 절차</option></Select></Field>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="로그인 계정 ID"><Input value={webCfg.acct} onChange={(e) => setWeb({ acct: e.target.value })} placeholder="qa_user01" className="font-mono text-xs" /></Field>
+                      <Field label="비밀번호 (변수 참조)">{secretRef(webCfg.pwRef, (val) => setWeb({ pwRef: val }), "${stg_test_pw}")}</Field>
+                    </div>
+                    {webCfg.loginMode === "폼 로그인 절차" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field label="로그인 URL"><Input value={webCfg.loginUrl} onChange={(e) => setWeb({ loginUrl: e.target.value })} placeholder="/login" /></Field>
+                        <Field label="성공 판정 셀렉터 (선택)"><Input value={webCfg.okSel} onChange={(e) => setWeb({ okSel: e.target.value })} placeholder="[data-testid=home]" /></Field>
+                        <Field label="아이디 셀렉터"><Input value={webCfg.userSel} onChange={(e) => setWeb({ userSel: e.target.value })} placeholder="#username" /></Field>
+                        <Field label="비번 셀렉터"><Input value={webCfg.pwSel} onChange={(e) => setWeb({ pwSel: e.target.value })} placeholder="#password" /></Field>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">위 계정으로 1회 로그인해 <span className="font-mono text-slate-300">storageState</span>를 캡처 → 모든 테스트가 재사용(매번 로그인 생략). 만료 시 자동 갱신.</div>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="입력창 셀렉터"><Input value={sel2.input} onChange={(e) => setSel2({ ...sel2, input: e.target.value })} placeholder="#chat-input" /></Field>
                   <Field label="전송 버튼 셀렉터"><Input value={sel2.send} onChange={(e) => setSel2({ ...sel2, send: e.target.value })} placeholder="button.send" /></Field>
                   <Field label="응답 셀렉터"><Input value={sel2.resp} onChange={(e) => setSel2({ ...sel2, resp: e.target.value })} placeholder=".msg.bot:last-child" /></Field>
-                  <Field label="완료 판정 (선택)"><Input value={sel2.done} onChange={(e) => setSel2({ ...sel2, done: e.target.value })} placeholder=".typing 사라지면 완료" /></Field>
                 </div>
-                <div className="flex items-center justify-between text-sm text-slate-300"><span>위젯이 iframe 안에 있음</span><Toggle on={iframe} onClick={() => setIframe(!iframe)} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="완료 판정 방식"><Select value={sel2.doneMode} onChange={(e) => setSel2({ ...sel2, doneMode: e.target.value })}><option>타이핑 표시 사라짐</option><option>완료 표식 나타남</option><option>응답 텍스트 멈춤</option></Select></Field>
+                  {sel2.doneMode === "타이핑 표시 사라짐" && <Field label="타이핑 인디케이터 셀렉터"><Input value={sel2.done} onChange={(e) => setSel2({ ...sel2, done: e.target.value })} placeholder=".typing-indicator" /></Field>}
+                  {sel2.doneMode === "완료 표식 나타남" && <Field label="완료 표식 셀렉터"><Input value={sel2.done} onChange={(e) => setSel2({ ...sel2, done: e.target.value })} placeholder="[data-complete=true]" /></Field>}
+                </div>
+                {sel2.doneMode === "응답 텍스트 멈춤" && <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-slate-400">응답 셀렉터의 텍스트가 더 이상 바뀌지 않으면(안정화) 완료로 판정합니다 — 별도 셀렉터 불필요.</div>}
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="응답 최대 대기(초)"><Input type="number" value={webCfg.respTimeout} onChange={(e) => setWeb({ respTimeout: +e.target.value || 0 })} /></Field>
+                  <Field label="대화 초기화"><Select value={webCfg.resetMode} onChange={(e) => setWeb({ resetMode: e.target.value })}><option>새 대화 버튼</option><option>페이지 새로고침</option><option>초기화 안 함(이어서)</option></Select></Field>
+                </div>
+                {webCfg.resetMode === "새 대화 버튼" && <Field label="새 대화 버튼 셀렉터"><Input value={webCfg.resetSel} onChange={(e) => setWeb({ resetSel: e.target.value })} placeholder="button.new-chat" /></Field>}
+                <Field label="iframe 셀렉터 (선택)" hint="위젯이 iframe 안에 있으면 지정 · 비우면 메인 문서에서 탐색"><Input value={iframe} onChange={(e) => setIframe(e.target.value)} placeholder="iframe#chat-widget" /></Field>
                 <div className="rounded-lg border border-amber-900 bg-amber-950 p-3 text-xs text-amber-200">Web 수집은 UI 변경에 취약합니다. 가능하면 REST API 연결을 우선하세요.</div>
               </>
             )}
@@ -647,12 +675,9 @@ function ChatbotDetail({ cb, onDirty }) {
           {isRest && (
             <Card className="p-4 space-y-3">
               <div className="text-sm font-semibold text-slate-200">응답 처리</div>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="응답 추출 (JSON Path)"><Input value={answerPath} onChange={(e) => setAnswerPath(e.target.value)} placeholder="$.data.answer" /></Field>
-                <Field label="세션 추출 (선택)"><Input value={sessionPath} onChange={(e) => setSessionPath(e.target.value)} placeholder="$.data.sessionId" /></Field>
-              </div>
+              <Field label="응답 추출 (JSON Path)"><Input value={answerPath} onChange={(e) => setAnswerPath(e.target.value)} placeholder="$.data.answer" /></Field>
               <div className="flex items-start gap-2">
-                <div className="flex-1"><Field label="응답 방식"><Select value={respMode} onChange={(e) => setRespMode(e.target.value)}><option>동기</option><option>SSE 스트리밍</option><option>비동기 폴링</option></Select>{respMode === "비동기 폴링" && <div className="mt-2 grid grid-cols-2 gap-2"><Input value={pollUrl} onChange={(e) => setPollUrl(e.target.value)} placeholder="폴링 URL" /><Input value={doneField} onChange={(e) => setDoneField(e.target.value)} placeholder="완료 필드 ($.status)" /></div>}{respMode === "SSE 스트리밍" && <div className="mt-1 text-xs text-slate-500">청크를 누적해 [DONE] 신호까지 조립합니다.</div>}</Field></div>
+                <div className="flex-1"><Field label="응답 방식"><Select value={respMode} onChange={(e) => setRespMode(e.target.value)}><option>동기</option><option>SSE 스트리밍</option><option>비동기 폴링</option></Select>{respMode === "비동기 폴링" && <div className="mt-2 space-y-1.5"><Input value={jobIdPath} onChange={(e) => setJobIdPath(e.target.value)} placeholder="작업 ID 추출 ($.jobId)" /><Input value={pollUrl} onChange={(e) => setPollUrl(e.target.value)} placeholder="폴링 URL · 작업ID 템플릿 (…/tasks/{{jobId}})" /><div className="grid grid-cols-2 gap-2"><Input value={doneField} onChange={(e) => setDoneField(e.target.value)} placeholder="완료 필드 ($.status)" /><Input value={doneValue} onChange={(e) => setDoneValue(e.target.value)} placeholder="완료 값 (completed)" /></div><div className="text-xs text-slate-500">최초 응답의 작업 ID를 폴링 URL <span className="font-mono text-teal-400">{"{{jobId}}"}</span>에 대입해 반복 호출 · <span className="text-slate-400">완료 필드 = 완료 값</span>이 되면 종료, 응답 추출은 폴링 결과에 적용됩니다.</div></div>}{respMode === "SSE 스트리밍" && <div className="mt-2 space-y-1.5"><div className="grid grid-cols-2 gap-2"><Input value={sseDelta} onChange={(e) => setSseDelta(e.target.value)} placeholder="청크 델타 경로 ($.choices[0].delta.content)" /><Input value={sseDone} onChange={(e) => setSseDone(e.target.value)} placeholder="종료 신호 ([DONE])" /></div><div className="text-xs text-slate-500">각 청크의 <span className="text-slate-400">델타 경로</span> 값을 순서대로 이어붙여 <span className="font-mono text-teal-400">종료 신호</span>까지 조립합니다.</div></div>}</Field></div>
                 <div style={{ width: 110 }}><Field label="타임아웃(초)"><Input type="number" value={timeoutS} onChange={(e) => setTimeoutS(e.target.value)} /></Field></div>
               </div>
             </Card>
@@ -660,8 +685,8 @@ function ChatbotDetail({ cb, onDirty }) {
           <Card className="p-4 space-y-2.5">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Wrench size={14} className="text-teal-400" />모델·배포 소스</div>
             <div className="text-xs text-slate-500"><span className="text-slate-300">평가 계획 › 이벤트 트리거</span>의 "챗봇 모델 업데이트 시"가 여기서 정의한 소스를 상속합니다.</div>
-            <Field label="모델 버전 감지 방식"><Select value={modelSrc} onChange={(e) => setModelSrc(e.target.value)}><option>API 버전 필드 폴링</option><option>배포 웹훅 알림</option><option>수동</option></Select></Field>
-            {modelSrc === "API 버전 필드 폴링" && (
+            <Field label="모델 버전 감지 방식" hint={isRest ? undefined : "Web 위젯은 JSON API가 없어 버전 필드 폴링은 지원하지 않습니다"}><Select value={modelSrc} onChange={(e) => setModelSrc(e.target.value)}>{isRest && <option>API 버전 필드 폴링</option>}<option>배포 웹훅 알림</option><option>수동</option></Select></Field>
+            {isRest && modelSrc === "API 버전 필드 폴링" && (
               <div className="space-y-2.5 rounded-lg border border-slate-800 p-3">
                 <Field label="폴링 대상 URL" hint="비우면 챗봇 엔드포인트로 질의 · 인증은 챗봇 인증 재사용"><Input value={verUrl} onChange={(e) => setVerUrl(e.target.value)} placeholder={endpoint || "https://chatbot.api/health"} className="font-mono text-xs" /></Field>
                 <div className="grid grid-cols-2 gap-2">
@@ -691,7 +716,7 @@ function ChatbotDetail({ cb, onDirty }) {
 }
 
 export function Targets() {
-  const { chatbots, openModal, env } = useApp();
+  const { chatbots, openModal, env, pendingSelect, setPendingSelect } = useApp();
   const [sel, setSel] = useState(0);
   const [cbDirty, setCbDirty] = useState(false);
   const chooseCb = (i) => { if (i === sel) return; if (cbDirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setCbDirty(false); setSel(i); };
@@ -699,6 +724,7 @@ export function Targets() {
   const list = env === "전체" ? chatbots : chatbots.filter((c) => c.env === env);
   const cur = list[sel] || list[0];
   useEffect(() => { if (sel >= list.length) setSel(0); }, [list.length]);
+  useEffect(() => { if (pendingSelect && pendingSelect.kind === "chatbot") { const i = list.findIndex((c) => c.id === pendingSelect.id); if (i >= 0) setSel(i); setPendingSelect(null); } }, [pendingSelect]);
   return (
     <div className="space-y-4">
       <PageToolbar desc={<>평가 대상 챗봇(응답 수집 대상) 등록·관리 <span className="text-slate-500">· 환경 필터: {env}</span></>} />
@@ -835,9 +861,10 @@ export function Dashboard() {
   );
 }
 export function Plans() {
-  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent, jiraConfig } = useApp();
+  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent, jiraConfig, pendingSelect, setPendingSelect } = useApp();
   const [sel, setSel] = useState(plans[0]);
   const cur = plans.find((p) => p.id === sel.id) || plans[0];
+  useEffect(() => { if (pendingSelect && pendingSelect.kind === "plan") { const np = plans.find((p) => p.id === pendingSelect.id); if (np) setSel(np); setPendingSelect(null); } }, [pendingSelect]);
   const defJudges = (p) => { const o = {}; (p.judgeList || ["Claude (sonnet-4-6)", "GPT-4o"]).forEach((n) => (o[n] = true)); return o; };
   const [jsel, setJsel] = useState(() => defJudges(cur));
   const [hall, setHall] = useState(cur.opts ? cur.opts.hall : true);
@@ -853,7 +880,7 @@ export function Plans() {
   const [sched, setSched] = useState(cur.schedule || DEFAULT_SCHED);
   const [jira, setJira] = useState(cur.jira || { override: false });
   const jgc = jiraConfig || {};
-  const enableJira = (on) => setJira(on ? { override: true, project: jira.project || jgc.project || "", issueType: jira.issueType || jgc.issueType || "Bug", assignee: jira.assignee != null ? jira.assignee : (jgc.assignee || ""), labels: jira.labels != null ? jira.labels : (jgc.labels || ""), titleTpl: jira.titleTpl || jgc.titleTpl || "", cond: jira.cond || jgc.cond || "fail" } : { override: false });
+  const enableJira = (on) => setJira(on ? { override: true, project: jira.project || jgc.project || "", issueType: jira.issueType || jgc.issueType || "Bug", assignee: jira.assignee != null ? jira.assignee : (jgc.assignee || ""), labels: jira.labels != null ? jira.labels : (jgc.labels || ""), titleTpl: jira.titleTpl || jgc.titleTpl || "" } : { override: false });
   const setJf = (patch) => setJira((j) => ({ ...j, ...patch }));
   const tplObj = prompts.find((p) => p.name === tpl);
   const dims = (tplObj && tplObj.rubric && tplObj.rubric.length) ? tplObj.rubric : METRICS.map((m) => m.key);
@@ -970,7 +997,7 @@ export function Plans() {
             ))}
             <div className="text-sm font-semibold text-slate-200 mb-2 mt-4">채점 보조</div>
             <div className="flex items-center justify-between text-sm text-slate-300"><span>유사도 BERTScore 가중</span><Toggle on={bert} onClick={() => setBert(!bert)} /></div>
-            <div className="text-sm font-semibold text-slate-200 mb-1 mt-4">PASS 기준 점수</div>
+            <div className="text-sm font-semibold text-slate-200 mb-1 mt-4">합격 기준 점수</div>
             <Input type="number" value={pass} onChange={(e) => setPass(+e.target.value || 0)} className="w-24" />
           </div>
         </div>
@@ -991,10 +1018,7 @@ export function Plans() {
                 <Field label="이슈 유형"><Select value={jira.issueType || "Bug"} onChange={(e) => setJf({ issueType: e.target.value })}><option>Bug</option><option>Task</option><option>Story</option></Select></Field>
                 <Field label="기본 담당자"><Input value={jira.assignee || ""} onChange={(e) => setJf({ assignee: e.target.value })} placeholder="assignee" /></Field>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="라벨 (쉼표 구분)"><Input value={jira.labels || ""} onChange={(e) => setJf({ labels: e.target.value })} placeholder="lqa, chatbot" /></Field>
-                <Field label="자동 등록 조건"><Select value={jira.cond || "fail"} onChange={(e) => setJf({ cond: e.target.value })}><option value="fail">FAIL만</option><option value="failwarn">FAIL + WARN</option><option value="manual">자동 등록 안 함</option></Select></Field>
-              </div>
+              <Field label="라벨 (쉼표 구분)"><Input value={jira.labels || ""} onChange={(e) => setJf({ labels: e.target.value })} placeholder="lqa, chatbot" /></Field>
               <Field label="이슈 제목 템플릿"><Input value={jira.titleTpl || ""} onChange={(e) => setJf({ titleTpl: e.target.value })} placeholder="[챗봇] {{tcId}} 평가 실패 ({{score}}점)" /></Field>
             </div>
           )}
@@ -1270,6 +1294,7 @@ export function Run() {
   const [sel, setSel] = useState(null);
   const [revF, setRevF] = useState("검토 필요");
   const timer = useRef(null);
+  const runReq = useRef(null);
   useEffect(() => () => clearInterval(timer.current), []);
   const curPlan = plans.find((p) => p.id === planId) || runnablePlans[0] || plans[0];
 
@@ -1287,7 +1312,8 @@ export function Run() {
     const run = { id: "R-" + Date.now().toString().slice(-5), planId: plan.id, planName: plan.name, trigger, startedAt: _st, finishedAt: _st, status: "완료", cases: res.length, score, passRate: Math.round((pass / (res.length || 1)) * 100), pass, warn, fail, snapshot: { model: (plan.judgeList && plan.judgeList[0]) || "Claude sonnet-4-6", promptTpl: plan.promptTpl || "—", promptVer: planTpl ? ("v" + planTpl.ver) : "v1", caseVer: "최신" }, results: res };
     addRun(run); updatePlan(plan.id, { score, last: "방금 전" });
     let made = 0;
-    res.filter((r) => r.verdict === "FAIL").forEach((r) => {
+    // 자동 결함 등록은 무인 실행(스케줄/이벤트)에서만 — 수동 실행은 사람이 검토 후 등록
+    if (trigger !== "수동") res.filter((r) => r.verdict === "FAIL").forEach((r) => {
       if (!defects.some((d) => d.tc === r.id && d.status !== "Resolved")) {
         addDefect({ key: (jr.project || "AUTO") + "-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (r.judge || "평가 실패").slice(0, 40), status: "Open", domain: "LQA", project: jr.project || "", assignee: jr.assignee || "",
           desc: "[요약] " + (r.judge || "-") + "\n[점수] " + (r.score != null ? r.score + "점" : "-") + "\n[안전성] 환각 " + ((r.safety && r.safety.환각) || "-") + " · PII " + ((r.safety && r.safety.PII) || "-"),
@@ -1305,9 +1331,17 @@ export function Run() {
     if (mode === "running") return;
     if (!plan || plan.status !== "활성") { toast("활성 상태의 평가 계획만 실행할 수 있습니다 — 계획을 먼저 활성화하세요", "warn"); return; }
     if (!approved.length) { toast("승인된 테스트케이스가 없습니다 — 케이스를 먼저 승인하세요", "warn"); return; }
+    runReq.current = { plan, trigger };
     setMode("running"); setProg(0); setActiveRun(null); setSel(null); setFromHistory(false);
-    timer.current = setInterval(() => { setProg((p) => { if (p >= 100) { clearInterval(timer.current); finish(plan, trigger); return 100; } return p + 5; }); }, 80);
+    timer.current = setInterval(() => { setProg((p) => (p >= 100 ? 100 : p + 5)); }, 80);
   };
+  useEffect(() => {
+    if (mode === "running" && prog >= 100 && runReq.current) {
+      clearInterval(timer.current);
+      const { plan, trigger } = runReq.current; runReq.current = null;
+      finish(plan, trigger);
+    }
+  }, [prog, mode]);
   useEffect(() => {
     if (!runIntent) return;
     if (runIntent.type === "start") { const p = plans.find((x) => x.id === runIntent.planId) || plans[0]; setPlanId(p.id); setRunIntent(null); start(p, "수동"); }
@@ -1316,13 +1350,12 @@ export function Run() {
 
   const res = activeRun && activeRun.results ? activeRun.results : [];
   const needRev = (r) => r.verdict !== "PASS";
-  const shown = res.filter((r) => (revF === "전체" ? true : revF === "미검토" ? !r.hitl : needRev(r)));
+  const shown = res.filter((r) => (revF === "전체" ? true : revF === "통과" ? r.verdict === "PASS" : needRev(r)));
+  useEffect(() => { if (mode === "done" && shown.length && (!sel || !shown.some((r) => r.id === sel.id))) setSel(shown[0]); }, [revF, activeRun, mode]);
   const needTotal = res.filter(needRev).length;
-  const decided = res.filter((r) => needRev(r) && r.hitl).length;
-  const persist = (rs) => { const nr = { ...activeRun, results: rs }; setActiveRun(nr); updateRun(nr.id, { results: rs }); setSel((cs) => (cs ? rs.find((x) => x.id === cs.id) || cs : cs)); };
-  const setHitl = (id, val) => persist(res.map((r) => (r.id === id ? { ...r, hitl: val } : r)));
-  const autoPass = () => persist(res.map((r) => (r.verdict === "PASS" ? { ...r, hitl: "approved" } : r)));
-  const bulkApprove = () => { const ids = new Set(shown.map((r) => r.id)); persist(res.map((r) => (ids.has(r.id) ? { ...r, hitl: "approved" } : r))); };
+  const overridden = res.filter((r) => r.final && r.final !== r.verdict).length;
+  const persist = (rs) => { const eff = (r) => r.final || r.verdict; const pass = rs.filter((r) => eff(r) === "PASS").length; const fail = rs.filter((r) => eff(r) === "FAIL").length; const warn = rs.length - pass - fail; const passRate = Math.round((pass / (rs.length || 1)) * 100); const nr = { ...activeRun, results: rs, pass, warn, fail, passRate }; setActiveRun(nr); updateRun(nr.id, { results: rs, pass, warn, fail, passRate }); setSel((cs) => (cs ? rs.find((x) => x.id === cs.id) || cs : cs)); };
+  const setFinal = (id, v) => persist(res.map((r) => (r.id === id ? { ...r, final: (v === r.verdict ? null : v) } : r)));
   const sm = activeRun ? { total: activeRun.cases, pass: activeRun.pass, fail: activeRun.fail, warn: activeRun.warn, score: activeRun.score } : { total: 0, pass: 0, fail: 0, warn: 0, score: "—" };
 
   return (
@@ -1385,16 +1418,15 @@ export function Run() {
             ))}
           </div>
           <div className="grid grid-cols-5 gap-4">
-            <Card className="col-span-2 overflow-hidden">
+            <Card className="col-span-2 overflow-hidden flex flex-col">
               <div className="px-4 py-3 border-b border-slate-800">
-                <div className="flex items-center justify-between mb-2"><span className="text-sm font-semibold text-slate-200">케이스 결과</span><span className="text-xs text-slate-500">검토 {decided}/{needTotal}</span></div>
-                <div className="flex gap-1.5 mb-2">{["검토 필요", "미검토", "전체"].map((t) => (<button key={t} onClick={() => setRevF(t)} className={"rounded-full px-2.5 py-1 text-xs " + (revF === t ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>{t}{t === "검토 필요" ? " " + needTotal : ""}</button>))}</div>
-                <div className="flex gap-1.5"><button onClick={autoPass} className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-700">고신뢰 PASS 자동 확정</button><button onClick={bulkApprove} className="flex-1 rounded-lg bg-slate-800 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-700">표시 전체 승인</button></div>
+                <div className="flex items-center justify-between mb-2"><span className="text-sm font-semibold text-slate-200">케이스 결과</span><span className="text-xs text-slate-500">{overridden > 0 ? "정정 " + overridden + "건" : "정정 없음"}</span></div>
+                <div className="flex gap-1.5 mb-2">{["검토 필요", "통과", "전체"].map((t) => (<button key={t} onClick={() => setRevF(t)} className={"rounded-full px-2.5 py-1 text-xs " + (revF === t ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>{t}{t === "검토 필요" ? " " + needTotal : ""}</button>))}</div>
               </div>
-              <div className="overflow-y-auto" style={{ maxHeight: 300 }}>
+              <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 {shown.map((c) => (
                   <div key={c.id} onClick={() => setSel(c)} className={"px-4 py-3 border-b border-slate-800 cursor-pointer hover:bg-slate-800 " + (sel && sel.id === c.id ? "bg-slate-800" : "")}>
-                    <div className="flex items-center justify-between"><span className="font-mono text-xs text-teal-400">{c.id}</span><div className="flex items-center gap-2">{c.hitl === "approved" && <CheckCircle2 size={13} className="text-emerald-400" />}{c.hitl === "rejected" && <XCircle size={13} className="text-red-400" />}<span className="text-sm font-semibold text-slate-200">{c.score}</span><Badge kind={vKind(c.verdict)}>{c.verdict}</Badge></div></div>
+                    <div className="flex items-center justify-between"><span className="font-mono text-xs text-teal-400">{c.id}</span><div className="flex items-center gap-2">{c.final && <CheckCircle2 size={13} className={c.final === c.verdict ? "text-emerald-400" : "text-amber-400"} />}<span className="text-sm font-semibold text-slate-200">{c.score}</span><Badge kind={vKind(c.final || c.verdict)}>{c.final || c.verdict}</Badge>{c.final && c.final !== c.verdict && <span className="rounded bg-amber-900 px-1 text-xs text-amber-300">정정</span>}</div></div>
                     <div className="text-xs text-slate-400 mt-1 truncate">{c.q}</div>
                   </div>
                 ))}
@@ -1412,11 +1444,16 @@ export function Run() {
                     {sel.scores && Object.keys(sel.scores).length > 0 && (<div><div className="text-xs text-slate-500 mb-2">LLM Judge 다차원 채점</div><div className="grid grid-cols-2 gap-x-5">{Object.entries(sel.scores).map(([k, v]) => (<ScoreBar key={k} label={k} value={v} color={v >= 80 ? C.teal : v >= 60 ? C.warn : C.err} />))}</div></div>)}
                     <Block label="Judge 평가 근거" tone="plain"><span className="text-slate-400">{sel.judge}</span></Block>
                     <div className="flex items-center gap-2 flex-wrap"><span className="text-xs text-slate-500">안전 게이트:</span>{[["환각", sel.safety.환각], ["PII 노출", sel.safety.PII], ["정책 위반", sel.safety.정책]].filter(([, v]) => v && v !== "미검사").map(([k, v]) => <Badge key={k} kind={vKind(v)}>{k} {v}</Badge>)}{[sel.safety.환각, sel.safety.PII, sel.safety.정책].every((v) => !v || v === "미검사") && <span className="text-xs text-slate-600">활성 게이트 없음</span>}</div>
-                    <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
-                      <span className="text-xs text-slate-500 flex-1">HITL 검토 <span className="text-slate-600">(예외 케이스 중심)</span></span>
-                      <button onClick={() => { setHitl(sel.id, "approved"); toast(sel.id + " 승인됨", "ok"); }} className={"inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm " + (sel.hitl === "approved" ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}><CheckCircle2 size={14} />승인</button>
-                      <button onClick={() => { setHitl(sel.id, "rejected"); toast(sel.id + " 반려됨", "warn"); }} className={"inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm " + (sel.hitl === "rejected" ? "bg-red-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}><XCircle size={14} />반려</button>
-                      {sel.verdict === "FAIL" && <Btn kind="danger" icon={Bug} onClick={() => openModal("jira", { tc: sel.id, sev: "Critical", title: sel.id + " 평가 실패", q: sel.q, pre: sel.pre, golden: sel.golden, actual: sel.actual, judge: sel.judge, score: sel.score, safety: sel.safety, env: activeRun ? (activeRun.snapshot.model + " / 프롬프트 " + activeRun.snapshot.promptVer + " / 케이스 " + activeRun.snapshot.caseVer) : "" })}>결함 등록</Btn>}
+                    <div className="pt-2 border-t border-slate-800">
+                      <div className="mb-1.5 flex items-center gap-2 text-xs text-slate-500">결과 판정 <span className="text-slate-600">· Judge {sel.verdict} (기본)</span>{sel.final && sel.final !== sel.verdict && <Badge kind="warn">정정됨</Badge>}</div>
+                      <div className="flex items-center gap-2">
+                        {["PASS", "WARN", "FAIL"].map((v) => (
+                          <button key={v} onClick={() => { setFinal(sel.id, v); toast(sel.id + (v === sel.verdict ? " · Judge 판정 유지" : " → " + v + " 정정"), v === "FAIL" && v !== sel.verdict ? "warn" : "ok"); }} className={"inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm " + ((sel.final || sel.verdict) === v ? (v === "FAIL" ? "bg-red-600 text-white" : v === "WARN" ? "bg-amber-600 text-white" : "bg-emerald-600 text-white") : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>{v}{v === sel.verdict ? " · Judge" : ""}</button>
+                        ))}
+                        <div className="flex-1" />
+                        {(sel.final || sel.verdict) === "FAIL" && <Btn kind="danger" icon={Bug} onClick={() => openModal("jira", { tc: sel.id, sev: "Critical", title: sel.id + " 평가 실패", q: sel.q, pre: sel.pre, golden: sel.golden, actual: sel.actual, judge: sel.judge, score: sel.score, safety: sel.safety, env: activeRun ? (activeRun.snapshot.model + " / 프롬프트 " + activeRun.snapshot.promptVer + " / 케이스 " + activeRun.snapshot.caseVer) : "" })}>결함 등록</Btn>}
+                      </div>
+                      <div className="mt-1.5 text-xs text-slate-600">손대지 않으면 Judge 판정이 그대로 최종 · 이견 있는 예외만 정정하세요.</div>
                     </div>
                   </div>
                 </>
