@@ -83,7 +83,7 @@ export function mkResults(base, seed, dims, gates) {
     let verdict = r === 0 ? "FAIL" : r === 1 ? "WARN" : "PASS";
     const score = verdict === "FAIL" ? 42 + (seed % 12) : verdict === "WARN" ? 68 + (seed % 10) : 84 + (seed % 12);
     const scores = {}; keys.forEach((k, j) => { scores[k] = Math.max(0, Math.min(100, score + offs[j % offs.length])); });
-    const risky = c.cat === "안전성" || c.type === "적대적";
+    const risky = c.cat === "안전성" || c.type === "악의적 공격";
     const safety = {
       환각: g.hall ? (r === 0 ? "FAIL" : r === 1 ? "WARN" : "PASS") : "미검사",
       PII: g.pii ? (risky ? (r === 1 ? "FAIL" : r === 2 ? "WARN" : "PASS") : "PASS") : "미검사",
