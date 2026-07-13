@@ -1865,8 +1865,13 @@ export function InviteMemberForm({ close }) {
 
 
 export function MembersView() {
-  const { users, tenants, tenantId, openModal, setUserStatus, toast } = useApp();
+  const { users, tenants, tenantId, openModal, setUserStatus, setUserRole, removeUser, toast, currentUser } = useApp();
   const members = users.filter((u) => u.tenant === tenantId);
+  const delMember = (u) => {
+    if (currentUser && u.name === currentUser) { toast("본인 계정은 삭제할 수 없습니다", "warn"); return; }
+    if (!window.confirm(u.name + " 멤버를 조직에서 삭제할까요?\n작성 이력·감사 로그는 보존됩니다.")) return;
+    removeUser(u.id); toast(u.name + " 조직에서 삭제됨", "warn");
+  };
   const tName = (tenants.find((t) => t.id === tenantId) || {}).name;
   const MENU_GROUPS = [
     { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge·Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
@@ -1877,6 +1882,12 @@ export function MembersView() {
   // QA 엔지니어 기본 조회: 설정성/민감 메뉴 + 부하 실행(위험 작업) + 변수(시크릿)
   const readOnlyForQA = new Set(["Judge·Prompt", "챗봇 연결", "대상·환경", "측정 실행", "변수"]);
   const ROLES = ["조직관리자", "QA 엔지니어", "Viewer"];
+  const adminCount = members.filter((m) => m.role === "조직관리자").length;
+  const changeRole = (u, role) => {
+    if (role === u.role) return;
+    if (u.role === "조직관리자" && adminCount <= 1) { toast("마지막 조직 관리자입니다 — 다른 멤버를 관리자로 지정한 뒤 변경하세요", "warn"); return; }
+    setUserRole(u.id, role); toast(u.name + " 역할: " + role, "ok");
+  };
   const [perm, setPerm] = useState(() => {
     const init = {};
     MENU_GROUPS.forEach((g) => g.menus.forEach((m) => ROLES.forEach((r) => { init[g.id + "/" + m + "|" + r] = r === "조직관리자" ? "허용" : r === "Viewer" ? "조회" : (readOnlyForQA.has(m) ? "조회" : "허용"); })));
@@ -1898,8 +1909,17 @@ export function MembersView() {
             {members.map((u) => (
               <tr key={u.id} className="border-b border-slate-800 hover:bg-slate-800">
                 <td className="py-2.5"><span className="text-slate-100 font-medium">{u.name}</span> <span className="text-xs text-slate-500">{u.email}</span></td>
-                <td>{u.role}</td><td><Badge kind={stK[u.status]}>{u.status}</Badge></td><td className="text-slate-500 text-xs">{u.last}</td>
-                <td>{u.role === "조직관리자" ? <span className="text-xs text-slate-600">—</span> : u.status === "차단" ? <button onClick={() => { setUserStatus(u.id, "활성"); toast(u.name + " 차단 해제", "ok"); }} className="text-xs rounded-lg px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">해제</button> : <button onClick={() => { setUserStatus(u.id, "차단"); toast(u.name + " 차단", "warn"); }} className="text-xs rounded-lg px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">차단</button>}</td>
+                <td>{currentUser && u.name === currentUser
+                  ? <span className="text-slate-300">{u.role} <span className="text-xs text-slate-600">(본인)</span></span>
+                  : <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 outline-none focus:border-teal-500">{ROLES.map((r) => <option key={r}>{r}</option>)}</select>}</td><td><Badge kind={stK[u.status]}>{u.status}</Badge></td><td className="text-slate-500 text-xs">{u.last}</td>
+                <td>{u.role === "조직관리자" ? <span className="text-xs text-slate-600">—</span> : (
+                  <div className="flex gap-1.5">
+                    {u.status === "차단"
+                      ? <button onClick={() => { setUserStatus(u.id, "활성"); toast(u.name + " 차단 해제", "ok"); }} className="text-xs rounded-lg px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">해제</button>
+                      : <button onClick={() => { setUserStatus(u.id, "차단"); toast(u.name + " 차단", "warn"); }} className="text-xs rounded-lg px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">차단</button>}
+                    <button onClick={() => delMember(u)} title="조직에서 삭제" className="text-xs rounded-lg px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-400">삭제</button>
+                  </div>
+                )}</td>
               </tr>
             ))}
           </tbody>

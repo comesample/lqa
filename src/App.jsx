@@ -129,6 +129,7 @@ export default function App() {
     setTenantAdmin: (id, admin) => setTenants((x) => x.map((t) => (t.id === id ? { ...t, admin } : t))),
     users, addUser: (u) => setUsers((x) => [...x, u]),
     setUserStatus: (id, status) => setUsers((x) => x.map((u) => (u.id === id ? { ...u, status } : u))),
+    setUserRole: (id, role) => setUsers((x) => x.map((u) => (u.id === id ? { ...u, role } : u))),
     removeUser: (id) => setUsers((x) => x.filter((u) => u.id !== id)),
     models, addModel: (m) => setModels((x) => [...x, m]),
     setModelStatus: (id, status) => setModels((x) => x.map((m) => (m.id === id ? { ...m, status } : m))),
