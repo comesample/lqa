@@ -72,11 +72,10 @@ export function NewPlanForm({ close, data }) {
   );
 }
 export function AiGenForm({ close }) {
-  const { addCases, categories, chatbots, models, toast } = useApp();
+  const { addCases, categories, models, toast } = useApp();
   const activeModels = models.filter((m) => m.status === "활성");
   const [phase, setPhase] = useState("config");
   const [files, setFiles] = useState([]);
-  const [bot, setBot] = useState((chatbots[0] && chatbots[0].name) || "");
   const [catMode, setCatMode] = useState("자동 분류");
   const [cat, setCat] = useState(categories[0] || "미분류");
   const [types, setTypes] = useState({ 정상: true, "표현 변형": true, "오타/구어체": true, "답변 곤란": false, "악의적 공격": false });
@@ -161,7 +160,6 @@ export function AiGenForm({ close }) {
         ))}</div>}
         <div className="text-xs text-slate-500 mt-1">PDF·DOCX·XLSX · 사내 임베딩 인덱싱(외부 전송 없음)</div>
       </Field>
-      <Field label="대상 챗봇"><Select value={bot} onChange={(e) => setBot(e.target.value)}>{[...new Set(chatbots.map((c) => c.name))].map((n) => <option key={n}>{n}</option>)}</Select></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="카테고리"><Select value={catMode} onChange={(e) => setCatMode(e.target.value)}><option>자동 분류</option><option>지정</option></Select></Field>
         {catMode === "지정"
