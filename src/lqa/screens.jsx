@@ -12,12 +12,12 @@ import { Badge, ScoreBar, Card, Field, Btn, Input, Select, Toggle, PageToolbar, 
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
 // 이벤트 트리거는 정보성(읽기전용) — 감지 방식은 챗봇 연결 "모델·배포 소스"에서 정의된 값을 상속만 표시.
 const lqaEvents = (bot) => {
-  const src = (bot && bot.modelSrc) || "API 버전 필드 폴링";
+  const src = (bot && bot.modelSrc) || "수동";
   const detect = src === "배포 웹훅 알림"
     ? "배포 웹훅 알림 · 챗봇 연결에서 정의 (상속)"
     : src === "수동"
     ? "수동 — 자동 감지 없음 · 이 이벤트는 발동하지 않습니다 (챗봇 연결에서 변경)"
-    : "API 버전 필드 폴링 · " + ((bot && bot.verPath) || "$.model.version") + " · 챗봇 연결에서 정의 (상속)";
+    : "버전 엔드포인트 폴링 · " + ((bot && bot.verPath) || "$.model.version") + " · 챗봇 연결에서 정의 (상속)";
   return [
     { key: "model", label: "챗봇 배포·모델 업데이트 시", desc: "대상 챗봇의 모델/프롬프트 버전이 바뀌면 회귀 평가를 자동 실행합니다 (권장)", short: "배포·모델 업데이트",
       fields: [
@@ -682,8 +682,8 @@ function ChatbotDetail({ cb, onDirty }) {
           <Card className="p-4 space-y-2.5">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Wrench size={14} className="text-teal-400" />모델·배포 소스</div>
             <div className="text-xs text-slate-500"><span className="text-slate-300">평가 계획 › 이벤트 트리거</span>의 "챗봇 모델 업데이트 시"가 여기서 정의한 소스를 상속합니다.</div>
-            <Field label="모델 버전 감지 방식" hint={isRest ? undefined : "Web 위젯은 JSON API가 없어 버전 필드 폴링은 지원하지 않습니다"}><Select value={modelSrc} onChange={(e) => setModelSrc(e.target.value)}>{isRest && <option>API 버전 필드 폴링</option>}<option>배포 웹훅 알림</option><option>수동</option></Select></Field>
-            {isRest && modelSrc === "API 버전 필드 폴링" && (
+            <Field label="모델 버전 감지 방식" hint={isRest ? undefined : "Web 위젯은 JSON API가 없어 버전 엔드포인트 폴링은 지원하지 않습니다"}><Select value={modelSrc} onChange={(e) => setModelSrc(e.target.value)}><option>수동</option><option>배포 웹훅 알림</option>{isRest && <option>버전 엔드포인트 폴링</option>}</Select></Field>
+            {isRest && modelSrc === "버전 엔드포인트 폴링" && (
               <div className="space-y-2.5 rounded-lg border border-slate-800 p-3">
                 <Field label="폴링 대상 URL" hint="비우면 챗봇 엔드포인트로 질의 · 인증은 챗봇 인증 재사용"><Input value={verUrl} onChange={(e) => setVerUrl(e.target.value)} placeholder={endpoint || "https://chatbot.api/health"} className="font-mono text-xs" /></Field>
                 <div className="grid grid-cols-2 gap-2">
@@ -864,10 +864,12 @@ export function Plans() {
   useEffect(() => { if (pendingSelect && pendingSelect.kind === "plan") { const np = plans.find((p) => p.id === pendingSelect.id); if (np) setSel(np); setPendingSelect(null); } }, [pendingSelect]);
   const defJudges = (p) => { const o = {}; (p.judgeList || ["Claude (sonnet-4-6)", "GPT-4o"]).forEach((n) => (o[n] = true)); return o; };
   const [jsel, setJsel] = useState(() => defJudges(cur));
-  const [hall, setHall] = useState(cur.opts ? cur.opts.hall : true);
+  const hall = true; // 환각 탐지는 상시 — 끌 수 없다
   const [bert, setBert] = useState(cur.opts ? cur.opts.bert : true);
   const [pii, setPii] = useState(cur.opts ? !!cur.opts.pii : false);
   const [policy, setPolicy] = useState(cur.opts ? !!cur.opts.policy : false);
+  // 정책 위반은 "무엇이 금지인가"를 알아야 판정된다 — 이 텍스트가 프롬프트의 {{policy}}로 주입된다
+  const [policyText, setPolicyText] = useState((cur.opts && cur.opts.policyText) || "");
   const [tpl, setTpl] = useState(cur.promptTpl || (prompts[0] || {}).name || "");
   const [pass, setPass] = useState(cur.passScore || 85);
   const [bot, setBot] = useState(cur.bot || (chatbots[0] && chatbots[0].name) || "");
@@ -881,6 +883,9 @@ export function Plans() {
   const setJf = (patch) => setJira((j) => ({ ...j, ...patch }));
   const tplObj = prompts.find((p) => p.name === tpl);
   const dims = (tplObj && tplObj.rubric && tplObj.rubric.length) ? tplObj.rubric : METRICS.map((m) => m.key);
+  // 안전 정책은 두 곳에서 쓰인다 — ① 정책 게이트 판정 ② 채점 템플릿이 {{policy}}를 요구할 때
+  const tplNeedsPolicy = !!(tplObj && (tplObj.vars || []).includes("policy"));
+  const needPolicyText = policy || tplNeedsPolicy;
   const wsum = dims.reduce((acc, d) => acc + (weights[d] || 0), 0);
   const seedWeights = (t) => {
     const tp = prompts.find((p) => p.name === t);
@@ -895,8 +900,8 @@ export function Plans() {
     setLastId(cur.id);
     const seedTpl = cur.promptTpl || (prompts[0] || {}).name || "";
     setJsel(defJudges(cur));
-    setHall(cur.opts ? cur.opts.hall : true);
     setBert(cur.opts ? cur.opts.bert : true);
+    setPolicyText((cur.opts && cur.opts.policyText) || "");
     setPii(cur.opts ? !!cur.opts.pii : false);
     setPolicy(cur.opts ? !!cur.opts.policy : false);
     setTpl(seedTpl);
@@ -914,8 +919,9 @@ export function Plans() {
     setWeights(o); setWSnap(JSON.stringify(o));
   }, [tpl]);
   const saveCfg = () => {
+    if (needPolicyText && !policyText.trim()) { toast(policy ? "금지 행위를 입력해야 정책 위반을 판정할 수 있습니다" : "선택한 템플릿이 {{policy}}를 요구합니다 — 안전 정책을 입력하세요", "warn"); return; }
     const judgeList = Object.keys(jsel).filter((k) => jsel[k]);
-    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert, pii, policy }, judgeList, judges: judgeList.length, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
+    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert, pii, policy, policyText }, judgeList, judges: judgeList.length, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
     toast(cur.name + " 설정이 저장되었습니다", "ok");
   };
   const baseJudges = defJudges(cur);
@@ -924,10 +930,10 @@ export function Plans() {
     planStatus !== (cur.status || "초안") ||
     tpl !== (cur.promptTpl || ((prompts[0] || {}).name) || "") ||
     pass !== (cur.passScore || 85) ||
-    hall !== (cur.opts ? cur.opts.hall : true) ||
     bert !== (cur.opts ? cur.opts.bert : true) ||
     pii !== (cur.opts ? !!cur.opts.pii : false) ||
     policy !== (cur.opts ? !!cur.opts.policy : false) ||
+    policyText !== ((cur.opts && cur.opts.policyText) || "") ||
     JSON.stringify(Object.keys(jsel).filter((k) => jsel[k]).sort()) !== JSON.stringify(Object.keys(baseJudges).filter((k) => baseJudges[k]).sort()) ||
     schedKey(sched) !== schedKey(cur.schedule || DEFAULT_SCHED) ||
     JSON.stringify(jira) !== JSON.stringify(cur.jira || { override: false }) ||
@@ -975,9 +981,19 @@ export function Plans() {
             </Field>
             <Field label="안전 게이트">
               <div className="text-xs text-slate-500 -mt-1 mb-2">위반 시 점수와 무관하게 해당 케이스 즉시 불합격</div>
-              <div className="flex items-center justify-between text-sm text-slate-300 mb-2"><span>환각(Hallucination) 탐지</span><Toggle on={hall} onClick={() => setHall(!hall)} /></div>
+              {/* 환각 탐지는 AI 품질 평가의 본질 — 끌 수 없다 */}
+              <div className="flex items-center justify-between text-sm text-slate-300 mb-2"><span>환각(Hallucination) 탐지</span><Toggle on disabled /></div>
               <div className="flex items-center justify-between text-sm text-slate-300 mb-2"><span>PII 노출 탐지</span><Toggle on={pii} onClick={() => setPii(!pii)} /></div>
               <div className="flex items-center justify-between text-sm text-slate-300"><span>정책 위반 탐지</span><Toggle on={policy} onClick={() => setPolicy(!policy)} /></div>
+              {needPolicyText && (
+                <div className="mt-2.5 rounded-lg border border-slate-700 p-3">
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-400">
+                    안전 정책 (금지 행위)
+                    {tplNeedsPolicy && <Badge kind="teal">템플릿 {"{{policy}}"}</Badge>}
+                  </div>
+                  <textarea value={policyText} onChange={(e) => setPolicyText(e.target.value)} rows={5} placeholder={"- 환불·보상을 확정적으로 약속하지 않는다\n- 요금은 \"변동 가능\" 안내 없이 단정하지 않는다\n- 경쟁사를 언급하거나 비교하지 않는다\n- 법률·의료 자문을 제공하지 않는다"} className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200 outline-none focus:border-teal-500" />
+                </div>
+              )}
             </Field>
           </div>
           <div>
@@ -1298,7 +1314,8 @@ export function Run() {
   const finish = (plan, trigger) => {
     const planTpl = prompts.find((p) => p.name === plan.promptTpl);
     const dims = (planTpl && planTpl.rubric && planTpl.rubric.length) ? planTpl.rubric : (plan.weights && !Array.isArray(plan.weights) ? Object.keys(plan.weights) : null);
-    const gates = plan.opts ? { hall: !!plan.opts.hall, pii: !!plan.opts.pii, policy: !!plan.opts.policy } : undefined;
+    // 정책 게이트는 금지 행위 텍스트가 있어야만 성립한다 — 비어 있으면 검사하지 않는다
+    const gates = plan.opts ? { hall: !!plan.opts.hall, pii: !!plan.opts.pii, policy: !!plan.opts.policy && !!(plan.opts.policyText || "").trim() } : undefined;
     const jr = (jiraConfig && jiraConfig.connected !== false) ? ((plan.jira && plan.jira.override) ? plan.jira : jiraConfig) : {}; // 결함 라우팅: 미연동 시 내부 결함, 연동 시 계획 재정의 > 전역
     const res = mkResults(approved.length ? approved : cases, Date.now() % 97, dims, gates);
     const pass = res.filter((r) => r.verdict === "PASS").length;

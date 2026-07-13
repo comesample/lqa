@@ -103,6 +103,13 @@ export default function App() {
     runIntent, setRunIntent,
     defects, addDefect: (d) => setDefects((x) => [withCreate(d), ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ status }) } : d))), setDefectAssignee: (key, assignee) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ assignee }) } : d))), updateDefect: (key, patch) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate(patch) } : d))),
     fqaCases, addFqaCase: (c) => setFqaCases((x) => [withCreate(c), ...x]), updateFqaCase: (id, patch) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), setFqaCaseStatus: (id, status) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate({ status }) } : c))), removeFqaCase: (id) => setFqaCases((x) => x.filter((c) => c.id !== id)),
+    // 케이스 저장 = 직전 본문(steps·code·level)을 versions에 스냅샷하고 패치 적용 (최근 10개 보관)
+    commitFqaCase: (id, patch, note) => setFqaCases((x) => x.map((c) => {
+      if (c.id !== id) return c;
+      const prev = { at: c.updatedAt || auditNow(), by: c.updatedBy || currentUser, note: note || "", steps: c.steps || [], code: c.code || "", level: c.level };
+      const versions = [prev, ...(c.versions || [])].slice(0, 10);
+      return { ...c, ...withUpdate(patch), versions };
+    })),
     fqaSuites, addFqaSuite: (su) => setFqaSuites((x) => [...x, withCreate(su)]), updateFqaSuite: (id, patch) => setFqaSuites((x) => x.map((su) => (su.id === id ? { ...su, ...withUpdate(patch) } : su))), removeFqaSuite: (id) => setFqaSuites((x) => x.filter((su) => su.id !== id)),
     fqaSystems, addFqaSystem: (sy) => setFqaSystems((x) => [...x, withCreate(sy)]), updateFqaSystem: (id, patch) => setFqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...withUpdate(patch) } : sy))), removeFqaSystem: (id) => setFqaSystems((x) => x.filter((sy) => sy.id !== id)),
     nqaSystems, addNqaSystem: (sy) => setNqaSystems((x) => [...x, withCreate(sy)]), updateNqaSystem: (id, patch) => setNqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...withUpdate(patch) } : sy))), removeNqaSystem: (id) => setNqaSystems((x) => x.filter((sy) => sy.id !== id)),

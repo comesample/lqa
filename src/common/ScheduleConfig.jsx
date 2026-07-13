@@ -9,11 +9,10 @@ import { Calendar, RefreshCw } from "lucide-react";
 import { Field, Input, Select, Btn, Toggle, Seg } from "./ui.jsx";
 
 const MODES = [["manual", "수동"], ["schedule", "정기 스케줄"], ["event", "이벤트 트리거"]];
+// 이벤트는 도메인이 주입한다(정보성·읽기전용). 기본값은 폴백일 뿐.
 const DEFAULT_EVENTS = [
-  { key: "deploy", label: "배포(릴리스) 시", desc: "운영 배포 직후 품질 게이트 평가", short: "배포",
-    fields: [{ k: "env", type: "select", label: "대상 환경", options: ["운영", "스테이징"] }, { k: "signal", type: "select", label: "배포 신호", options: ["릴리스 태그(v*)", "CD 배포 완료 웹훅", "이미지 태그 push"] }] },
-  { key: "ci", label: "CI Webhook (PR · 커밋)", desc: "GitLab/Jenkins 파이프라인에서 트리거", short: "CI",
-    fields: [{ k: "repo", type: "readonly", label: "저장소", value: "대상·환경 연동에서 상속" }, { k: "branch", type: "text", label: "브랜치/ref 필터", value: "main" }, { k: "kind", type: "select", label: "이벤트", options: ["커밋 push", "PR open", "PR merge"] }] },
+  { key: "deploy", label: "배포 시", desc: "대상에 새 빌드가 배포되면 자동 실행합니다", short: "배포",
+    fields: [{ k: "detect", type: "readonly", label: "감지 방식", value: "대상 설정에서 정의 (상속)" }] },
 ];
 
 export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그라운드 자동 실행", manualHint = "자동 실행 없음 — 수동으로만 수행합니다.", events = DEFAULT_EVENTS, singleSelect = false, value, onChange, onSave, toast }) {

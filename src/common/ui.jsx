@@ -57,9 +57,9 @@ export function Select({ children, ...p }) {
   return <select {...p} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-teal-500">{children}</select>;
 }
 
-export function Toggle({ on, onClick }) {
+export function Toggle({ on, onClick, disabled }) {
   return (
-    <button onClick={onClick} className={"w-9 h-5 rounded-full p-0.5 " + (on ? "bg-teal-500" : "bg-slate-700")}>
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} className={"w-9 h-5 rounded-full p-0.5 " + (on ? "bg-teal-500" : "bg-slate-700") + (disabled ? " opacity-50 cursor-not-allowed" : "")}>
       <span className="block w-4 h-4 rounded-full bg-white" style={{ transform: on ? "translateX(16px)" : "translateX(0px)", transition: "transform .15s" }} />
     </button>
   );
