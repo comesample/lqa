@@ -52,7 +52,7 @@ export function NewPlanForm({ close, data }) {
   const toggleAll = () => setPicked(allOn ? new Set() : new Set(approved.map((c) => c.id)));
   const submit = () => {
     if (picked.size === 0) { toast("테스트케이스를 1개 이상 선택하세요", "warn"); return; }
-    addPlan({ id: Date.now(), name: name || "새 평가 계획", status: "초안", caseIds: [...picked], judges: 2, score: null, last: "-", sched: "예약 없음", schedule: DEFAULT_SCHED, bot, promptTpl: (INIT_PROMPTS[0] || {}).name || "", passScore: 85, weights: METRICS.map((m) => m.w), opts: { hall: true, bert: true }, judgeList: ["Claude (sonnet-4-6)", "GPT-4o"] });
+    addPlan({ id: Date.now(), name: name || "새 평가 계획", status: "초안", caseIds: [...picked], sched: "예약 없음", schedule: DEFAULT_SCHED, bot, promptTpl: (INIT_PROMPTS[0] || {}).name || "", passScore: 85, weights: METRICS.map((m) => m.w), opts: { hall: true }, judgeList: ["Claude (sonnet-4-6)", "GPT-4o"] });
     toast("평가 계획 생성됨 · 테스트케이스 " + picked.size + "개", "ok"); close(); goto("plans");
   };
   return (
@@ -878,7 +878,6 @@ export function Plans() {
   const defJudges = (p) => { const o = {}; (p.judgeList || ["Claude (sonnet-4-6)", "GPT-4o"]).forEach((n) => (o[n] = true)); return o; };
   const [jsel, setJsel] = useState(() => defJudges(cur));
   const hall = true; // 환각 탐지는 상시 — 끌 수 없다
-  const [bert, setBert] = useState(cur.opts ? cur.opts.bert : true);
   const [pii, setPii] = useState(cur.opts ? !!cur.opts.pii : false);
   const [policy, setPolicy] = useState(cur.opts ? !!cur.opts.policy : false);
   // 정책 위반은 "무엇이 금지인가"를 알아야 판정된다 — 이 텍스트가 프롬프트의 {{policy}}로 주입된다
@@ -913,7 +912,6 @@ export function Plans() {
     setLastId(cur.id);
     const seedTpl = cur.promptTpl || (prompts[0] || {}).name || "";
     setJsel(defJudges(cur));
-    setBert(cur.opts ? cur.opts.bert : true);
     setPolicyText((cur.opts && cur.opts.policyText) || "");
     setPii(cur.opts ? !!cur.opts.pii : false);
     setPolicy(cur.opts ? !!cur.opts.policy : false);
@@ -934,7 +932,7 @@ export function Plans() {
   const saveCfg = () => {
     if (needPolicyText && !policyText.trim()) { toast(policy ? "금지 행위를 입력해야 정책 위반을 판정할 수 있습니다" : "선택한 템플릿이 {{policy}}를 요구합니다 — 안전 정책을 입력하세요", "warn"); return; }
     const judgeList = Object.keys(jsel).filter((k) => jsel[k]);
-    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert, pii, policy, policyText }, judgeList, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
+    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, pii, policy, policyText }, judgeList, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
     toast(cur.name + " 설정이 저장되었습니다", "ok");
   };
   const baseJudges = defJudges(cur);
@@ -943,7 +941,6 @@ export function Plans() {
     planStatus !== (cur.status || "초안") ||
     tpl !== (cur.promptTpl || ((prompts[0] || {}).name) || "") ||
     pass !== (cur.passScore || 85) ||
-    bert !== (cur.opts ? cur.opts.bert : true) ||
     pii !== (cur.opts ? !!cur.opts.pii : false) ||
     policy !== (cur.opts ? !!cur.opts.policy : false) ||
     policyText !== ((cur.opts && cur.opts.policyText) || "") ||
@@ -1021,8 +1018,6 @@ export function Plans() {
                 <input type="range" min="0" max="60" value={weights[d] || 0} onChange={(ev) => setWeights({ ...weights, [d]: +ev.target.value })} className="w-full accent-teal-500" />
               </div>
             ))}
-            <div className="text-sm font-semibold text-slate-200 mb-2 mt-4">채점 보조</div>
-            <div className="flex items-center justify-between text-sm text-slate-300"><span>유사도 BERTScore 가중</span><Toggle on={bert} onClick={() => setBert(!bert)} /></div>
             <div className="text-sm font-semibold text-slate-200 mb-1 mt-4">합격 기준 점수</div>
             <Input type="number" value={pass} onChange={(e) => setPass(+e.target.value || 0)} className="w-24" />
           </div>

@@ -64,6 +64,7 @@ export default function App() {
   const [runnerConnected, setRunnerConnected] = useState(true);
   const [fqaEditTc, setFqaEditTc] = useState(null);
   const [nqaScnFocus, setNqaScnFocus] = useState(null);
+  const [fqaSuiteFocus, setFqaSuiteFocus] = useState(null); // 스위트 → 케이스 화면으로 필터 걸고 이동
   const [jiraConfig, setJiraConfig] = useState({ connected: true, deploy: "Cloud", url: "skt.atlassian.net", email: "qa@skt.com", token: "${jira_token}", project: "TWORLD", issueType: "Bug", assignee: "QA Lead", labels: "lqa, chatbot", titleTpl: "[챗봇] {{tcId}} 평가 실패 ({{score}}점)", dedup: true, sevMap: { Critical: "Highest", Major: "High", Minor: "Medium" } });
   const [fqaResultFrom, setFqaResultFrom] = useState("fqa-history");
   const [judges, setJudges] = useState(INIT_JUDGES);
@@ -124,6 +125,7 @@ export default function App() {
     runnerConnected, setRunnerConnected,
     fqaEditTc, setFqaEditTc,
     nqaScnFocus, setNqaScnFocus,
+    fqaSuiteFocus, setFqaSuiteFocus,
     jiraConfig, setJiraConfig,
     judges, toggleJudge: (name) => setJudges((x) => x.map((j) => (j.name === name ? { ...j, enabled: !j.enabled } : j))),
     prompts, addPrompt: (p) => setPrompts((x) => [...x, p]), updatePrompt: (name, patch) => setPrompts((x) => x.map((pp) => (pp.name === name ? { ...pp, ...patch } : pp))), removePrompt: (name) => setPrompts((x) => x.filter((pp) => pp.name !== name)),

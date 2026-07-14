@@ -40,7 +40,7 @@ export const FQA_HIDDEN = [
                  인증 헤더는 환경의 apiAuth에서 주입 — 케이스에 적지 않는다.
                  save로 저장한 값은 이후 스텝에서 ${이름}으로 참조(웹 스텝 포함).
                  요청은 웹 세션의 쿠키를 공유한다(page.request) — 웹→API 흐름이 성립하는 근거. */
-export const WEB_ACTS = ["이동", "입력", "클릭", "화면 검증"];
+export const WEB_ACTS = ["이동", "입력", "클릭", "선택", "체크", "키 입력", "화면 검증"];
 export const API_ACTS = ["요청", "응답 검증"];
 export const STEP_ACTS = [...WEB_ACTS, ...API_ACTS, "코드 스텝"];
 export const surfaceOf = (act) => (API_ACTS.includes(act) ? "api" : WEB_ACTS.includes(act) ? "web" : "code");
@@ -76,7 +76,7 @@ export const INIT_FQA_SYSTEMS = [
         { role: "일반", acct: "cs_qa01", secretRef: "${stg_test_pw}", status: "활성" },
       ],
       access: { basicAuth: false, baUser: "", baPw: "", tlsIgnore: true },
-      deploy: { mode: "버전 엔드포인트 폴링", verUrl: "/health", verPath: "$.version", interval: "15분" } },
+      deploy: { mode: "버전 엔드포인트 폴링", verUrl: "https://stg-cs.tworld.co.kr/health", verPath: "$.version", interval: "15분" } },
   ] },
 ];
 

@@ -70,88 +70,200 @@ const relPath = (u, base) => {
   return s.charAt(0) === "/" ? s : "/" + s;
 };
 
-const RECCODE = `import { test, expect } from '@playwright/test';
+/* ═══════════ 1. 레코딩 (CLI + Playwright codegen) ═══════════
 
-// baseURL은 실행 계획의 대상·환경에서 주입됩니다 — 코드에는 상대경로만 남습니다.
-test('TC-REC-001 로그인 정상 동작', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByTestId('username').fill('\${계정 ID}');
-  await page.getByTestId('password').fill('\${계정 비밀번호}');
-  await page.getByRole('button', { name: '로그인' }).click();
-  await expect(page.getByText('환영합니다')).toBeVisible();
-});`;
+   구현 전제 — 공식 CLI만 사용한다(내부 API 없음):
+     1) 웹에서 세션 생성 → 명령어 발급
+     2) 사용자가 터미널에서  npx @exq/cli record --session <id>
+     3) CLI가 세션 정보를 받아  npx playwright codegen [플래그] <base+시작경로> -o out.spec.ts  실행
+        · --load-storage  : 이전 녹화에서 저장한 로그인 상태 재사용
+        · --save-storage  : 이번 로그인 상태를 로컬(~/.exq)에만 저장 — 플랫폼에 올리지 않는다
+        · --viewport-size / --ignore-https-errors : 환경 설정에서 주입
+     4) 브라우저에서 조작 · 툴바로 검증 추가 → 창을 닫으면 codegen 종료
+     5) CLI가 out.spec.ts를 AST로 파싱 → 스텝으로 변환 → 플랫폼에 업로드
+        · 로케이터 생성·고유성 보장은 Playwright가 한다 (우리가 만들지 않는다)
+        · 파싱하지 못한 줄은 '코드 스텝'으로 보존 → 손실 0
+     6) 웹에서 검토 후 등록
 
-/* ═══════════ 1. 레코딩 ═══════════ */
+   v1 한계(정직하게 화면에 표시):
+     · 실시간 스트리밍 아님 — 녹화 종료 후 일괄 수신
+     · Basic Auth 미지원 (codegen에 해당 플래그가 없음)
+     · Node.js 18+ 필요 · 첫 실행 시 브라우저 바이너리 다운로드                */
+
+/* codegen 출력 파싱 결과(데모) — 실제로는 CLI가 AST 파싱해 올려준다.
+   · 계정 값은 CLI가 세션의 계정 풀과 대조해 ${계정 ID}로 치환한다.
+   · 비밀번호 필드(로케이터에 password 힌트)는 ${계정 비밀번호}로 치환하고 원본 값은 버린다
+     → 평문 시크릿이 케이스에 남지 않는다.
+   · 변환하지 못한 문장은 코드 스텝으로 원본 보존. */
+const REC_CAPTURED = [
+  { act: "이동", loc: "/login", val: "-" },
+  { act: "입력", loc: "[data-testid=username]", val: "${계정 ID}" },
+  { act: "입력", loc: "[data-testid=password]", val: "${계정 비밀번호}" },
+  { act: "체크", loc: "role=checkbox[자동 로그인]", val: "체크" },
+  { act: "클릭", loc: "role=button[로그인]", val: "-" },
+  { act: "화면 검증", loc: "text=환영합니다", val: "visible = true" },
+  { act: "코드 스텝", loc: "", val: "", code: "const page1Promise = page.waitForEvent('popup');\nawait page.getByRole('link', { name: '이용약관' }).click();\nconst page1 = await page1Promise;" },
+];
+const REC_VIEWPORTS = ["1920×1080", "1440×900", "1280×720", "375×812 (모바일)"];
+
 export function FqaRecordScreen({ onDone }) {
-  const { addFqaCase, fqaSuites, fqaSystems, runnerConnected, setRunnerConnected } = useApp();
+  const { addFqaCase, fqaSuites, fqaSystems } = useApp();
   const [msg, flash] = useToast();
   const opts = envOpts(fqaSystems).filter((o) => o.webUrl);
   const [ref, setRef] = useState(opts[0] ? { systemId: opts[0].systemId, env: opts[0].env } : null);
   const cur = opts.find((o) => refKey(o) === refKey(ref)) || opts[0] || {};
   const base = cur.webUrl || "";
-  const [suite, setSuite] = useState("로그인 / 인증");
-  const [name, setName] = useState("로그인 정상 동작");
-  const [rec, setRec] = useState(false);
+  const [path, setPath] = useState("/");
+  /* 녹화 해상도 — 반응형 사이트는 화면 크기에 따라 DOM이 달라지므로 녹화 시점에 정해야 한다.
+     케이스에는 저장하지 않는다(실행 해상도는 실행 계획이 정함). */
+  const [vp, setVp] = useState(REC_VIEWPORTS[0]);
+  // 스위트·TC명은 캡처 결과를 보고 등록 시점에 정한다
+  const [suite, setSuite] = useState((fqaSuites[0] || {}).name || "");
+  const [name, setName] = useState("");
+  const [phase, setPhase] = useState("setup"); // setup | waiting | recording | done
+  const [sid, setSid] = useState("");
   const [steps, setSteps] = useState([]);
-  const [mode, setMode] = useState("스크립트");
-  const [selStrat, setSelStrat] = useState("data-testid 우선");
-  const start = () => { if (!base) { flash("웹 URL이 설정된 대상·환경이 없습니다"); return; } setRec(true); setSteps([{ t: "goto", v: "/" }]); };
-  const stop = () => {
-    setRec(false);
-    setSteps([{ t: "goto", v: "/login" }, { t: "fill", v: "[data-testid=username] ← ${계정 ID}" }, { t: "fill", v: "[data-testid=password] ← ${계정 비밀번호}" }, { t: "click", v: "role=button[로그인]" }, { t: "assert", v: "text=환영합니다 보임" }]);
+  const [mode, setMode] = useState("스텝");
+
+  /* 명령어는 서버가 조립해 발급한다 —
+       · CLI 버전: 플랫폼 API 스키마에 묶이므로 @latest가 아니라 호환 버전을 박는다
+       · 세션 토큰: 대상 환경 정보를 받아가고 스텝을 올리는 '사실상 인증'이므로
+                    단명(10분) · 1회용 · 128bit 이상. 짧은 ID는 대입 가능해 위험하다.        */
+  // npm 패키지는 @exq/cli (조직의 CLI 모듈), 전역 설치 시 명령어는 exq — @angular/cli → ng 와 같은 관례
+  const CLI_VER = "1.4";
+  const cmd = "npx @exq/cli@" + CLI_VER + " record --session " + sid;
+  const script = steps.length ? stepsToCode(steps, { id: "TC-REC", name: name || "레코딩 TC" }) : "";
+
+  const newToken = () => {
+    const A = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let s = ""; for (let i = 0; i < 22; i++) s += A[Math.floor(Math.random() * A.length)];
+    return "s_" + s;
+  };
+  const startSession = () => {
+    if (!base) { flash("웹 URL이 설정된 대상·환경이 없습니다"); return; }
+    setSid(newToken()); setSteps([]); setPhase("waiting");
+    // 목업 시뮬: 잠시 후 CLI가 붙어 브라우저가 열린 것으로 본다
+    setTimeout(() => setPhase((p) => (p === "waiting" ? "recording" : p)), 2500);
+  };
+  const cancel = () => { setPhase("setup"); setSid(""); setSteps([]); };
+  // 목업 시뮬 — 실제로는 CLI가 세션 토큰으로 스텝을 업로드하면 이 화면이 받는다
+  const simulate = () => { setSteps(REC_CAPTURED); setPhase("done"); flash("스텝 " + REC_CAPTURED.length + "개 수신 (데모 시뮬)"); };
+  const stK2 = { setup: ["info", "세션 없음"], waiting: ["warn", "● CLI 연결 대기"], recording: ["live", "● 녹화 중"], done: ["pass", "수신 완료"] };
+  const register = () => {
+    addFqaCase({ id: "TC-REC-" + Date.now().toString().slice(-4), name: name || "레코딩 TC", suite, tags: "", status: "검토중", level: "Low-Code", dataset: "-", steps });
+    onDone ? onDone("레코딩 TC 검토중 등록 · 목록에 추가됨") : flash("검토중으로 등록");
   };
   return (
     <div className="space-y-4">
-      <Hdr icon={Video} title="레코딩 (Playwright 스크립트 레코딩)" desc="조작 캡처 → 스텝·스크립트 변환" />
+      <Hdr icon={Video} title="레코딩" desc="로컬 CLI + Playwright codegen · 조작 캡처 → 스텝" />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-5 space-y-4">
           <Card className="p-4 space-y-3.5">
-            <div className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2 text-xs"><span className="flex items-center gap-1.5 text-slate-300"><Terminal size={13} className="text-teal-400" />eX.Q 로컬 러너 {runnerConnected ? <Badge kind="pass">연결됨</Badge> : <Badge kind="draft">미연결</Badge>}</span><button onClick={() => setRunnerConnected(!runnerConnected)} className="text-teal-400">{runnerConnected ? "연결 해제" : "연결"}</button></div>
-            <Field label="레코딩 환경" hint="녹화용 접속처 · 로그인 상태·계정은 이 환경에서 가져옵니다">
-              <Select value={refKey(ref)} onChange={(e) => { const o = opts.find((x) => refKey(x) === e.target.value); if (o) setRef({ systemId: o.systemId, env: o.env }); }}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-200">녹화 세션</span>
+              <Badge kind={stK2[phase][0]}>{stK2[phase][1]}</Badge>
+            </div>
+
+            <Field label="대상 · 환경">
+              <Select value={refKey(ref)} disabled={phase !== "setup"} onChange={(e) => { const o = opts.find((x) => refKey(x) === e.target.value); if (o) setRef({ systemId: o.systemId, env: o.env }); }}>
                 {opts.length === 0 && <option>웹 URL이 설정된 대상 없음</option>}
                 {opts.map((o) => <option key={refKey(o)} value={refKey(o)}>{o.label}</option>)}
               </Select>
             </Field>
-            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-500">
-              base <span className="font-mono text-slate-300">{base || "-"}</span> · 캡처된 경로는 base를 뺀 <span className="text-teal-400">상대경로</span>로 저장되어 다른 환경에서도 그대로 실행됩니다.
-            </div>
-            <div className="flex items-center gap-2">
-              {!rec ? <Btn kind="primary" icon={Video} onClick={start}>녹화 시작</Btn> : <Btn kind="danger" icon={Square} onClick={stop}>녹화 중단</Btn>}
-              {rec ? <Badge kind="live">● 녹화 중</Badge> : <Badge kind="info">대기 중</Badge>}
-              <span className="text-xs text-slate-500">브라우저가 열리고 조작이 캡처됩니다</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{fqaSuites.map((x) => <option key={x.id}>{x.name}</option>)}</Select></Field>
-              <Field label="TC 이름"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-            </div>
-            <Field label="셀렉터 전략" hint="권장: data-testid → role → css (변경 취약성↓)"><Seg options={["data-testid 우선", "role 우선", "css"]} value={selStrat} onChange={setSelStrat} /></Field>
-            <div className="flex items-center justify-between text-sm text-slate-300"><span>어설션(검증포인트) 추가</span><Badge kind="teal">레코딩 중 지정</Badge></div>
+            {/* base URL을 접두사로 붙여 전체 주소가 한눈에 읽히게 — 실제 저장은 상대경로만 */}
+            <Field label="시작 경로">
+              <div className="flex items-stretch overflow-hidden rounded-lg border border-slate-700 bg-slate-800 focus-within:border-teal-500">
+                <span className="flex max-w-[55%] shrink-0 items-center truncate border-r border-slate-700 bg-slate-900 px-2.5 py-2 font-mono text-xs text-slate-500" title={base}>{base || "대상 없음"}</span>
+                <input value={path} onChange={(e) => setPath(e.target.value)} disabled={phase !== "setup"} placeholder="/login" className="min-w-0 flex-1 bg-transparent px-2.5 py-2 font-mono text-xs text-slate-200 outline-none disabled:text-slate-500" />
+              </div>
+            </Field>
+            {/* 반응형 사이트는 해상도에 따라 DOM이 달라진다 — 녹화 해상도를 실행 해상도와 맞추는 게 안전하다 */}
+            <Field label="녹화 해상도" hint="실행 해상도와 다르면 반응형 화면에서 로케이터가 달라질 수 있습니다">
+              <Select value={vp} disabled={phase !== "setup"} onChange={(e) => setVp(e.target.value)}>
+                {REC_VIEWPORTS.map((v) => <option key={v}>{v}</option>)}
+              </Select>
+            </Field>
+            {phase === "setup" ? (
+              <Btn kind="primary" icon={Video} className="w-full" onClick={startSession}>녹화 세션 시작</Btn>
+            ) : (
+              <>
+                <div className="rounded-lg border border-teal-800 bg-slate-950 p-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300"><Terminal size={13} className="text-teal-400" />터미널에서 실행</span>
+                    <span className="text-xs text-slate-500">10분 후 만료 · 1회용</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 truncate rounded border border-slate-800 bg-slate-900 px-2.5 py-2 font-mono text-xs text-teal-200">{cmd}</div>
+                    <Btn icon={Copy} onClick={() => { try { navigator.clipboard.writeText(cmd); } catch (e) {} flash("명령어를 복사했습니다"); }}>복사</Btn>
+                  </div>
+                </div>
+                {/* 로컬 파일(로그인 상태 저장 여부)은 웹이 알 수 없다 — 상태로 표시하지 않고 동작만 설명한다 */}
+                <div className="space-y-1 text-xs text-slate-500">
+                  <div>· <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-teal-400 hover:text-teal-300">Node.js</a> 18 이상이 설치되어 있어야 합니다</div>
+                  <div>· 첫 실행 시 <span className="text-slate-400">Chromium</span>을 자동으로 내려받습니다 (최초 1회 · 2~3분)</div>
+                  <div>· 이전 녹화에서 로그인했다면 그 상태로 열립니다. 처음이면 브라우저에서 직접 로그인하세요.</div>
+                  <div>· 브라우저 툴바에서 <span className="text-slate-400">요소를 클릭</span>하면 검증 스텝을 추가할 수 있습니다.</div>
+                </div>
+                <Btn className="w-full" onClick={cancel}>세션 취소</Btn>
+              </>
+            )}
           </Card>
         </div>
+
         <div className="col-span-7">
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2.5">
-              <span className="text-sm font-semibold text-slate-200">캡처 결과</span>
-              <div className="flex items-center gap-2"><Seg options={["스텝", "스크립트"]} value={mode} onChange={setMode} /><Badge kind="draft">검토중</Badge></div>
+              <span className="text-sm font-semibold text-slate-200">캡처 결과 {steps.length > 0 && <span className="text-xs font-normal text-slate-500">스텝 {steps.length}개</span>}</span>
+              <div className="flex items-center gap-2"><Seg options={["스텝", "스크립트 미리보기"]} value={mode} onChange={setMode} /><Badge kind="draft">검토중</Badge></div>
             </div>
             {steps.length === 0 ? (
-              <div className="px-4 py-16 text-center text-sm text-slate-500">녹화를 시작하면 캡처된 스텝이 여기에 쌓입니다.</div>
+              <div className="px-4 py-16 text-center text-sm text-slate-500">
+                {phase === "waiting" ? (
+                  <>
+                    <div className="mb-1 flex items-center justify-center gap-2 text-slate-400"><RefreshCw size={14} className="animate-spin text-teal-400" />CLI 연결을 기다리는 중…</div>
+                    <div className="text-xs text-slate-600">터미널에서 위 명령어를 실행하세요.</div>
+                  </>
+                ) : phase === "recording" ? (
+                  <>
+                    <div className="mb-1 flex items-center justify-center gap-2 text-red-300"><span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />브라우저에서 녹화 중…</div>
+                    <div className="text-xs text-slate-600">조작을 마치고 <span className="text-slate-400">브라우저 창을 닫으면</span> 스텝이 여기에 도착합니다.</div>
+                    <button onClick={simulate} className="mt-4 text-xs text-slate-600 underline decoration-dotted hover:text-slate-400">＊ 데모 — 캡처 결과 수신 시뮬레이션</button>
+                  </>
+                ) : "녹화 세션을 시작하세요."}
+              </div>
             ) : mode === "스텝" ? (
-              <ol className="space-y-1 p-3">
+              <div className="space-y-1 p-3">
                 {steps.map((s, i) => (
-                  <li key={i} className="flex items-center gap-2 text-xs"><span className="flex h-5 w-5 items-center justify-center rounded bg-slate-800 text-slate-400">{i + 1}</span><span className={"font-medium " + (s.t === "assert" ? "text-amber-300" : "text-slate-200")}>{s.t}</span><span className="font-mono text-slate-400">{s.v}</span></li>
+                  <div key={i} className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800 text-slate-400">{i + 1}</span>
+                    {s.act === "코드 스텝" ? (
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-1.5"><span className="font-medium text-teal-300">코드 스텝</span><Badge kind="warn">파싱 불가 · 원본 보존</Badge></div>
+                        <pre className="overflow-auto rounded border border-slate-800 bg-slate-900 p-2 font-mono text-teal-200">{s.code}</pre>
+                      </div>
+                    ) : (
+                      <>
+                        <span className={"w-20 shrink-0 font-medium " + (s.act.includes("검증") ? "text-amber-300" : "text-slate-200")}>{s.act}</span>
+                        <span className="min-w-0 flex-1 truncate font-mono text-slate-400">{s.loc}</span>
+                        <span className="shrink-0 text-slate-300">{s.val !== "-" ? s.val : ""}</span>
+                      </>
+                    )}
+                  </div>
                 ))}
-              </ol>
+              </div>
             ) : (
-              <pre className="m-3 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300" style={{ fontFamily: "monospace", maxHeight: 320 }}>{RECCODE}</pre>
+              <pre className="m-3 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300" style={{ fontFamily: "monospace", maxHeight: 340 }}>{script}</pre>
             )}
-            <div className="flex justify-end gap-2 border-t border-slate-800 px-4 py-3">
-              <Btn icon={FileText} onClick={() => { try { navigator.clipboard.writeText(RECCODE); } catch (e) {} flash("스크립트 복사됨"); }}>복사</Btn>
-              <Btn kind="primary" icon={Plus} disabled={!steps.length} onClick={() => { addFqaCase({ id: "TC-REC-" + Date.now().toString().slice(-4), name: name || "레코딩 TC", suite, tags: "", status: "검토중", level: "Low-Code", dataset: "-", steps: recToSteps(steps, base) }); onDone ? onDone("레코딩 TC 검토중 등록 · 목록에 추가됨") : flash("검토중으로 등록"); }}>검토중으로 등록</Btn>
-            </div>
+            {/* 스위트·TC명은 녹화 결과를 보고 정한다 — 세션 시작 시점엔 필요 없다 */}
+            {steps.length > 0 && (
+              <div className="flex items-end gap-3 border-t border-slate-800 px-4 py-3">
+                <div className="w-44 shrink-0"><Field label="스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{fqaSuites.map((x) => <option key={x.id}>{x.name}</option>)}</Select></Field></div>
+                <div className="min-w-0 flex-1"><Field label="TC 이름"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 로그인 정상 동작" /></Field></div>
+                <Btn icon={Video} onClick={startSession}>다시 녹화</Btn>
+                <Btn kind="primary" icon={Plus} onClick={register}>검토중으로 등록</Btn>
+              </div>
+            )}
           </Card>
-          <div className="mt-2 text-xs text-slate-500">레코딩은 구조화된 스텝을 캡처하므로 <span className="text-amber-300">Low-Code(편집 가능)</span>로 등록됩니다 — 구조화로 담기 어려운 부분은 <span className="text-amber-300">코드 스텝</span> 또는 <span className="text-amber-300">Full-Code</span>로 관리됩니다. 이후 테스트 에디터에서 편집·승인합니다.</div>
         </div>
       </div>
       <Toast msg={msg} />
@@ -314,6 +426,16 @@ export function FqaMcpScreen({ onDone }) {
 /* ═══════════ 4. 테스트 에디터 (3-Mode 단방향) ═══════════ */
 const LV = ["Low-Code", "Full-Code"];
 const ROLE = { "Low-Code": "QA 엔지니어", "Full-Code": "개발자" };
+/* 스텝의 val 칸 placeholder — 액션마다 넣을 값이 다르다 */
+const VAL_PH = {
+  "이동": "-",
+  "입력": '"qa_user01"',
+  "클릭": "-",
+  "선택": '"premium"',
+  "체크": "체크 / 해제",
+  "키 입력": "Enter",
+  "화면 검증": 'text = "…" / visible = true',
+};
 const E_STEPS = [
   { act: "이동", loc: "/signup", val: "-" },
   { act: "입력", loc: "[data-testid=email]", val: '"invalid-email"' },
@@ -329,16 +451,6 @@ function _loc(loc) {
   if ((m = loc.match(/^text=(.+)$/))) return "getByText('" + m[1] + "')";
   if ((m = loc.match(/\[name=([^\]]+)\]/))) return "locator('[name=" + m[1] + "]')";
   return "locator('" + loc + "')";
-}
-// 레코딩 캡처({t,v}) → 편집 스텝({act,loc,val}) · 경로는 base를 뺀 상대경로로
-function recToSteps(rs, base) {
-  return (rs || []).map((s) => {
-    if (s.t === "goto") return { act: "이동", loc: relPath(s.v, base), val: "-" };
-    if (s.t === "fill") { const [loc, val] = String(s.v).split("←").map((x) => x.trim()); return { act: "입력", loc: loc || "", val: val || '""' }; }
-    if (s.t === "click") return { act: "클릭", loc: s.v, val: "-" };
-    if (s.t === "assert") return { act: "화면 검증", loc: String(s.v).replace(/\s*보임$/, ""), val: "visible = true" };
-    return { act: "클릭", loc: s.v, val: "-" };
-  });
 }
 // MCP 탐색 로그({t,v}) → 편집 스텝
 function mcpToSteps(log, base) {
@@ -414,12 +526,18 @@ function stepsToCode(steps, tc) {
     if (s.act === "이동") return "  await page.goto(" + T(s.loc || "/") + ");";
     if (s.act === "입력") return "  await page." + _loc(s.loc) + ".fill(" + T(s.val) + ");";
     if (s.act === "클릭") return "  await page." + _loc(s.loc) + ".click();";
+    if (s.act === "선택") return "  await page." + _loc(s.loc) + ".selectOption(" + T(s.val) + ");";
+    if (s.act === "체크") return "  await page." + _loc(s.loc) + (/해제|uncheck|false/i.test(s.val || "") ? ".uncheck();" : ".check();");
+    if (s.act === "키 입력") return "  await page." + _loc(s.loc) + ".press(" + T(s.val || "Enter") + ");";
     if (s.act === "화면 검증") {
       const v = s.val || "";
-      if (/visible/i.test(v)) return "  await expect(page." + _loc(s.loc) + ").toBeVisible();";
-      const c = v.match(/count\s*>=\s*(\d+)/i);
-      if (c) return "  expect(await page." + _loc(s.loc) + ".count()).toBeGreaterThanOrEqual(" + c[1] + ");";
-      const m = v.match(/"([^"]*)"/);
+      let m;
+      if ((m = v.match(/visible\s*=\s*(true|false)/i))) return "  await expect(page." + _loc(s.loc) + (m[1].toLowerCase() === "true" ? ").toBeVisible();" : ").toBeHidden();");
+      if ((m = v.match(/checked\s*=\s*(true|false)/i))) return "  await expect(page." + _loc(s.loc) + (m[1].toLowerCase() === "true" ? ").toBeChecked();" : ").not.toBeChecked();");
+      if ((m = v.match(/enabled\s*=\s*(true|false)/i))) return "  await expect(page." + _loc(s.loc) + (m[1].toLowerCase() === "true" ? ").toBeEnabled();" : ").toBeDisabled();");
+      if ((m = v.match(/count\s*>=\s*(\d+)/i))) return "  expect(await page." + _loc(s.loc) + ".count()).toBeGreaterThanOrEqual(" + m[1] + ");";
+      if ((m = v.match(/value\s*=\s*"([^"]*)"/i))) return "  await expect(page." + _loc(s.loc) + ").toHaveValue(" + T(m[1]) + ");";
+      m = v.match(/"([^"]*)"/);
       return "  await expect(page." + _loc(s.loc) + ").toHaveText(" + T(m ? m[1] : v) + ");";
     }
     if (s.act === "요청") {
@@ -759,7 +877,7 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
                                 {isReq ? (
                                   <button onClick={() => toggleCode(i)} className="flex w-44 shrink-0 items-center gap-1.5 rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-left text-xs text-teal-300 hover:border-teal-500"><Send size={12} />{codeOpen[i] ? "본문·헤더 ▲" : "본문·헤더·저장 ▼"}</button>
                                 ) : (
-                                  <input value={s.val} onChange={(e) => setStep({ val: e.target.value })} placeholder="값/검증" className="w-40 rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none focus:border-teal-500" />
+                                  <input value={s.val} onChange={(e) => setStep({ val: e.target.value })} placeholder={VAL_PH[s.act] || "값/검증"} className="w-40 rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none focus:border-teal-500" />
                                 )}
                               </>
                             )}
@@ -886,8 +1004,13 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty }) {
 const SF0 = { name: "", desc: "" };
 export function FqaSuiteScreen() {
   const [msg, flash] = useToast();
-  const { fqaSuites: suites, addFqaSuite, updateFqaSuite, removeFqaSuite, fqaCases } = useApp();
-  const tcOf = (name) => fqaCases.filter((c) => c.suite === name).length;
+  const { fqaSuites: suites, addFqaSuite, updateFqaSuite, removeFqaSuite, fqaCases, fqaRuns, setFqaEditTc, setFqaSuiteFocus, goto } = useApp();
+  const casesOf = (name) => fqaCases.filter((c) => c.suite === name);
+  const tcOf = (name) => casesOf(name).length;
+  const [tcOpen, setTcOpen] = useState(null); // TC 수 클릭 → 소속 케이스 모달 (스위트 이름)
+  const [tcQ, setTcQ] = useState("");
+  const stK = { "승인": "pass", "검토중": "warn", "초안": "draft" };
+  const tcList = tcOpen ? casesOf(tcOpen).filter((c) => !tcQ || (c.id + " " + c.name + " " + (c.tags || "")).toLowerCase().includes(tcQ.toLowerCase())) : [];
   // 혼합 여부는 소속 케이스의 스텝에서 파생 — 스위트는 platform을 갖지 않는다
   const mixOf = (name) => {
     const cs = fqaCases.filter((c) => c.suite === name);
@@ -914,7 +1037,7 @@ export function FqaSuiteScreen() {
   const mixK = { "웹+API": "teal", "API": "warn", "웹": "info" };
   return (
     <div className="space-y-4">
-      <PageToolbar desc="업무 흐름 묶음 · 웹·API 케이스 혼재 가능" />
+      <PageToolbar desc="업무 흐름 묶음" />
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <span className="text-sm font-semibold text-slate-200">스위트 목록 <span className="text-xs font-normal text-slate-500">{suites.length}개</span></span>
@@ -927,7 +1050,9 @@ export function FqaSuiteScreen() {
               <tr key={s.id} className="border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                 <td className="px-4 py-3"><div className="font-medium text-slate-200">{s.name}</div>{s.desc && <div className="text-xs text-slate-500">{s.desc}</div>}</td>
                 <td>{mixOf(s.name) === "-" ? <span className="text-xs text-slate-600">-</span> : <Badge kind={mixK[mixOf(s.name)] || "info"}>{mixOf(s.name)}</Badge>}</td>
-                <td>{tcOf(s.name)}</td>
+                <td>{tcOf(s.name) > 0
+                  ? <button onClick={() => { setTcOpen(s.name); setTcQ(""); }} className="font-semibold text-teal-400 underline decoration-dotted underline-offset-2 hover:text-teal-300">{tcOf(s.name)}</button>
+                  : <span className="text-slate-600">0</span>}</td>
                 <td className="pr-2 text-xs text-slate-500 whitespace-nowrap">{s.updatedBy || "—"} · {s.updatedAt || "—"}</td>
                 <td className="pr-4 text-right whitespace-nowrap"><button onClick={() => openEdit(s.id)} className="mr-3 text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => del(s)} className="text-slate-500 hover:text-red-400"><X size={14} /></button></td>
               </tr>
@@ -935,7 +1060,6 @@ export function FqaSuiteScreen() {
           </tbody>
         </table>
       </Card>
-      <div className="text-xs text-slate-500">스위트는 <span className="text-slate-400">순수 업무 흐름 묶음</span>입니다 — 무엇을 돌릴지는 실행 계획이, 대상·환경은 계획의 바인딩이 정합니다. 구성(웹/API/혼합)은 소속 케이스의 스텝에서 파생됩니다.</div>
 
       {open && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setOpen(false)}>
@@ -946,6 +1070,41 @@ export function FqaSuiteScreen() {
               <Field label="이름"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 결제 / 요금제" /></Field>
               <Field label="설명 (선택)"><Input value={form.desc || ""} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="이 스위트가 검증하는 업무 흐름" /></Field>
               <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setOpen(false)}>취소</Btn><Btn kind="primary" icon={Save} onClick={save}>{edit === null ? "추가" : "저장"}</Btn></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TC 수 클릭 → 소속 케이스 목록. 건수가 많아도 모달 안에서 검색·스크롤로 처리한다. */}
+      {tcOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setTcOpen(null)}>
+          <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5">
+              <h3 className="flex items-center gap-2 font-semibold text-slate-100">{tcOpen}<span className="text-xs font-normal text-slate-500">{casesOf(tcOpen).length}건</span>{mixOf(tcOpen) !== "-" && <Badge kind={mixK[mixOf(tcOpen)] || "info"}>{mixOf(tcOpen)}</Badge>}</h3>
+              <button onClick={() => setTcOpen(null)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button>
+            </div>
+            <div className="space-y-3 p-5">
+              <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+                <Search size={14} className="text-slate-500" />
+                <input value={tcQ} onChange={(e) => setTcQ(e.target.value)} placeholder="TC·이름·태그 검색" className="flex-1 bg-transparent text-sm text-slate-200 outline-none" />
+                {tcQ && <span className="text-xs text-slate-500">{tcList.length}건</span>}
+              </div>
+              <div className="space-y-1 overflow-y-auto" style={{ maxHeight: 380 }}>
+                {tcList.map((c) => (
+                  <div key={c.id} onClick={() => { setTcOpen(null); setFqaEditTc(c.id); goto("fqa-cases"); }} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs hover:border-teal-700">
+                    <span className="w-24 shrink-0 font-mono text-teal-400">{c.id}</span>
+                    <span className="min-w-0 flex-1 truncate text-slate-200">{c.name}</span>
+                    <Badge kind={SURF_K[surfacesOf(c)] || "info"}>{surfacesOf(c)}</Badge>
+                    <Badge kind={stK[c.status] || "draft"}>{c.status}</Badge>
+                    <span className="w-12 shrink-0 text-right text-slate-500">{lastOf(fqaRuns, c.id)}</span>
+                  </div>
+                ))}
+                {tcList.length === 0 && <div className="py-8 text-center text-xs text-slate-600">검색 결과가 없습니다.</div>}
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-800 pt-3">
+                <span className="text-xs text-slate-500">행을 클릭하면 해당 테스트케이스 편집으로 이동합니다.</span>
+                <Btn onClick={() => { const n = tcOpen; setTcOpen(null); setFqaSuiteFocus(n); goto("fqa-cases"); }}>테스트케이스에서 열기</Btn>
+              </div>
             </div>
           </div>
         </div>
@@ -1521,7 +1680,7 @@ function FqaApiCaseView({ tc }) {
   );
 }
 export function FqaCasesScreen() {
-  const { fqaCases, fqaSuites, fqaRuns, setFqaCaseStatus, removeFqaCase, fqaEditTc, setFqaEditTc, defects } = useApp();
+  const { fqaCases, fqaSuites, fqaRuns, setFqaCaseStatus, removeFqaCase, fqaEditTc, setFqaEditTc, fqaSuiteFocus, setFqaSuiteFocus, defects } = useApp();
   const defCount = (id) => defects.filter((d) => d.tc === id && (d.domain || "LQA") === "FQA").length;
   const editorDirty = useRef(false);
   useEffect(() => { if (fqaEditTc) { const c = fqaCases.find((x) => x.id === fqaEditTc); if (c) { setSel(c); setMode("edit"); } setFqaEditTc(null); } }, [fqaEditTc]);
@@ -1534,6 +1693,8 @@ export function FqaCasesScreen() {
   const [suiteF, setSuiteF] = useState("전체");
   const [resF, setResF] = useState("전체");
   const [platF, setPlatF] = useState("전체");
+  // 스위트 화면의 "전체 N건 보기" — 해당 스위트로 필터를 걸고 목록을 연다
+  useEffect(() => { if (fqaSuiteFocus) { setMode("목록"); setSuiteF(fqaSuiteFocus); setQ(""); setStf("전체"); setResF("전체"); setPlatF("전체"); setFqaSuiteFocus(null); } }, [fqaSuiteFocus]);
   const [sel, setSel] = useState(null);
   const [open, setOpen] = useState(null);
   const [picked, setPicked] = useState(new Set());
@@ -1740,7 +1901,11 @@ export function FqaTargetScreen() {
     }
     const ac = cfg.access || {};
     if (ac.basicAuth && (!ac.baUser || !ac.baPw)) e.push("Basic Auth — 사용자명·비밀번호가 필요합니다");
-    if ((cfg.deploy || {}).mode === "버전 엔드포인트 폴링" && !(cfg.deploy || {}).verUrl) e.push("배포 감지 — 폴링 대상 URL이 필요합니다");
+    if ((cfg.deploy || {}).mode === "버전 엔드포인트 폴링") {
+      const u = (cfg.deploy || {}).verUrl || "";
+      if (!u) e.push("배포 감지 — 폴링 대상 URL이 필요합니다");
+      else if (!/^https?:\/\//i.test(u)) e.push("배포 감지 — 폴링 대상 URL은 절대 URL이어야 합니다 (https://…)");
+    }
     return e;
   };
   const setEnvStatus = (status) => updateFqaSystem(sys.id, { envs: sys.envs.map((e, i) => (i === envIdx ? { ...e, status } : e)) });
@@ -1918,7 +2083,8 @@ export function FqaTargetScreen() {
               {verMode === "버전 엔드포인트 폴링" && (
               <div className="space-y-2.5 rounded-lg border border-slate-800 p-3">
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2"><Field label="폴링 대상 URL"><Input value={(cfg.deploy || {}).verUrl || ""} onChange={(e) => setSub("deploy", { verUrl: e.target.value })} placeholder="/health" className="font-mono text-xs" /></Field></div>
+                  {/* 버전 엔드포인트는 base URL과 다른 호스트일 수 있다 — 상대경로를 허용하면 기준이 모호해진다 */}
+                  <div className="col-span-2"><Field label="폴링 대상 URL"><Input value={(cfg.deploy || {}).verUrl || ""} onChange={(e) => setSub("deploy", { verUrl: e.target.value })} placeholder="https://stg-cs.tworld.co.kr/health" className="font-mono text-xs" /></Field></div>
                   <Field label="폴링 주기"><Select value={(cfg.deploy || {}).interval || "15분"} onChange={(e) => setSub("deploy", { interval: e.target.value })}><option>5분</option><option>15분</option><option>1시간</option><option>6시간</option><option>24시간</option></Select></Field>
                 </div>
                 <div className="flex items-end gap-2">
