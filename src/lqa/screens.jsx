@@ -29,7 +29,16 @@ const lqaEvents = (bot) => {
 const DEFAULT_SCHED = { mode: "manual", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: {}, summary: "예약 없음" };
 // 스케줄 정규화 키(요약·거짓 ev키 제외) — dirty 비교가 표기 차이에 흔들리지 않도록
 const schedKey = (s) => { s = s || {}; return JSON.stringify([s.mode, s.freq, s.time, s.dow, s.dom, s.cron, s.tz, s.active, Object.keys(s.ev || {}).filter((k) => s.ev[k]).sort()]); };
-import { TREND, METRICS, mkResults, PROMPT_VARS, INIT_PROMPTS } from "./data.js";
+import { TREND, METRICS, mkResults, rollup, PROMPT_VARS, INIT_PROMPTS } from "./data.js";
+
+/* 계획이 실제로 돌릴 케이스 — caseIds가 유일한 진실.
+   caseIds가 없는 구(舊) 계획은 승인 케이스 전체로 폴백한다. */
+export const planCases = (cases, plan) => {
+  const all = cases || [];
+  const ids = plan && plan.caseIds;
+  if (!ids) return all.filter((c) => c.status === "승인");
+  return all.filter((c) => ids.includes(c.id));
+};
 
 export function NewPlanForm({ close, data }) {
   const { addPlan, toast, goto, chatbots, cases } = useApp();
@@ -43,7 +52,7 @@ export function NewPlanForm({ close, data }) {
   const toggleAll = () => setPicked(allOn ? new Set() : new Set(approved.map((c) => c.id)));
   const submit = () => {
     if (picked.size === 0) { toast("테스트케이스를 1개 이상 선택하세요", "warn"); return; }
-    addPlan({ id: Date.now(), name: name || "새 평가 계획", status: "초안", tc: picked.size, judges: 2, score: null, last: "-", sched: "예약 없음", schedule: DEFAULT_SCHED, bot, promptTpl: (INIT_PROMPTS[0] || {}).name || "", passScore: 85, weights: METRICS.map((m) => m.w), opts: { hall: true, bert: true }, judgeList: ["Claude (sonnet-4-6)", "GPT-4o"] });
+    addPlan({ id: Date.now(), name: name || "새 평가 계획", status: "초안", caseIds: [...picked], judges: 2, score: null, last: "-", sched: "예약 없음", schedule: DEFAULT_SCHED, bot, promptTpl: (INIT_PROMPTS[0] || {}).name || "", passScore: 85, weights: METRICS.map((m) => m.w), opts: { hall: true, bert: true }, judgeList: ["Claude (sonnet-4-6)", "GPT-4o"] });
     toast("평가 계획 생성됨 · 테스트케이스 " + picked.size + "개", "ok"); close(); goto("plans");
   };
   return (
@@ -253,7 +262,7 @@ export function JiraForm({ close, data }) {
     if (!title.trim()) { toast("제목을 입력하세요", "warn"); return; }
     const key = jira ? (proj + "-" + Math.floor(1850 + Math.random() * 99)) : ("DEF-" + Math.floor(1000 + Math.random() * 9000));
     const evidence = [...autoArtifacts.filter((a) => attach[a.k]).map((a) => a.label), ...files.map((f) => f.name)];
-    addDefect({ key, tc: d.tc || "수동", sev, title, status: "Open", domain: dom, project: jira ? proj : "", assignee: assignee === "미지정" ? "" : assignee, desc, steps, expected, actual, evidence });
+    addDefect({ key, tc: d.tc || "수동", target: d.target || "", sev, title, status: "Open", domain: dom, project: jira ? proj : "", assignee: assignee === "미지정" ? "" : assignee, desc, steps, expected, actual, evidence });
     if (jira) { toast("결함 등록 · Jira 이슈 " + key + " 생성", "ok"); notify({ icon: "bug", text: "Jira 이슈 " + key + " 생성 (" + (d.tc || "수동") + ")" }); }
     else { toast("결함 " + key + " 등록 완료", "ok"); notify({ icon: "bug", text: "결함 " + key + " 등록 (" + (d.tc || "수동") + ")" }); }
     close();
@@ -858,7 +867,11 @@ export function Dashboard() {
   );
 }
 export function Plans() {
-  const { plans, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent, jiraConfig, pendingSelect, setPendingSelect } = useApp();
+  const { plans, cases, runs, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent, jiraConfig, pendingSelect, setPendingSelect } = useApp();
+  // TC 수는 계획에 저장하지 않고 caseIds에서 파생 — 삭제된 케이스는 자동으로 빠진다
+  const caseCount = (p) => planCases(cases, p).length;
+  // 최근 점수·최근 실행도 저장하지 않고 실행 이력에서 파생
+  const lastRun = (p) => (runs || []).filter((r) => r.planId === p.id && r.status === "완료").sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")))[0];
   const [sel, setSel] = useState(plans[0]);
   const cur = plans.find((p) => p.id === sel.id) || plans[0];
   useEffect(() => { if (pendingSelect && pendingSelect.kind === "plan") { const np = plans.find((p) => p.id === pendingSelect.id); if (np) setSel(np); setPendingSelect(null); } }, [pendingSelect]);
@@ -921,7 +934,7 @@ export function Plans() {
   const saveCfg = () => {
     if (needPolicyText && !policyText.trim()) { toast(policy ? "금지 행위를 입력해야 정책 위반을 판정할 수 있습니다" : "선택한 템플릿이 {{policy}}를 요구합니다 — 안전 정책을 입력하세요", "warn"); return; }
     const judgeList = Object.keys(jsel).filter((k) => jsel[k]);
-    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert, pii, policy, policyText }, judgeList, judges: judgeList.length, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
+    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, bert, pii, policy, policyText }, judgeList, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
     toast(cur.name + " 설정이 저장되었습니다", "ok");
   };
   const baseJudges = defJudges(cur);
@@ -950,11 +963,11 @@ export function Plans() {
             <div onClick={() => chooseSel(p)}>
               <div className="flex items-center justify-between"><div className="font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "active" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); if (plans.length <= 1) { toast("최소 1개 계획은 유지해야 합니다", "warn"); return; } if (window.confirm(p.name + " 계획을 삭제할까요?")) { removePlan(p.id); if (sel.id === p.id) setSel(plans.find((x) => x.id !== p.id)); toast(p.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                <div><div className="text-lg font-bold text-slate-100">{p.tc}</div><div className="text-xs text-slate-500">TC</div></div>
-                <div><div className="text-lg font-bold text-slate-100">{p.judges}</div><div className="text-xs text-slate-500">Judge</div></div>
-                <div><div className="text-lg font-bold text-teal-400">{p.score ?? "—"}</div><div className="text-xs text-slate-500">최근점수</div></div>
+                <div><div className="text-lg font-bold text-slate-100">{caseCount(p)}</div><div className="text-xs text-slate-500">TC</div></div>
+                <div><div className="text-lg font-bold text-slate-100">{(p.judgeList || []).length || p.judges}</div><div className="text-xs text-slate-500">Judge</div></div>
+                <div><div className="text-lg font-bold text-teal-400">{(lastRun(p) || {}).score ?? "—"}</div><div className="text-xs text-slate-500">최근점수</div></div>
               </div>
-              <div className="mt-2 text-xs text-slate-500">최근 실행 {p.last} · {p.sched}</div>
+              <div className="mt-2 text-xs text-slate-500">최근 실행 {(lastRun(p) || {}).startedAt || "-"} · {p.sched}</div>
               <div className="mt-0.5 text-xs text-slate-600">수정 {p.updatedBy || "—"} · {p.updatedAt || "—"}</div>
             </div>
           </Card>
@@ -969,7 +982,7 @@ export function Plans() {
         <div className="grid grid-cols-2 gap-5">
           <div className="space-y-4">
             <Field label="대상 챗봇"><Select value={bot} onChange={(e) => setBot(e.target.value)}>{[...new Set(chatbots.map((c) => c.name))].map((n) => <option key={n}>{n}</option>)}</Select></Field>
-            <Field label="테스트케이스"><div className="flex items-center gap-2"><div className="flex-1 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-200">{cur.caseIds ? cur.caseIds.length : cur.tc}건 포함</div><Btn onClick={() => openModal("planCases", { planId: cur.id })}>선택</Btn></div></Field>
+            <Field label="테스트케이스"><div className="flex items-center gap-2"><div className="flex-1 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-200">{caseCount(cur)}건 포함 <span className="text-xs text-slate-500">/ 전체 {cases.length}건</span></div><Btn onClick={() => openModal("planCases", { planId: cur.id })}>선택</Btn></div></Field>
             <Field label="Judge 모델 (다중)">
               <div className="space-y-2">
                 {models.filter((m) => m.status === "활성").map((j) => (
@@ -1187,7 +1200,7 @@ export function PlanCasesForm({ close, data }) {
   const allPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id));
   const toggleAll = () => setPicked((prev) => { const n = new Set(prev); if (allPicked) filtered.forEach((c) => n.delete(c.id)); else filtered.forEach((c) => n.add(c.id)); return n; });
   const approvedPicked = cases.filter((c) => picked.has(c.id) && (c.status || "승인") === "승인").length;
-  const save = () => { updatePlan(data.planId, { caseIds: [...picked], tc: picked.size }); toast(plan.name + " — 케이스 " + picked.size + "건 반영", "ok"); close(); };
+  const save = () => { updatePlan(data.planId, { caseIds: [...picked] }); toast(plan.name + " — 케이스 " + picked.size + "건 반영", "ok"); close(); };
   return (
     <div className="space-y-3">
       <div className="text-sm text-slate-400">이 평가 계획에 포함할 테스트케이스를 선택합니다. <span className="text-slate-500">실행 시에는 이 중 <span className="text-slate-300">승인</span> 상태 케이스만 평가됩니다.</span></div>
@@ -1295,10 +1308,17 @@ export function Cases() {
   );
 }
 export function Run() {
-  const { cases, plans, prompts, runs, defects, addDefect, addRun, updateRun, updatePlan, toast, notify, openModal, runIntent, setRunIntent, goto, jiraConfig } = useApp();
+  const { cases, plans, prompts, runs, defects, addDefect, addRun, updateRun, updatePlan, toast, notify, openModal, runIntent, setRunIntent, goto, jiraConfig, setPendingSelect } = useApp();
   const runningRuns = runs.filter((r) => r.status === "진행중");
-  const approved = cases.filter((c) => c.status === "승인");
   const runnablePlans = plans.filter((p) => p.status === "활성");
+  /* 중복 결함 판정 키 = (도메인, 대상, TC).
+     결함은 "이 챗봇의 이 발화가 잘못됐다"이므로 챗봇이 다르면 다른 결함이다.
+     Judge 모델·채점 기준이 달라도 챗봇의 행동은 같으므로 같은 결함으로 본다.
+     Resolved만 있으면 재발(regression)이므로 새로 등록할 수 있다. */
+  const botOf = (plan) => (plan && plan.bot) || "";
+  const defectsOfTc = (id, bot) => defects.filter((d) => d.tc === id && (d.domain || "LQA") === "LQA" && (d.target || "") === bot);
+  const openDefectOf = (id, bot) => defectsOfTc(id, bot).find((d) => d.status !== "Resolved");
+  const isRegression = (id, bot) => !openDefectOf(id, bot) && defectsOfTc(id, bot).length > 0;
   const [planId, setPlanId] = useState((runnablePlans[0] || plans[0] || {}).id);
   const [mode, setMode] = useState("idle");
   const [prog, setProg] = useState(0);
@@ -1310,6 +1330,8 @@ export function Run() {
   const runReq = useRef(null);
   useEffect(() => () => clearInterval(timer.current), []);
   const curPlan = plans.find((p) => p.id === planId) || runnablePlans[0] || plans[0];
+  // 보고 있는 실행이 평가한 챗봇 — 결함 동일성 판정의 축
+  const runBot = botOf(plans.find((p) => p.id === (activeRun || {}).planId) || curPlan);
 
   const finish = (plan, trigger) => {
     const planTpl = prompts.find((p) => p.name === plan.promptTpl);
@@ -1317,19 +1339,20 @@ export function Run() {
     // 정책 게이트는 금지 행위 텍스트가 있어야만 성립한다 — 비어 있으면 검사하지 않는다
     const gates = plan.opts ? { hall: !!plan.opts.hall, pii: !!plan.opts.pii, policy: !!plan.opts.policy && !!(plan.opts.policyText || "").trim() } : undefined;
     const jr = (jiraConfig && jiraConfig.connected !== false) ? ((plan.jira && plan.jira.override) ? plan.jira : jiraConfig) : {}; // 결함 라우팅: 미연동 시 내부 결함, 연동 시 계획 재정의 > 전역
-    const res = mkResults(approved.length ? approved : cases, Date.now() % 97, dims, gates);
-    const pass = res.filter((r) => r.verdict === "PASS").length;
-    const fail = res.filter((r) => r.verdict === "FAIL").length;
-    const warn = res.length - pass - fail;
-    const score = +(res.reduce((a, b) => a + b.score, 0) / (res.length || 1)).toFixed(1);
+    // 계획이 고른 케이스만 실행한다 (caseIds)
+    const target = planCases(cases, plan);
+    const res = mkResults(target, Date.now() % 97, dims, gates);
     const _st = nowStamp();
-    const run = { id: "R-" + Date.now().toString().slice(-5), planId: plan.id, planName: plan.name, trigger, startedAt: _st, finishedAt: _st, status: "완료", cases: res.length, score, passRate: Math.round((pass / (res.length || 1)) * 100), pass, warn, fail, snapshot: { model: (plan.judgeList && plan.judgeList[0]) || "Claude sonnet-4-6", promptTpl: plan.promptTpl || "—", promptVer: planTpl ? ("v" + planTpl.ver) : "v1", caseVer: "최신" }, results: res };
-    addRun(run); updatePlan(plan.id, { score, last: "방금 전" });
+    // 집계는 results에서 파생 (rollup) — 계획의 최근 점수·최근 실행도 저장하지 않고 이력에서 파생한다
+    const run = { id: "R-" + Date.now().toString().slice(-5), planId: plan.id, planName: plan.name, trigger, startedAt: _st, finishedAt: _st, status: "완료", ...rollup(res), snapshot: { model: (plan.judgeList && plan.judgeList[0]) || "Claude sonnet-4-6", promptTpl: plan.promptTpl || "—", promptVer: planTpl ? ("v" + planTpl.ver) : "v1", caseVer: "최신" }, results: res };
+    addRun(run);
     let made = 0;
+    const bot = botOf(plan);
     // 자동 결함 등록은 무인 실행(스케줄/이벤트)에서만 — 수동 실행은 사람이 검토 후 등록
+    // 중복 판정은 (대상 챗봇, TC) 기준 — 다른 챗봇의 같은 TC는 별개 결함이다
     if (trigger !== "수동") res.filter((r) => r.verdict === "FAIL").forEach((r) => {
-      if (!defects.some((d) => d.tc === r.id && d.status !== "Resolved")) {
-        addDefect({ key: (jr.project || "AUTO") + "-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (r.judge || "평가 실패").slice(0, 40), status: "Open", domain: "LQA", project: jr.project || "", assignee: jr.assignee || "",
+      if (!openDefectOf(r.id, bot)) {
+        addDefect({ key: (jr.project || "AUTO") + "-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, target: bot, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (isRegression(r.id, bot) ? "[재발] " : "") + (r.judge || "평가 실패").slice(0, 40), status: "Open", domain: "LQA", project: jr.project || "", assignee: jr.assignee || "",
           desc: "[요약] " + (r.judge || "-") + "\n[점수] " + (r.score != null ? r.score + "점" : "-") + "\n[안전성] 환각 " + ((r.safety && r.safety.환각) || "-") + " · PII " + ((r.safety && r.safety.PII) || "-"),
           steps: r.q ? "1. 사전조건: " + (r.pre || "없음") + "\n2. 발화 입력: \"" + r.q + "\"\n3. 챗봇 응답 확인" : "",
           expected: r.golden || "", actual: r.actual || "", evidence: ["대화 로그", "평가 근거", "안전성 결과"] });
@@ -1337,14 +1360,14 @@ export function Run() {
       }
     });
     setActiveRun(run); setSel(res[0] || null); setMode("done");
-    toast("평가 완료 · " + score + "점 · 실패 " + fail + "건" + (made ? " · 결함 " + made + "건 자동 등록" : ""), "ok");
+    toast("평가 완료 · " + run.score + "점 · 실패 " + run.fail + "건" + (made ? " · 결함 " + made + "건 자동 등록" : ""), "ok");
     notify({ icon: "play", text: plan.name + " 완료 — PASS " + pass + " / FAIL " + fail });
     if (made) notify({ icon: "bug", text: "FAIL " + made + "건 결함 자동 등록 (Jira 규칙)" });
   };
   const start = (plan, trigger) => {
     if (mode === "running") return;
     if (!plan || plan.status !== "활성") { toast("활성 상태의 평가 계획만 실행할 수 있습니다 — 계획을 먼저 활성화하세요", "warn"); return; }
-    if (!approved.length) { toast("승인된 테스트케이스가 없습니다 — 케이스를 먼저 승인하세요", "warn"); return; }
+    if (!planCases(cases, plan).length) { toast("이 계획에 선택된 테스트케이스가 없습니다 — 계획에서 케이스를 선택하세요", "warn"); return; }
     runReq.current = { plan, trigger };
     setMode("running"); setProg(0); setActiveRun(null); setSel(null); setFromHistory(false);
     timer.current = setInterval(() => { setProg((p) => (p >= 100 ? 100 : p + 5)); }, 80);
@@ -1394,7 +1417,7 @@ export function Run() {
             <span className="text-slate-600">·</span>
             <div><span className="text-slate-500">Judge</span> <span className="text-slate-200 font-medium">{(curPlan && curPlan.judgeList && curPlan.judgeList.join(", ")) || "—"}</span></div>
             <span className="text-slate-600">·</span>
-            <div><span className="text-slate-500">대상</span> <span className="text-slate-200 font-medium">승인 {approved.length}건</span></div>
+            <div><span className="text-slate-500">대상</span> <span className="text-slate-200 font-medium">TC {planCases(cases, curPlan).length}건</span> <span className="text-xs text-slate-500">(계획 선택)</span></div>
           </div>
           <Btn kind="primary" icon={Play} disabled={!runnablePlans.length} onClick={() => start(curPlan, "수동")}>{mode === "running" ? "실행 중…" : "평가 실행"}</Btn>
         </div>
@@ -1440,7 +1463,7 @@ export function Run() {
               <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 {shown.map((c) => (
                   <div key={c.id} onClick={() => setSel(c)} className={"px-4 py-3 border-b border-slate-800 cursor-pointer hover:bg-slate-800 " + (sel && sel.id === c.id ? "bg-slate-800" : "")}>
-                    <div className="flex items-center justify-between"><span className="font-mono text-xs text-teal-400">{c.id}</span><div className="flex items-center gap-2">{c.final && <CheckCircle2 size={13} className={c.final === c.verdict ? "text-emerald-400" : "text-amber-400"} />}<span className="text-sm font-semibold text-slate-200">{c.score}</span><Badge kind={vKind(c.final || c.verdict)}>{c.final || c.verdict}</Badge>{c.final && c.final !== c.verdict && <span className="rounded bg-amber-900 px-1 text-xs text-amber-300">정정</span>}</div></div>
+                    <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 font-mono text-xs text-teal-400">{c.id}{(c.final || c.verdict) === "FAIL" && openDefectOf(c.id, runBot) && <Bug size={12} className="text-red-400" title="열린 결함 있음" />}</span><div className="flex items-center gap-2">{c.final && <CheckCircle2 size={13} className={c.final === c.verdict ? "text-emerald-400" : "text-amber-400"} />}<span className="text-sm font-semibold text-slate-200">{c.score}</span><Badge kind={vKind(c.final || c.verdict)}>{c.final || c.verdict}</Badge>{c.final && c.final !== c.verdict && <span className="rounded bg-amber-900 px-1 text-xs text-amber-300">정정</span>}</div></div>
                     <div className="text-xs text-slate-400 mt-1 truncate">{c.q}</div>
                   </div>
                 ))}
@@ -1465,7 +1488,9 @@ export function Run() {
                           <button key={v} onClick={() => { setFinal(sel.id, v); toast(sel.id + (v === sel.verdict ? " · Judge 판정 유지" : " → " + v + " 정정"), v === "FAIL" && v !== sel.verdict ? "warn" : "ok"); }} className={"inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm " + ((sel.final || sel.verdict) === v ? (v === "FAIL" ? "bg-red-600 text-white" : v === "WARN" ? "bg-amber-600 text-white" : "bg-emerald-600 text-white") : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>{v}{v === sel.verdict ? " · Judge" : ""}</button>
                         ))}
                         <div className="flex-1" />
-                        {(sel.final || sel.verdict) === "FAIL" && <Btn kind="danger" icon={Bug} onClick={() => openModal("jira", { tc: sel.id, sev: "Critical", title: sel.id + " 평가 실패", q: sel.q, pre: sel.pre, golden: sel.golden, actual: sel.actual, judge: sel.judge, score: sel.score, safety: sel.safety, env: activeRun ? (activeRun.snapshot.model + " / 프롬프트 " + activeRun.snapshot.promptVer + " / 케이스 " + activeRun.snapshot.caseVer) : "" })}>결함 등록</Btn>}
+                        {(sel.final || sel.verdict) === "FAIL" && (openDefectOf(sel.id, runBot)
+                          ? <Btn icon={Bug} onClick={() => { setPendingSelect({ kind: "defect", key: openDefectOf(sel.id, runBot).key }); goto("defects"); }}>결함 보기 · {openDefectOf(sel.id, runBot).key}</Btn>
+                          : <Btn kind="danger" icon={Bug} onClick={() => openModal("jira", { tc: sel.id, target: runBot, sev: "Critical", title: (isRegression(sel.id, runBot) ? "[재발] " : "") + sel.id + " 평가 실패", q: sel.q, pre: sel.pre, golden: sel.golden, actual: sel.actual, judge: sel.judge, score: sel.score, safety: sel.safety, env: activeRun ? (activeRun.snapshot.model + " / 프롬프트 " + activeRun.snapshot.promptVer + " / 케이스 " + activeRun.snapshot.caseVer) : "" })}>{isRegression(sel.id, runBot) ? "재발 결함 등록" : "결함 등록"}</Btn>)}
                       </div>
                       <div className="mt-1.5 text-xs text-slate-600">손대지 않으면 Judge 판정이 그대로 최종 · 이견 있는 예외만 정정하세요.</div>
                     </div>
@@ -1610,7 +1635,7 @@ export function Compare() {
   );
 }
 export function Defects() {
-  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setDefectAssignee, updateDefect, setFqaEditTc, users, jiraConfig } = useApp();
+  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setDefectAssignee, updateDefect, setFqaEditTc, users, jiraConfig, pendingSelect, setPendingSelect } = useApp();
   const jc = jiraConfig || {};
   const [edit, setEdit] = useState(false);
   const [ef, setEf] = useState({});
@@ -1626,6 +1651,14 @@ export function Defects() {
   const [dom, setDom] = useState(domain || "전체");
   const [stf, setStf] = useState("전체");
   const [sel, setSel] = useState(null);
+  // 결과 상세의 "결함 보기"에서 넘어온 경우 해당 결함을 바로 연다 (목록만 보여주면 찾을 수 없다)
+  useEffect(() => {
+    if (pendingSelect && pendingSelect.kind === "defect") {
+      const d = defects.find((x) => x.key === pendingSelect.key);
+      if (d) { setDom("전체"); setStf("전체"); setSel(d); }
+      setPendingSelect(null);
+    }
+  }, [pendingSelect]);
   const TRANS = { "Open": [["진행", "In Progress"], ["해결", "Resolved"]], "In Progress": [["해결", "Resolved"], ["보류", "Open"]], "Resolved": [["Reopen", "Open"]] };
   const list = defects.filter((d) => (dom === "전체" || (d.domain || "LQA") === dom) && (stf === "전체" || (d.status || "Open") === stf));
   const openN = list.filter((d) => d.status !== "Resolved").length;
@@ -1649,11 +1682,11 @@ export function Defects() {
       <div className="flex items-center gap-3 text-sm text-slate-400"><span>미해결 <span className="font-semibold text-red-300">{openN}</span></span><span className="text-slate-600">·</span><span>해결 <span className="font-semibold text-emerald-300">{resN}</span></span><span className="text-slate-600">·</span><span className="text-slate-500">총 {list.length}건</span></div>
       <Card>
       <table className="w-full text-sm">
-        <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th className="font-medium">담당자</th><th className="font-medium">보고 / 수정</th><th></th></tr></thead>
+        <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">이슈</th><th className="font-medium">영역</th><th className="font-medium">대상</th><th className="font-medium">TC</th><th className="font-medium">심각도</th><th className="font-medium">제목</th><th className="font-medium">상태</th><th className="font-medium">담당자</th><th className="font-medium">보고 / 수정</th><th></th></tr></thead>
         <tbody className="text-slate-300">
           {list.map((d) => (
             <tr key={d.key} onClick={() => { setEdit(false); setSel(d); }} className={"cursor-pointer border-b border-slate-800 hover:bg-slate-800 " + (d.status === "Resolved" ? "opacity-60" : "")}>
-              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td>
+              <td className="py-3 px-4 font-mono text-teal-400">{d.key}</td><td><Badge kind={domKind[d.domain || "LQA"] || "info"}>{domLabel[d.domain || "LQA"]}</Badge></td><td className="text-xs text-slate-400">{d.target || "—"}</td><td className="font-mono text-slate-400">{d.tc}</td><td><Badge kind={sev[d.sev]}>{d.sev}</Badge></td><td className="max-w-sm text-slate-200">{d.title}</td>
               <td><Badge kind={st[d.status] || "info"}>{d.status || "Open"}</Badge></td>
               <td className="text-slate-400">{d.assignee || <span className="text-slate-600">미지정</span>}</td>
               <td className="pr-2 text-xs leading-tight text-slate-500"><div>{d.createdBy || "—"} · {d.createdAt || "—"}</div>{d.updatedAt && d.updatedAt !== d.createdAt && <div className="text-slate-400">수정 {d.updatedBy} · {d.updatedAt}</div>}</td>

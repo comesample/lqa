@@ -1122,7 +1122,7 @@ export function FqaHistoryScreen({ nav }) {
 }
 /* ═══════════ 7. 결과 상세 ═══════════ */
 export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }) {
-  const { fqaRuns, defects, addDefect, fqaPlans, fqaCases, updateFqaCase, jiraConfig } = useApp();
+  const { fqaRuns, defects, addDefect, fqaPlans, fqaCases, updateFqaCase, jiraConfig, setPendingSelect } = useApp();
   const [msg, flash] = useToast();
   const [filt, setFilt] = useState("전체");
   const [selId, setSelId] = useState(null);
@@ -1166,9 +1166,15 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
     return s;
   };
   const SUM = [["전체 TC", run.total, "text-slate-100"], ["통과", run.pass, "text-emerald-400"], ["실패", run.fail, "text-red-400"], ["경고", run.warn, "text-amber-400"]].concat(!run.brow ? [] : [["보정 제안", tcs.filter((t) => t.heal).length, "text-teal-400"]]);
-  const hasDefect = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
-  const regDefect = (t) => { if (hasDefect(t.id)) { flash(t.id + " 이미 결함 등록됨"); return; } const key = dkey(1900 + defects.length); addDefect({ key, tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" }); flash(t.id + " 결함 등록 · " + key); };
-  const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !hasDefect(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다"); return; } tgt.forEach((t, i) => addDefect({ key: dkey(1900 + defects.length + i), tc: t.id, sev: "Major", title: t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
+  /* 중복 결함 판정 키 = (도메인, 대상 제품, TC).
+     같은 TC라도 대상 제품이 다르면 다른 결함이다. 환경(스테이징/운영)은 발견 위치일 뿐 결함의 축이 아니다.
+     '열린' 결함이 있으면 재등록 금지. Resolved만 있으면 재발이므로 재등록 허용. */
+  const runTarget = String(run.target || "").split(" · ")[0]; // "T월드 · 스테이징" → "T월드"
+  const defectsOfTc = (id) => defects.filter((d) => d.tc === id && d.domain === "FQA" && (d.target || "") === runTarget);
+  const openDefectOf = (id) => defectsOfTc(id).find((d) => d.status !== "Resolved");
+  const isRegression = (id) => !openDefectOf(id) && defectsOfTc(id).length > 0;
+  const regDefect = (t) => { if (openDefectOf(t.id)) { flash(t.id + " 이미 열린 결함이 있습니다"); return; } const key = dkey(1900 + defects.length); addDefect({ key, tc: t.id, target: runTarget, sev: "Major", title: (isRegression(t.id) ? "[재발] " : "") + t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" }); flash(t.id + " 결함 등록 · " + key); };
+  const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !openDefectOf(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다 — 모두 열린 결함이 있습니다"); return; } tgt.forEach((t, i) => addDefect({ key: dkey(1900 + defects.length + i), tc: t.id, target: runTarget, sev: "Major", title: (isRegression(t.id) ? "[재발] " : "") + t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
   const FLAKY = fqaCases.filter((c) => histOf(fqaRuns, c.id).length >= 3).map((c) => {
     const h = histOf(fqaRuns, c.id); const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length;
     const flips = h.slice(1).reduce((n, v, i) => n + (v !== h[i] ? 1 : 0), 0);
@@ -1235,14 +1241,16 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
                 {shown.map((t) => (
                   <div key={t.id} onClick={() => setSelId(t.id)} className={"flex items-center justify-between border-b border-slate-800 px-4 py-2.5 cursor-pointer hover:bg-slate-800 " + (cur && cur.id === t.id ? "bg-slate-800" : "")}>
                     <div><span className="font-mono text-xs text-teal-400">{t.id}</span><div className="text-xs text-slate-300">{t.name}</div></div>
-                    <div className="flex items-center gap-2">{t.v === "FAIL" && hasDefect(t.id) && <Bug size={12} className="text-red-400" />}<span className="text-xs text-slate-500">{t.dur}</span>{t.heal && <Badge kind="teal">보정</Badge>}<Badge kind={vK[t.v]}>{t.v}</Badge></div>
+                    <div className="flex items-center gap-2">{t.v === "FAIL" && openDefectOf(t.id) && <Bug size={12} className="text-red-400" />}<span className="text-xs text-slate-500">{t.dur}</span>{t.heal && <Badge kind="teal">보정</Badge>}<Badge kind={vK[t.v]}>{t.v}</Badge></div>
                   </div>
                 ))}
               </div>
             </Card>
             {cur && (
             <Card className="col-span-3 p-4">
-              <div className="mb-3 flex items-center justify-between"><span className="font-mono text-teal-400">{cur.id}</span><div className="flex items-center gap-2"><Badge kind={vK[cur.v]}>{cur.v}</Badge>{cur.heal && <Badge kind="teal">보정</Badge>}{cur.v === "FAIL" && hasDefect(cur.id) && <Badge kind="warn">결함 등록됨</Badge>}<Btn icon={RefreshCw} onClick={() => flash(cur.id + " 재실행")}>재실행</Btn>{cur.v === "FAIL" && !hasDefect(cur.id) && <Btn kind="danger" icon={Bug} onClick={() => regDefect(cur)}>결함 등록</Btn>}</div></div>
+              <div className="mb-3 flex items-center justify-between"><span className="font-mono text-teal-400">{cur.id}</span><div className="flex items-center gap-2"><Badge kind={vK[cur.v]}>{cur.v}</Badge>{cur.heal && <Badge kind="teal">보정</Badge>}<Btn icon={RefreshCw} onClick={() => flash(cur.id + " 재실행")}>재실행</Btn>{cur.v === "FAIL" && (openDefectOf(cur.id)
+                ? <Btn icon={Bug} onClick={() => { setPendingSelect({ kind: "defect", key: openDefectOf(cur.id).key }); nav && nav("defects"); }}>결함 보기 · {openDefectOf(cur.id).key}</Btn>
+                : <Btn kind="danger" icon={Bug} onClick={() => regDefect(cur)}>{isRegression(cur.id) ? "재발 결함 등록" : "결함 등록"}</Btn>)}</div></div>
               <div className="mb-3 text-sm text-slate-300">{cur.name}</div>
               {cur.heal && (
                 <div className="mb-3 rounded-lg border border-teal-800 bg-teal-950 p-3">
