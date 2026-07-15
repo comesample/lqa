@@ -7,7 +7,7 @@ import {
   FileText, Calendar, RefreshCw, Trash2, ExternalLink, Plug, Link2, Filter,
   Building2, Users, Cpu, CreditCard, ScrollText, Shield, ArrowLeft, UserCog, Tag, Upload, History, Brain, Code2, Video, Layers
 } from "lucide-react";
-import { FqaRecordScreen, FqaExcelScreen, FqaMcpScreen, FqaEditorScreen, FqaSuiteScreen, FqaRunScreen, FqaHistoryScreen, FqaResultScreen, FqaDashboardScreen, FqaCasesScreen, FqaTargetScreen, FqaPlanScreen } from "./fqa/screens.jsx";
+import { FqaRecordScreen, FqaEditorScreen, FqaSuiteScreen, FqaRunScreen, FqaHistoryScreen, FqaResultScreen, FqaDashboardScreen, FqaCasesScreen, FqaTargetScreen, FqaPlanScreen } from "./fqa/screens.jsx";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
@@ -31,6 +31,13 @@ import { NewPlanForm, AiGenForm, NewCaseForm, JiraForm, AddPromptForm, PlanCases
 
 const SEED_USERS = ["이민준", "최서연", "김지훈", "박지영"];
 const stampSeeds = (arr) => (arr || []).map((o, i) => { if (o.createdAt) return o; const z = (n) => String(n).padStart(2, "0"); return { createdBy: SEED_USERS[i % 4], createdAt: "2026-" + z(1 + (i % 6)) + "-" + z(1 + (i % 27)) + " " + z(9 + (i % 8)) + ":" + z((i * 7) % 60), updatedBy: SEED_USERS[(i + 2) % 4], updatedAt: "2026-" + z(4 + (i % 3)) + "-" + z(1 + ((i * 3) % 27)) + " " + z(10 + (i % 7)) + ":" + z((i * 11) % 60), ...o }; });
+/* 케이스 시드에 리비전을 채운다 — 현재본도 이력에 들어 있어야 한다(최초 작성 = rev 1).
+   TC-055처럼 versions를 직접 정의한 시드는 그 뒤에 현재 rev를 얹는다. */
+const seedCases = (arr) => stampSeeds(arr).map((c) => {
+  const rev = c.rev || 1;
+  const head = { rev, at: c.updatedAt, by: c.updatedBy, note: "", level: c.level, steps: c.steps || [], code: c.code || "", name: c.name, suite: c.suite, tags: c.tags || "", dataset: c.dataset || "-", acctRole: c.acctRole || "" };
+  return { ...c, rev, versions: [head, ...(c.versions || [])] };
+});
 
 export default function App() {
   const [view, setView] = useState("dashboard");
@@ -49,7 +56,7 @@ export default function App() {
   const [runs, setRuns] = useState(INIT_RUNS);
   const [runIntent, setRunIntent] = useState(null);
   const [defects, setDefects] = useState(INIT_DEFECTS);
-  const [fqaCases, setFqaCases] = useState(stampSeeds(INIT_FQA_CASES));
+  const [fqaCases, setFqaCases] = useState(seedCases(INIT_FQA_CASES));
   const [fqaSuites, setFqaSuites] = useState(stampSeeds(INIT_FQA_SUITES));
   const [fqaSystems, setFqaSystems] = useState(stampSeeds(INIT_FQA_SYSTEMS));
   const [nqaSystems, setNqaSystems] = useState(stampSeeds(INIT_NQA_SYSTEMS));
@@ -61,7 +68,9 @@ export default function App() {
   const [fqaRuns, setFqaRuns] = useState(INIT_FQA_RUNS);
   const [fqaPlans, setFqaPlans] = useState(stampSeeds(INIT_FQA_PLANS));
   const [fqaResultRun, setFqaResultRun] = useState("FRUN-502");
-  const [runnerConnected, setRunnerConnected] = useState(true);
+  /* 디버그 환경 — 에디터의 단건 실행에만 쓴다.
+     케이스에는 저장하지 않는다(케이스는 환경 독립). 세션 동안만 기억한다. */
+  const [debugEnv, setDebugEnv] = useState(null);   // { systemId, env }
   const [fqaEditTc, setFqaEditTc] = useState(null);
   const [nqaScnFocus, setNqaScnFocus] = useState(null);
   const [fqaSuiteFocus, setFqaSuiteFocus] = useState(null); // 스위트 → 케이스 화면으로 필터 걸고 이동
@@ -91,6 +100,12 @@ export default function App() {
   const auditNow = () => { const d = new Date(); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); };
   const withCreate = (o) => { const t = auditNow(); return { createdBy: currentUser, createdAt: t, updatedBy: currentUser, updatedAt: t, ...o }; };
   const withUpdate = (patch) => ({ ...patch, updatedBy: currentUser, updatedAt: auditNow() });
+  /* 케이스의 그 시점 전체 스냅샷 = tc_revision 한 행 */
+  const revSnap = (c, rev, note) => ({
+    rev, at: c.updatedAt || auditNow(), by: c.updatedBy || currentUser, note: note || "",
+    level: c.level, steps: c.steps || [], code: c.code || "",
+    name: c.name, suite: c.suite, tags: c.tags || "", dataset: c.dataset || "-", acctRole: c.acctRole || "",
+  });
   const api = {
     currentUser,
     goto: setView, env, setEnv, toast, notify, openModal: (type, data) => setModal({ type, data }),
@@ -103,14 +118,35 @@ export default function App() {
     runs, addRun: (r) => setRuns((x) => [r, ...x]), updateRun: (id, patch) => setRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
     runIntent, setRunIntent,
     defects, addDefect: (d) => setDefects((x) => [withCreate(d), ...x]), setDefectStatus: (key, status) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ status }) } : d))), setDefectAssignee: (key, assignee) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate({ assignee }) } : d))), updateDefect: (key, patch) => setDefects((x) => x.map((d) => (d.key === key ? { ...d, ...withUpdate(patch) } : d))),
-    fqaCases, addFqaCase: (c) => setFqaCases((x) => [withCreate(c), ...x]), updateFqaCase: (id, patch) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))), setFqaCaseStatus: (id, status) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate({ status }) } : c))), removeFqaCase: (id) => setFqaCases((x) => x.filter((c) => c.id !== id)),
-    // 케이스 저장 = 직전 본문(steps·code·level)을 versions에 스냅샷하고 패치 적용 (최근 10개 보관)
-    commitFqaCase: (id, patch, note) => setFqaCases((x) => x.map((c) => {
-      if (c.id !== id) return c;
-      const prev = { at: c.updatedAt || auditNow(), by: c.updatedBy || currentUser, note: note || "", steps: c.steps || [], code: c.code || "", level: c.level };
-      const versions = [prev, ...(c.versions || [])].slice(0, 10);
-      return { ...c, ...withUpdate(patch), versions };
-    })),
+    /* ── 케이스 리비전 ────────────────────────────────────────────
+       tc_revision 테이블에 "저장될 때마다 새 행"을 넣는다. 현재본도 이력에 들어 있다.
+         · diff가 아니라 전체 스냅샷 (스텝 20개·코드 100줄 규모 — 용량은 무의미, diff 저장은 임의 비교를 막는다)
+         · 개수를 자르지 않는다 — 실행 이력이 특정 리비전을 참조하면 잘라낸 순간 추적이 끊긴다
+       실 구현: tc_revision(case_id, rev, level, steps JSONB, code TEXT, name, suite, tags, …, author, created_at)
+                INSERT 한 번 + SELECT 한 번. diff 계산은 화면이 한다(서버는 스냅샷만 준다). */
+    fqaCases,
+    addFqaCase: (c) => setFqaCases((x) => {
+      const base = withCreate({ rev: 1, ...c });
+      return [{ ...base, versions: [revSnap(base, 1)] }, ...x];   // 최초 작성 = rev 1
+    }),
+    updateFqaCase: (id, patch) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate(patch) } : c))),
+    setFqaCaseStatus: (id, status) => setFqaCases((x) => x.map((c) => (c.id === id ? { ...c, ...withUpdate({ status }) } : c))),
+    removeFqaCase: (id) => setFqaCases((x) => x.filter((c) => c.id !== id)),
+    /* 저장 = 새 리비전 INSERT.
+       baseRev = 편집을 시작한 시점의 rev — 그 사이 남이 저장했으면 거부한다(낙관적 잠금).
+       반환값: true = 저장됨, false = 충돌 */
+    commitFqaCase: (id, patch, opt) => {
+      const { baseRev, note } = opt || {};
+      let ok = true;
+      setFqaCases((x) => x.map((c) => {
+        if (c.id !== id) return c;
+        const cur = c.rev || 1;
+        if (baseRev != null && baseRev !== cur) { ok = false; return c; }   // 남이 먼저 저장했다
+        const next = { ...c, ...withUpdate(patch), rev: cur + 1 };
+        return { ...next, versions: [revSnap(next, cur + 1, note), ...(c.versions || [])] };
+      }));
+      return ok;
+    },
     fqaSuites, addFqaSuite: (su) => setFqaSuites((x) => [...x, withCreate(su)]), updateFqaSuite: (id, patch) => setFqaSuites((x) => x.map((su) => (su.id === id ? { ...su, ...withUpdate(patch) } : su))), removeFqaSuite: (id) => setFqaSuites((x) => x.filter((su) => su.id !== id)),
     fqaSystems, addFqaSystem: (sy) => setFqaSystems((x) => [...x, withCreate(sy)]), updateFqaSystem: (id, patch) => setFqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...withUpdate(patch) } : sy))), removeFqaSystem: (id) => setFqaSystems((x) => x.filter((sy) => sy.id !== id)),
     nqaSystems, addNqaSystem: (sy) => setNqaSystems((x) => [...x, withCreate(sy)]), updateNqaSystem: (id, patch) => setNqaSystems((x) => x.map((sy) => (sy.id === id ? { ...sy, ...withUpdate(patch) } : sy))), removeNqaSystem: (id) => setNqaSystems((x) => x.filter((sy) => sy.id !== id)),
@@ -122,7 +158,7 @@ export default function App() {
     fqaRuns, addFqaRun: (r) => setFqaRuns((x) => [r, ...x]), updateFqaRun: (id, patch) => setFqaRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
     fqaPlans, addFqaPlan: (pl) => setFqaPlans((x) => [withCreate(pl), ...x]), updateFqaPlan: (id, patch) => setFqaPlans((x) => x.map((pl) => (pl.id === id ? { ...pl, ...withUpdate(patch) } : pl))), removeFqaPlan: (id) => setFqaPlans((x) => x.filter((pl) => pl.id !== id)),
     fqaResultRun, setFqaResultRun,
-    runnerConnected, setRunnerConnected,
+    debugEnv, setDebugEnv,
     fqaEditTc, setFqaEditTc,
     nqaScnFocus, setNqaScnFocus,
     fqaSuiteFocus, setFqaSuiteFocus,

@@ -1356,7 +1356,7 @@ export function Run() {
     });
     setActiveRun(run); setSel(res[0] || null); setMode("done");
     toast("평가 완료 · " + run.score + "점 · 실패 " + run.fail + "건" + (made ? " · 결함 " + made + "건 자동 등록" : ""), "ok");
-    notify({ icon: "play", text: plan.name + " 완료 — PASS " + pass + " / FAIL " + fail });
+    notify({ icon: "play", text: plan.name + " 완료 — PASS " + run.pass + " / FAIL " + run.fail });
     if (made) notify({ icon: "bug", text: "FAIL " + made + "건 결함 자동 등록 (Jira 규칙)" });
   };
   const start = (plan, trigger) => {
