@@ -65,7 +65,7 @@ export function NqaTargetScreen() {
   const addSut = () => {
     if (!nf.name.trim()) { flash("대상 이름을 입력하세요"); return; }
     if (!nf.baseUrl.trim()) { flash("Base URL을 입력하세요"); return; }
-    guardSwitch(() => { const ns = { id: Date.now(), name: nf.name, subtype: "load", baseUrl: nf.baseUrl, protocol: nf.protocol, env: nf.env, loadgen: { tool: "JMeter", agents: 1 }, auth: { type: "Bearer 토큰", ref: "" } }; addNqaSystem(ns); setSel(systems.length); setModal(false); flash("부하 대상이 추가되었습니다"); });
+    guardSwitch(() => { const ns = { id: Date.now(), name: nf.name, subtype: "load", baseUrl: nf.baseUrl, protocol: nf.protocol, env: nf.env, loadgen: { tool: "JMeter", agents: 1 }, auth: { type: "Bearer 토큰", ref: "" } }; addNqaSystem(ns); setSel(0); setModal(false); flash("부하 대상이 추가되었습니다"); });
   };
   const delSut = (i, sy) => { if (systems.length <= 1) { flash("최소 1개 대상은 유지해야 합니다"); return; } if (!window.confirm(sy.name + " 대상을 삭제할까요?")) return; guardSwitch(() => { removeNqaSystem(sy.id); setSel(0); flash(sy.name + " 삭제됨"); }); };
   if (!systems.length) return <div className="p-8 text-center text-sm text-slate-500">부하 대상이 없습니다.</div>;
@@ -207,7 +207,7 @@ export function NqaScenarioScreen() {
     const name = nf.name.trim() || (s0.name || "부하") + " 부하";
     const id = Math.max(0, ...list.map((x) => x.id)) + 1;
     const ns = { id, name, sutId: nf.sutId, unit: "가상 사용자(VU)", shape: nf.shape, peak: 500, rampUp: 3, sustain: 15, rampDown: 2, thinkTime: 2, status: "초안", endpoints: [], dataset: "", forceOrder: false, journey: [] };
-    guardSwitch(() => { addNqaScenario(ns); setSel(list.length); setModal(false); flash(name + " 생성 (초안)"); });
+    guardSwitch(() => { addNqaScenario(ns); setSel(0); setModal(false); flash(name + " 생성 (초안)"); });
   };
   const delScn = (i, s) => { if (list.length <= 1) { flash("최소 1개 시나리오는 유지해야 합니다"); return; } if (!window.confirm(s.name + " 시나리오를 삭제할까요?")) return; guardSwitch(() => { removeNqaScenario(s.id); setSel(0); flash(s.name + " 삭제됨"); }); };
   const setJourney = (j) => setScn({ journey: j });
@@ -418,7 +418,7 @@ export function NqaPlanScreen() {
     const name = nf.name.trim() || (s0.name || "부하") + " 계획";
     const id = Math.max(0, ...list.map((x) => x.id)) + 1;
     const np = { id, name, scenarioId: nf.scenarioId, status: "초안", sla: { p95: 2000, p99: 3000, errRate: 1.0, minRps: 500 } };
-    guardSwitch(() => { addNqaPlan(np); setSel(list.length); setModal(false); flash(name + " 생성 (초안)"); });
+    guardSwitch(() => { addNqaPlan(np); setSel(0); setModal(false); flash(name + " 생성 (초안)"); });
   };
   const delPlan = (i, p) => { if (list.length <= 1) { flash("최소 1개 계획은 유지해야 합니다"); return; } if (!window.confirm(p.name + " 계획을 삭제할까요?")) return; guardSwitch(() => { removeNqaPlan(p.id); setSel(0); flash(p.name + " 삭제됨"); }); };
   if (!list.length) return <div className="p-8 text-center text-sm text-slate-500">측정 계획이 없습니다.</div>;

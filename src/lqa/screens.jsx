@@ -31,6 +31,13 @@ const DEFAULT_SCHED = { mode: "manual", freq: "weekly", time: "09:00", dow: 1, d
 const schedKey = (s) => { s = s || {}; return JSON.stringify([s.mode, s.freq, s.time, s.dow, s.dom, s.cron, s.tz, s.active, Object.keys(s.ev || {}).filter((k) => s.ev[k]).sort()]); };
 import { TREND, METRICS, mkResults, rollup, PROMPT_VARS, INIT_PROMPTS } from "./data.js";
 
+/* LQA 케이스 ID — LC-### (FQA의 TC-###과 네임스페이스 분리).
+   기존 최댓값 + 1. 실 구현에서는 서버가 도메인별 전역 시퀀스로 발급한다(충돌 불가). */
+const nextLcId = (cases, offset = 0) => {
+  const max = (cases || []).reduce((m, c) => { const n = parseInt(String(c.id || "").replace(/^LC-/, ""), 10); return Number.isFinite(n) && n > m ? n : m; }, 0);
+  return "LC-" + String(max + 1 + offset).padStart(4, "0");
+};
+
 /* 계획이 실제로 돌릴 케이스 — caseIds가 유일한 진실.
    caseIds가 없는 구(舊) 계획은 승인 케이스 전체로 폴백한다. */
 export const planCases = (cases, plan) => {
@@ -81,7 +88,7 @@ export function NewPlanForm({ close, data }) {
   );
 }
 export function AiGenForm({ close }) {
-  const { addCases, categories, models, toast } = useApp();
+  const { addCases, categories, models, cases, toast } = useApp();
   const activeModels = models.filter((m) => m.status === "활성");
   const [phase, setPhase] = useState("config");
   const [files, setFiles] = useState([]);
@@ -113,8 +120,9 @@ export function AiGenForm({ close }) {
     if (!files.length) { toast("지식 소스 문서를 먼저 업로드하세요", "warn"); return; }
     if (!selTypes.length) { toast("발화 유형을 1개 이상 선택하세요", "warn"); return; }
     const pool = SAMPLE.filter((r) => selTypes.includes(r.type));
+    // 미리보기용 임시 키 — 실제 ID는 등록(commit) 시점에 LC-###로 발급한다
     const out = (pool.length ? pool : SAMPLE).map((r, i) => ({
-      ...r, id: "TC-G" + (Math.floor(100 + Math.random() * 900) + i),
+      ...r, id: "tmp-" + i,
       cat: catMode === "자동 분류" ? r.cat : cat, pre: "",
     }));
     setRows(out); setPicked(new Set(out.map((r) => r.id))); setPhase("result");
@@ -125,13 +133,13 @@ export function AiGenForm({ close }) {
   const commit = () => {
     const good = rows.filter((r) => picked.has(r.id));
     if (!good.length) { toast("추가할 발화를 선택하세요", "warn"); return; }
-    addCases(good.map((r) => ({
-      id: r.id, q: r.q, golden: r.golden, pre: r.pre || "", cat: r.cat, pri: "중간",
-      status: "검토중", type: r.type, source: r.src,
-      verdict: "PASS", score: 0, actual: "", scores: {}, judge: "미실행",
-      safety: { 환각: r.weak ? "WARN" : "PASS", PII: r.type === "악의적 공격" ? "WARN" : "PASS" },
+    // AI가 만든 골든답변은 반드시 사람이 검수해야 한다(환각 가능) → 초안. 검수·보강 후 저장하면 검토중이 된다.
+    // 결과 필드(verdict·safety 등)는 케이스에 저장하지 않는다 — 평가 실행 결과에서 파생.
+    addCases(good.map((r, i) => ({
+      id: nextLcId(cases, i), q: r.q, golden: r.golden, pre: r.pre || "", cat: r.cat, pri: "중간",
+      status: "초안", type: r.type, source: r.src,
     })));
-    toast(good.length + "건이 '검토중' 상태로 추가되었습니다", "ok"); close();
+    toast(good.length + "건이 '초안'으로 추가되었습니다 — 검수 후 검토중으로 올리세요", "ok"); close();
   };
 
   if (phase === "result") {
@@ -155,7 +163,7 @@ export function AiGenForm({ close }) {
           ))}
         </div>
         <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">선택한 발화는 <span className="text-amber-300">검토중</span> 상태로 등록됩니다. 악의적 공격·근거 불충분 항목은 승인 전 검수가 필요합니다.</div>
-        <div className="flex justify-between gap-2 pt-1"><Btn onClick={() => setPhase("config")}>← 설정으로</Btn><Btn kind="primary" icon={Plus} onClick={commit}>{picked.size}건 검토 대기로 추가</Btn></div>
+        <div className="flex justify-between gap-2 pt-1"><Btn onClick={() => setPhase("config")}>← 설정으로</Btn><Btn kind="primary" icon={Plus} onClick={commit}>{picked.size}건 초안으로 추가</Btn></div>
       </div>
     );
   }
@@ -167,7 +175,7 @@ export function AiGenForm({ close }) {
         {files.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{files.map((fn) => (
           <span key={fn} className="flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">{fn}<button onClick={() => setFiles(files.filter((x) => x !== fn))} className="text-slate-500 hover:text-red-400"><X size={11} /></button></span>
         ))}</div>}
-        <div className="text-xs text-slate-500 mt-1">PDF·DOCX·XLSX · 사내 임베딩 인덱싱(외부 전송 없음)</div>
+        <div className="text-xs text-slate-500 mt-1">PDF · DOCX · XLSX (외부 전송 없음)</div>
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="카테고리"><Select value={catMode} onChange={(e) => setCatMode(e.target.value)}><option>자동 분류</option><option>지정</option></Select></Field>
@@ -192,26 +200,28 @@ export function AiGenForm({ close }) {
         <div className="flex items-center justify-between text-sm text-slate-300"><span>기존 케이스와 중복 제거 (임베딩 유사도)</span><Toggle on={dedup} onClick={() => setDedup(!dedup)} /></div>
         {dedup && <div className="flex items-center gap-2 text-xs text-slate-400">유사도 임계값<input type="range" min={70} max={98} value={thr} onChange={(e) => setThr(+e.target.value)} className="flex-1" /><span className="text-teal-400">{thr}%</span></div>}
       </div>
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">문서 근거로 질문과 골든답변을 함께 생성하며, 각 항목에 출처를 표기합니다. 결과는 검토 후 승인됩니다.</div>
+      <div className="text-xs text-slate-500">업로드한 지식 소스 문서 근거로 질문과 예상 답변을 생성합니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Sparkles} onClick={generate}>생성</Btn></div>
     </div>
   );
 }
 
 export function NewCaseForm({ close, data }) {
-  const { addCases, updateCase, categories, toast } = useApp();
+  const { addCases, updateCase, categories, cases, toast } = useApp();
   const edit = !!data;
   const [q, setQ] = useState(edit ? (data.q || "") : ""); const [g, setG] = useState(edit ? (data.golden || "") : ""); const [pre, setPre] = useState(edit ? (data.pre || "") : "");
   const [cat, setCat] = useState(edit ? (data.cat || categories[0] || "미분류") : (categories[0] || "미분류")); const [pri, setPri] = useState(edit ? (data.pri || "중간") : "중간");
   const [type, setType] = useState(edit ? (data.type || "정상") : "정상");
+  /* 저장하면 상태는 검토중으로 수렴한다 — 내용이 바뀌었으니 다시 검토 대상 (FQA 에디터와 동일 규칙).
+       초안·검토중 → 검토중,  승인 → 검토중(승인 해제) */
   const submit = () => {
     if (edit) {
-      const revert = (data.status || "승인") === "승인";
-      updateCase(data.id, { q: q || "신규 발화", golden: g, pre, cat, pri, type, ...(revert ? { status: "검토중" } : {}) });
-      toast(data.id + " 수정되었습니다" + (revert ? " · 재검토 필요(검토중)" : ""), "ok");
+      const wasApproved = (data.status || "승인") === "승인";
+      updateCase(data.id, { q: q || "신규 발화", golden: g, pre, cat, pri, type, status: "검토중" });
+      toast(data.id + (wasApproved ? " 저장 · 승인 해제(검토중)" : " 검토중으로 저장"), "ok");
     } else {
-      addCases([{ id: "TC-" + Math.floor(100 + Math.random() * 900), q: q || "신규 발화", golden: g, pre, cat, pri, status: "승인", type, source: "수기 작성", verdict: "PASS", score: 0, actual: "", scores: {}, judge: "미실행", safety: { 환각: "PASS", PII: "PASS" } }]);
-      toast("테스트케이스가 등록되었습니다", "ok");
+      addCases([{ id: nextLcId(cases), q: q || "신규 발화", golden: g, pre, cat, pri, status: "검토중", type, source: "수기 작성" }]);
+      toast("검토중으로 등록되었습니다", "ok");
     }
     close();
   };
@@ -227,7 +237,7 @@ export function NewCaseForm({ close, data }) {
       <Field label="발화 유형"><Select value={type} onChange={(e) => setType(e.target.value)}><option>정상</option><option>표현 변형</option><option>오타/구어체</option><option>답변 곤란</option><option>악의적 공격</option></Select>
         <div className="text-xs text-slate-500 mt-1">정상(일반) · 표현 변형(같은 의도, 다른 표현) · 오타/구어체 · 답변 곤란(모호·범위 밖·확답 불가) · 악의적 공격(탈옥·인젝션·개인정보 유도)</div>
       </Field>
-      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "저장" : "등록"}</Btn></div>
+      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={edit ? RefreshCw : Plus} onClick={submit}>{edit ? "검토중으로 저장" : "검토중으로 등록"}</Btn></div>
     </div>
   );
 }
@@ -779,8 +789,16 @@ export function Dashboard() {
   const running = fruns.filter((r) => r.status === "진행중").length;
   const pending = cases.filter((c) => c.status === "검토중" || c.status === "초안").length;
   const scheduled = plans.filter((p) => p.sched && p.sched !== "예약 없음");
-  const halluc = cases.filter((c) => c.safety && (c.safety.환각 === "WARN" || c.safety.환각 === "FAIL")).length;
-  const pii = cases.filter((c) => c.safety && (c.safety.PII === "WARN" || c.safety.PII === "FAIL")).length;
+  /* 안전성 경보는 케이스가 아니라 '최근 평가 결과'에서 센다 — 케이스는 결과를 저장하지 않는다.
+     완료된 실행(최신순)에서 케이스별 마지막 결과의 safety를 집계. */
+  const latestSafety = (() => {
+    const seen = new Map();
+    doneRuns.slice().sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")))
+      .forEach((r) => (r.results || []).forEach((x) => { if (!seen.has(x.id)) seen.set(x.id, x.safety || {}); }));
+    return [...seen.values()];
+  })();
+  const halluc = latestSafety.filter((s) => s.환각 === "WARN" || s.환각 === "FAIL").length;
+  const pii = latestSafety.filter((s) => s.PII === "WARN" || s.PII === "FAIL").length;
   const trigKind = KIND.trigger;
   const stKind = KIND.runStatus;
   const planNames = [...new Set(runs.map((r) => r.planName))];
@@ -867,11 +885,9 @@ export function Dashboard() {
   );
 }
 export function Plans() {
-  const { plans, cases, runs, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent, jiraConfig, pendingSelect, setPendingSelect } = useApp();
+  const { plans, cases, prompts, openModal, toast, goto, chatbots, models, updatePlan, removePlan, setRunIntent, jiraConfig, pendingSelect, setPendingSelect } = useApp();
   // TC 수는 계획에 저장하지 않고 caseIds에서 파생 — 삭제된 케이스는 자동으로 빠진다
   const caseCount = (p) => planCases(cases, p).length;
-  // 최근 점수·최근 실행도 저장하지 않고 실행 이력에서 파생
-  const lastRun = (p) => (runs || []).filter((r) => r.planId === p.id && r.status === "완료").sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")))[0];
   const [sel, setSel] = useState(plans[0]);
   const cur = plans.find((p) => p.id === sel.id) || plans[0];
   useEffect(() => { if (pendingSelect && pendingSelect.kind === "plan") { const np = plans.find((p) => p.id === pendingSelect.id); if (np) setSel(np); setPendingSelect(null); } }, [pendingSelect]);
@@ -886,6 +902,7 @@ export function Plans() {
   const [pass, setPass] = useState(cur.passScore || 85);
   const [bot, setBot] = useState(cur.bot || (chatbots[0] && chatbots[0].name) || "");
   const [planStatus, setPlanStatus] = useState(cur.status || "초안");
+  const [name, setName] = useState(cur.name);
   const [weights, setWeights] = useState({});
   const [wSnap, setWSnap] = useState("");
   const [sched, setSched] = useState(cur.schedule || DEFAULT_SCHED);
@@ -919,6 +936,7 @@ export function Plans() {
     setPass(cur.passScore || 85);
     setBot(cur.bot || (chatbots[0] && chatbots[0].name) || "");
     setPlanStatus(cur.status || "초안");
+    setName(cur.name);
     setSched(cur.schedule || DEFAULT_SCHED);
     setJira(cur.jira || { override: false });
     const o = seedWeights(seedTpl);
@@ -932,11 +950,13 @@ export function Plans() {
   const saveCfg = () => {
     if (needPolicyText && !policyText.trim()) { toast(policy ? "금지 행위를 입력해야 정책 위반을 판정할 수 있습니다" : "선택한 템플릿이 {{policy}}를 요구합니다 — 안전 정책을 입력하세요", "warn"); return; }
     const judgeList = Object.keys(jsel).filter((k) => jsel[k]);
-    updatePlan(cur.id, { bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, pii, policy, policyText }, judgeList, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
-    toast(cur.name + " 설정이 저장되었습니다", "ok");
+    const nm = name.trim() || cur.name;
+    updatePlan(cur.id, { name: nm, bot, promptTpl: tpl, passScore: pass, weights, opts: { hall, pii, policy, policyText }, judgeList, status: planStatus, schedule: sched, sched: (sched && sched.summary) || "예약 없음", jira });
+    toast(nm + " 설정이 저장되었습니다", "ok");
   };
   const baseJudges = defJudges(cur);
   const dirty =
+    name !== cur.name ||
     bot !== (cur.bot || (chatbots[0] && chatbots[0].name) || "") ||
     planStatus !== (cur.status || "초안") ||
     tpl !== (cur.promptTpl || ((prompts[0] || {}).name) || "") ||
@@ -952,28 +972,27 @@ export function Plans() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="평가 계획 구성 — Judge·가중치·프롬프트·스케줄" />
-      <div className="grid grid-cols-3 gap-4">
-      <div className="space-y-3">
+      <div className="grid grid-cols-12 gap-4">
+      <div className="col-span-3 space-y-3">
         <Btn kind="primary" icon={Plus} className="w-full" onClick={() => openModal("newPlan")}>새 평가 계획</Btn>
         {plans.map((p) => (
           <Card key={p.id} className={"p-4 cursor-pointer " + (cur.id === p.id ? "border-teal-500" : "hover:border-slate-700")}>
             <div onClick={() => chooseSel(p)}>
               <div className="flex items-center justify-between"><div className="font-semibold text-slate-100">{p.name}</div><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "active" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); if (plans.length <= 1) { toast("최소 1개 계획은 유지해야 합니다", "warn"); return; } if (window.confirm(p.name + " 계획을 삭제할까요?")) { removePlan(p.id); if (sel.id === p.id) setSel(plans.find((x) => x.id !== p.id)); toast(p.name + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="계획 삭제"><X size={13} /></button></div></div>
-              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+              <div className="mt-2 grid grid-cols-2 gap-2 text-center">
                 <div><div className="text-lg font-bold text-slate-100">{caseCount(p)}</div><div className="text-xs text-slate-500">TC</div></div>
                 <div><div className="text-lg font-bold text-slate-100">{(p.judgeList || []).length || p.judges}</div><div className="text-xs text-slate-500">Judge</div></div>
-                <div><div className="text-lg font-bold text-teal-400">{(lastRun(p) || {}).score ?? "—"}</div><div className="text-xs text-slate-500">최근점수</div></div>
               </div>
-              <div className="mt-2 text-xs text-slate-500">최근 실행 {(lastRun(p) || {}).startedAt || "-"} · {p.sched}</div>
+              <div className="mt-2 text-xs text-slate-500">{p.sched}</div>
               <div className="mt-0.5 text-xs text-slate-600">수정 {p.updatedBy || "—"} · {p.updatedAt || "—"}</div>
             </div>
           </Card>
         ))}
       </div>
-      <Card className="col-span-2 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-base font-semibold text-slate-100">상세 설정 — {cur.name}</div>
-          <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><Toggle on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
+      <Card className="col-span-9 p-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="min-w-0 max-w-sm flex-1"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="계획 이름" /></div>
+          <div className="flex shrink-0 items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><Toggle on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
         </div>
         <div className="mb-4 flex items-center gap-3 text-xs text-slate-500"><span>생성 <span className="text-slate-400">{cur.createdBy || "—"}</span> · {cur.createdAt || "—"}</span><span className="text-slate-600">·</span><span>수정 <span className="text-slate-400">{cur.updatedBy || "—"}</span> · {cur.updatedAt || "—"}</span></div>
         <div className="grid grid-cols-2 gap-5">
@@ -1022,7 +1041,13 @@ export function Plans() {
             <Input type="number" value={pass} onChange={(e) => setPass(+e.target.value || 0)} className="w-24" />
           </div>
         </div>
-        <div className="mt-5 pt-5 border-t border-slate-800"><ScheduleConfig key={cur.id} value={sched} onChange={setSched} events={lqaEvents((chatbots || []).find((c) => c.name === cur.bot))} singleSelect manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." toast={toast} /></div>
+        <div className="mt-5 pt-5 border-t border-slate-800">
+          {planStatus === "활성" ? (
+            <ScheduleConfig key={cur.id} value={sched} onChange={setSched} events={lqaEvents((chatbots || []).find((c) => c.name === cur.bot))} singleSelect manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." toast={toast} />
+          ) : (
+            <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2.5 text-xs text-amber-300">이 계획은 <span className="font-semibold">초안</span>입니다 — 스케줄·이벤트 실행 설정은 <span className="font-semibold">활성화</span> 후 가능합니다. 초안 상태에서는 평가 실행 화면에서 수동으로만 수행합니다.</div>
+          )}
+        </div>
         {(jgc.connected !== false) && (
         <div className="mt-5 pt-5 border-t border-slate-800">
           <div className="flex items-center justify-between">
@@ -1107,13 +1132,12 @@ export function CategoryManager({ close }) {
           </div>
         ))}
       </div>
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">카테고리는 조직(테넌트)별로 관리되며, 케이스에 사용 중인 카테고리는 삭제할 수 없습니다.</div>
       <div className="flex justify-end pt-1"><Btn kind="primary" onClick={close}>완료</Btn></div>
     </div>
   );
 }
 export function ImportCasesForm({ close }) {
-  const { addCases, categories, addCategory, toast } = useApp();
+  const { addCases, categories, addCategory, cases, toast } = useApp();
   const [rows, setRows] = useState([]);
   const [fname, setFname] = useState("");
   const tmpl = () => {
@@ -1145,8 +1169,9 @@ export function ImportCasesForm({ close }) {
     const good = rows.filter((r) => r.q.trim());
     if (!good.length) { toast("등록할 유효한 행이 없습니다 (질문 필수)", "warn"); return; }
     newCats.forEach((c) => addCategory(c));
-    addCases(good.map((r) => ({ id: "TC-" + Math.floor(100 + Math.random() * 900), q: r.q, golden: r.golden, cat: r.cat || "미분류", pri: r.pri || "중간", pre: r.pre || "", status: "검토중", type: "정상", source: "Excel 업로드", verdict: "PASS", score: 0, actual: "", scores: {}, judge: "미실행", safety: { 환각: "PASS", PII: "PASS" } })));
-    toast(good.length + "건 일괄 등록 완료" + (newCats.length ? " · 신규 카테고리 " + newCats.length + "개 추가" : ""), "ok"); close();
+    // 남이 만든 걸 그대로 올린 것 → 초안. 결과 필드는 케이스에 저장하지 않는다(실행 결과에서 파생).
+    addCases(good.map((r, i) => ({ id: nextLcId(cases, i), q: r.q, golden: r.golden, cat: r.cat || "미분류", pri: r.pri || "중간", pre: r.pre || "", status: "초안", type: "정상", source: "Excel 업로드" })));
+    toast(good.length + "건 초안 등록 완료" + (newCats.length ? " · 신규 카테고리 " + newCats.length + "개 추가" : ""), "ok"); close();
   };
   return (
     <div className="space-y-4">
@@ -1180,7 +1205,7 @@ export function ImportCasesForm({ close }) {
         </div>
       )}
       <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">질문이 빈 행은 등록에서 제외됩니다. 기존에 없는 카테고리는 등록 시 자동 추가됩니다.</div>
-      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Upload} onClick={submit}>{okCount > 0 ? okCount + "건 등록" : "등록"}</Btn></div>
+      <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Upload} onClick={submit}>{okCount > 0 ? okCount + "건 초안으로 등록" : "초안으로 등록"}</Btn></div>
     </div>
   );
 }
@@ -1237,7 +1262,9 @@ export function Cases() {
   const [picked, setPicked] = useState(new Set());
   const priKind = KIND.priority;
   const stKind = KIND.caseStatus;
-  const filtered = cases.filter((c) => (catFilter === "전체" || c.cat === catFilter) && (stFilter === "전체" || (c.status || "승인") === stFilter) && (c.q + (c.golden || "") + c.id).toLowerCase().includes(qstr.toLowerCase()));
+  // 수정 최신순 — 방금 만들거나 고친 케이스가 위로 (updatedAt 없는 시드는 뒤로)
+  const filtered = cases.filter((c) => (catFilter === "전체" || c.cat === catFilter) && (stFilter === "전체" || (c.status || "승인") === stFilter) && (c.q + (c.golden || "") + c.id).toLowerCase().includes(qstr.toLowerCase()))
+    .slice().sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
   const togglePick = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id));
   const togglePickAll = () => setPicked(allPicked ? new Set() : new Set(filtered.map((c) => c.id)));
@@ -1273,7 +1300,7 @@ export function Cases() {
           <tbody>
             {filtered.map((c) => (
               <tr key={c.id} onClick={() => setOpen(c)} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer text-slate-300">
-                <td className="pl-4 pr-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(c.id)} onChange={() => togglePick(c.id)} className="accent-teal-500" /></td><td className="py-3 pr-4 font-mono text-teal-400">{c.id}</td><td className="max-w-md truncate text-slate-200">{c.q}</td><td>{c.cat}</td><td><Badge kind={priKind[c.pri]}>{c.pri}</Badge></td><td><Badge kind={stKind[c.status] || "active"}>{c.status || "승인"}</Badge></td><td className="pr-3 text-xs text-slate-500">{c.updatedBy || "—"} · {c.updatedAt || "—"}</td><td className="pr-4 text-slate-600"><ChevronRight size={16} /></td>
+                <td className="pl-4 pr-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(c.id)} onChange={() => togglePick(c.id)} className="accent-teal-500" /></td><td className="py-3 pr-4 font-mono text-teal-400">{c.id}</td><td className="max-w-md truncate text-slate-200">{c.q}</td><td>{c.cat}</td><td><Badge kind={priKind[c.pri]}>{c.pri}</Badge></td><td><Badge kind={stKind[c.status] || "active"}>{c.status || "승인"}</Badge></td><td className="pr-3 text-xs text-slate-500">{c.updatedBy || "—"} · {c.updatedAt || "—"}</td><td className="pr-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}><button onClick={() => openModal("newCase", c)} className="mr-3 text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => { if (window.confirm(c.id + " 삭제할까요?")) { removeCase(c.id); toast(c.id + " 삭제됨", "ok"); } }} className="text-slate-500 hover:text-red-400" title="삭제"><X size={14} /></button></td>
               </tr>
             ))}
             {filtered.length === 0 && <tr><td colSpan={8}><EmptyState icon={Search} title="검색 결과가 없습니다" hint="필터를 조정하거나 테스트케이스를 추가하세요" /></td></tr>}
@@ -1288,13 +1315,18 @@ export function Cases() {
               <div><div className="text-xs text-slate-500 mb-1">질문 (발화)</div><div className="text-slate-100">{open.q}</div></div>
               <div><div className="text-xs text-slate-500 mb-1">사전조건</div><div className="rounded-lg bg-slate-800 p-3 text-slate-300">{open.pre || "—"}</div></div>
               <div><div className="text-xs text-slate-500 mb-1">기대 응답 (Golden Set)</div><div className="rounded-lg bg-slate-800 p-3 text-slate-300">{open.golden}</div></div>
-              {open.source && <div><div className="text-xs text-slate-500 mb-1">출처</div><div className="text-slate-400 text-xs">{open.source}</div></div>}
               <div className="flex flex-wrap gap-2"><Badge kind="info">{open.cat}</Badge><Badge kind={priKind[open.pri]}>{open.pri}</Badge>{open.type && <Badge kind={open.type === "악의적 공격" ? "crit" : "info"}>유형 {open.type}</Badge>}<Badge kind={stKind[open.status] || "active"}>{open.status || "승인"}</Badge></div>
               <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400 space-y-0.5"><div>생성 <span className="text-slate-300">{open.createdBy || "—"}</span> · {open.createdAt || "—"}</div><div>수정 <span className="text-slate-300">{open.updatedBy || "—"}</span> · {open.updatedAt || "—"}</div></div>
-              {(open.status || "승인") !== "승인"
-                ? <div className="flex gap-2"><Btn kind="primary" icon={CheckCircle2} className="flex-1" onClick={() => { setCaseStatus(open.id, "승인"); setOpen({ ...open, status: "승인" }); toast(open.id + " 승인되었습니다", "ok"); }}>승인</Btn><Btn className="flex-1" onClick={() => { setCaseStatus(open.id, "초안"); setOpen({ ...open, status: "초안" }); toast(open.id + " 초안으로 반려됨", "warn"); }}>반려</Btn></div>
-                : <div><Btn className="w-full" onClick={() => { setCaseStatus(open.id, "검토중"); setOpen({ ...open, status: "검토중" }); toast(open.id + " 검토중으로 되돌림", "info"); }}>검토중으로 되돌리기</Btn></div>}
-              <div className="flex gap-2 pt-2"><Btn className="flex-1" onClick={() => { openModal("newCase", open); setOpen(null); }}>수정</Btn><Btn kind="danger" className="flex-1" onClick={() => { if (window.confirm(open.id + " 테스트케이스를 삭제할까요?")) { removeCase(open.id); toast(open.id + " 삭제됨", "ok"); setOpen(null); } }}>삭제</Btn></div>
+              {open.source && <div><div className="text-xs text-slate-500 mb-1">생성 경로</div><div className="text-slate-400 text-xs">{open.source}</div></div>}
+              {/* FQA 상세 패널과 동일 구조: 승인/검토중 토글 · 수정 · 삭제 ('반려' 제거 — 삭제나 검토중으로 대체) */}
+              <div className="flex flex-wrap gap-2 border-t border-slate-800 pt-3">
+                {(open.status || "승인") !== "승인"
+                  ? <Btn kind="primary" icon={CheckCircle2} onClick={() => { setCaseStatus(open.id, "승인"); setOpen({ ...open, status: "승인" }); toast(open.id + " 승인됨", "ok"); }}>승인</Btn>
+                  : <Btn icon={RefreshCw} onClick={() => { setCaseStatus(open.id, "검토중"); setOpen({ ...open, status: "검토중" }); toast(open.id + " 검토중으로", "info"); }}>검토중으로</Btn>}
+                <Btn icon={SlidersHorizontal} onClick={() => { openModal("newCase", open); setOpen(null); }}>수정</Btn>
+                <div className="flex-1" />
+                <Btn kind="danger" icon={X} onClick={() => { if (window.confirm(open.id + " 테스트케이스를 삭제할까요?")) { removeCase(open.id); toast(open.id + " 삭제됨", "ok"); setOpen(null); } }}>삭제</Btn>
+              </div>
             </div>
           </div>
         </div>

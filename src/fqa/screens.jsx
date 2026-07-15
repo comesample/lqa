@@ -31,6 +31,8 @@ const fqaEvents = (env, label) => {
       ] },
   ];
 };
+const DEFAULT_SCHED = { mode: "manual", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: {}, summary: "예약 없음" };
+const schedKey = (s) => { s = s || {}; return JSON.stringify([s.mode, s.freq, s.time, s.dow, s.dom, s.cron, s.tz, s.active, Object.keys(s.ev || {}).filter((k) => s.ev[k]).sort()]); };
 
 /* ───────── primitives (lqa-demo 톤) ───────── */
 const taCls = "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200 outline-none focus:border-teal-500";
@@ -102,6 +104,13 @@ const envCovers = (env, surf) => {
   return true;   // "-" 판정 불가 — 막지 않는다
 };
 
+/* 다음 TC 번호 — 기존 최댓값 + 1. 실 구현에서는 서버가 전역 시퀀스로 발급한다(충돌 불가).
+   목업은 타임스탬프 대신 순번을 흉내 낸다 — TC-206, TC-207 … 처럼 이어진다. */
+const nextTcId = (cases, offset = 0) => {
+  const max = (cases || []).reduce((m, c) => { const n = parseInt(String(c.id || "").replace(/^TC-/, ""), 10); return Number.isFinite(n) && n > m ? n : m; }, 0);
+  return "TC-" + String(max + 1 + offset).padStart(4, "0");
+};
+
 /* 대상·환경 선택 — 레코딩/MCP는 "촬영 스튜디오"로만 환경을 쓴다. 선택한 환경은 케이스에 저장되지 않는다. */
 const envOpts = (systems) => (systems || []).flatMap((sy) => (sy.envs || []).map((e) => ({ systemId: sy.id, env: e.env, label: sy.name + " · " + e.env, webUrl: e.webUrl || "", apiUrl: e.apiUrl || "" })));
 const refKey = (r) => (r ? r.systemId + "|" + r.env : "");
@@ -151,7 +160,7 @@ const REC_CAPTURED = [
 const REC_VIEWPORTS = ["1920×1080", "1440×900", "1280×720", "375×812 (모바일)"];
 
 export function FqaRecordScreen({ onDone, onEdit }) {
-  const { fqaSuites, fqaSystems } = useApp();
+  const { fqaSuites, fqaSystems, fqaCases } = useApp();
   const [msg, flash] = useToast();
   const opts = envOpts(fqaSystems).filter((o) => o.webUrl);
   const [ref, setRef] = useState(opts[0] ? { systemId: opts[0].systemId, env: opts[0].env } : null);
@@ -195,7 +204,7 @@ export function FqaRecordScreen({ onDone, onEdit }) {
   /* 캡처 결과는 곧바로 저장하지 않는다 — 에디터로 넘겨 스텝 다듬기·검증·태그를 거친 뒤 저장한다.
      여기서는 케이스를 만들지 않는다(에디터가 첫 저장 때 생성). origin으로 '레코딩 생성'을 남긴다. */
   const openInEditor = () => {
-    const c = { id: "TC-" + Date.now().toString().slice(-4), origin: "레코딩", name: name || "레코딩 TC", suite, tags: "", status: "초안", level: "Low-Code", dataset: "-", steps };
+    const c = { id: nextTcId(fqaCases), origin: "레코딩", name: name || "레코딩 TC", suite, tags: "", status: "초안", level: "Low-Code", dataset: "-", steps };
     onEdit ? onEdit(c) : onDone && onDone("레코딩 완료");
   };
   return (
@@ -573,28 +582,111 @@ function stepsToCode(steps, tc) {
 }
 
 
-/* ═══════════ API 스펙 임포트 (OpenAPI · Postman · 파일/URL) ═══════════ */
+/* ═══════════ API 임포트 (소스: OpenAPI 스펙 · cURL · HAR) ═══════════
+   세 소스가 같은 IR({ m, path, status, headers, bodyTpl, … })로 정규화되어
+   같은 '감지된 요청 → 선택 → 초안 등록' 흐름을 공유한다.
+   🔴 cURL·HAR에는 실제 시크릿(Authorization·Cookie·비밀번호)이 박혀 있다 → maskReq로 ${…} 치환. */
 const M_K = { GET: "info", POST: "pass", PUT: "warn", DELETE: "fail", PATCH: "warn", HEAD: "info", OPTIONS: "info" };
 
+// ── 시크릿 마스킹 — 헤더/본문의 실값을 변수 참조로 바꾼다(레코딩 redact와 같은 원칙) ──
+const SECRET_HDR = /^(authorization|cookie|x-api-key|x-auth-token|proxy-authorization)$/i;
+const PW_KEY = /pass|pw|passwd|비밀번호|암호|secret|token/i;
+// "Key: Value" 여러 줄 → 인증류는 값을 버리고 ${API 인증}으로. 반환 { headers, masked }
+function maskHeaders(lines) {
+  let masked = 0;
+  const out = (lines || []).map((ln) => {
+    const i = ln.indexOf(":"); if (i < 0) return ln;
+    const k = ln.slice(0, i).trim(), v = ln.slice(i + 1).trim();
+    if (SECRET_HDR.test(k)) { masked++; return null; }   // 인증 헤더는 환경에서 주입 — 케이스에 남기지 않는다
+    return k + ": " + v;
+  }).filter(Boolean);
+  return { headers: out.join("\n"), masked };
+}
+// JSON 본문의 비밀번호류 값을 ${…}로. 반환 { body, masked }
+function maskBody(body) {
+  let masked = 0;
+  const s = String(body || "").replace(/"([^"]*)"\s*:\s*"([^"]*)"/g, (m0, k, v) => {
+    if (PW_KEY.test(k)) { masked++; return '"' + k + '": "${' + k + '}"'; }
+    return m0;
+  });
+  return { body: s, masked };
+}
 // 데모용 번들 샘플 — URL 임포트 시뮬용. 실제 제품은 서버/러너가 스펙 URL을 가져옴.
 const SAMPLE_OPENAPI = {
   openapi: "3.0.1", info: { title: "T월드 API", version: "1.2.0" },
   paths: {
-    "/v1/users/{id}": { get: { summary: "사용자 조회", responses: { "200": {}, "404": {} } }, put: { summary: "사용자 수정", responses: { "200": {}, "400": {} } }, delete: { summary: "사용자 삭제", responses: { "204": {} } } },
-    "/v1/users": { post: { summary: "사용자 생성", responses: { "201": {}, "409": {} } } },
+    "/v1/users/{id}": { get: { summary: "사용자 조회", responses: { "200": {}, "404": {} } }, put: { summary: "사용자 수정", requestBody: rb({ name: "string", phone: "string" }), responses: { "200": {}, "400": {} } }, delete: { summary: "사용자 삭제", responses: { "204": {} } } },
+    "/v1/users": { post: { summary: "사용자 생성", requestBody: rb({ name: "string", phone: "string", planId: "integer" }), responses: { "201": {}, "409": {} } } },
     "/v1/plans": { get: { summary: "요금제 목록", responses: { "200": {} } } },
-    "/v1/plans/{id}/subscribe": { post: { summary: "요금제 가입", responses: { "200": {}, "402": {} } } },
-    "/v1/auth/login": { post: { summary: "로그인 토큰 발급", responses: { "200": {}, "401": {} } } },
-    "/v1/auth/refresh": { post: { summary: "토큰 갱신", responses: { "200": {}, "401": {} } } },
+    "/v1/plans/{id}/subscribe": { post: { summary: "요금제 가입", requestBody: rb({ payment: "string", coupon: "string" }), responses: { "200": {}, "402": {} } } },
+    "/v1/auth/login": { post: { summary: "로그인 토큰 발급", requestBody: rb({ id: "string", pw: "string" }), responses: { "200": {}, "401": {} } } },
+    "/v1/auth/refresh": { post: { summary: "토큰 갱신", requestBody: rb({ refreshToken: "string" }), responses: { "200": {}, "401": {} } } },
   },
 };
+// requestBody(JSON) 스키마 헬퍼 — 데모 스펙을 간결하게
+function rb(props) {
+  const properties = {}; Object.keys(props).forEach((k) => (properties[k] = { type: props[k] }));
+  return { content: { "application/json": { schema: { type: "object", properties } } } };
+}
 
-// ── 미니 파서: 무거운 의존성 없이 공통 엔드포인트 IR로 정규화 ──
+// ── 미니 파서: 무거운 의존성 없이 공통 요청 IR로 정규화 ──
 function detectSpec(obj) {
   if (!obj || typeof obj !== "object") return null;
   if (obj.openapi || obj.swagger) return "OpenAPI";
-  if ((obj.info && obj.info._postman_id) || Array.isArray(obj.item)) return "Postman";
-  return null;
+  return null;   // v1 스펙 소스는 OpenAPI만 (Postman은 cURL 임포트로 대체)
+}
+// URL → 상대경로(호스트 제거). base는 케이스에 저장 안 함(실행 계획의 환경이 주입)
+const urlPath = (u) => { let s = String(u || "").trim().replace(/^https?:\/\/[^/]+/, ""); return s || "/"; };
+/* cURL 한 줄(또는 여러 줄) → 요청 1건.
+   -X/--request 메서드, -H/--header 헤더, -d/--data/--data-raw 본문, 첫 URL 추출. */
+function parseCurl(text) {
+  const s = String(text || "").replace(/\\\r?\n/g, " ").trim();   // 줄바꿈 이스케이프 제거
+  if (!/^\s*curl\b/.test(s)) return [];
+  const q = "(?:'([^']*)'|\"([^\"]*)\"|(\\S+))";
+  const grab = (re) => { const m = s.match(re); return m ? (m[1] ?? m[2] ?? m[3]) : ""; };
+  let method = grab(new RegExp("(?:-X|--request)\\s+" + q, "i")).toUpperCase();
+  const body = grab(new RegExp("(?:-d|--data|--data-raw|--data-binary)\\s+" + q, "i"));
+  const headers = [];
+  const hre = new RegExp("(?:-H|--header)\\s+" + q, "ig"); let hm;
+  while ((hm = hre.exec(s))) headers.push(hm[1] ?? hm[2] ?? hm[3]);
+  // URL: 옵션이 아닌 첫 토큰 (curl 다음)
+  const url = grab(/curl\s+(?:-[A-Za-z-]+\s+(?:'[^']*'|"[^"]*"|\S+)\s+)*?(?:'([^']*)'|"([^"]*)"|(https?:\/\/\S+))/i) || grab(/(https?:\/\/\S+)/i);
+  if (!method) method = body ? "POST" : "GET";
+  const mh = maskHeaders(headers);
+  const mb = maskBody(body);
+  const masked = mh.masked + mb.masked;
+  return [{ m: method, path: urlPath(url), name: method + " " + urlPath(url), status: method === "DELETE" ? "204" : method === "POST" ? "201" : "200",
+    asrt: "상태" + (masked ? " · 🔒" + masked : ""), headers: mh.headers, bodyTpl: mb.body, secrets: masked, src: "cURL", script: false }];
+}
+/* HAR → 요청 여러 건. XHR/fetch만 남기고 정적파일·이미지·트래킹은 버린다. */
+function parseHar(har) {
+  const entries = (har && har.log && har.log.entries) || [];
+  const out = [];
+  entries.forEach((e) => {
+    const req = e.request || {}; const res = e.response || {};
+    const rt = (e._resourceType || "").toLowerCase();
+    const accept = (req.headers || []).find((h) => /accept/i.test(h.name) && /json/i.test(h.value || ""));
+    const isApi = rt === "xhr" || rt === "fetch" || !!accept || /\/(api|v\d)\//i.test(req.url || "");
+    if (!isApi) return;   // 정적 리소스 제외
+    const headers = (req.headers || []).filter((h) => !/^:/.test(h.name)).map((h) => h.name + ": " + h.value);
+    const body = (req.postData && req.postData.text) || "";
+    const mh = maskHeaders(headers); const mb = maskBody(body);
+    const masked = mh.masked + mb.masked;
+    const p = urlPath(req.url);
+    out.push({ m: String(req.method || "GET").toUpperCase(), path: p, name: (req.method || "GET") + " " + p, status: String(res.status || 200),
+      asrt: "상태 " + (res.status || 200) + (masked ? " · 🔒" + masked : ""), headers: mh.headers, bodyTpl: mb.body, secrets: masked, src: "HAR", script: false });
+  });
+  return out;
+}
+const detectFile = (obj) => (obj && obj.log && obj.log.entries) ? "HAR" : detectSpec(obj);
+// requestBody(application/json) 스키마 → 필드 골격 { tpl, count }. 값은 비워 둔다(에디터에서 채움).
+function bodySkeleton(op) {
+  const sch = op && op.requestBody && op.requestBody.content && op.requestBody.content["application/json"] && op.requestBody.content["application/json"].schema;
+  const props = (sch && sch.properties) || {};
+  const keys = Object.keys(props);
+  if (!keys.length) return { tpl: "", count: 0 };
+  const parts = keys.map((k) => { const t = (props[k] || {}).type; return '"' + k + '": ' + (t === "integer" || t === "number" ? "0" : '""'); });
+  return { tpl: "{ " + parts.join(", ") + " }", count: keys.length };
 }
 function parseOpenApi(spec) {
   const METHODS = ["get", "post", "put", "delete", "patch", "head", "options"];
@@ -607,126 +699,141 @@ function parseOpenApi(spec) {
       if (!op || typeof op !== "object") return;
       const codes = Object.keys(op.responses || {});
       const ok = codes.find((c) => /^2\d\d$/.test(c)) || codes[0] || "200";
-      out.push({ m: m.toUpperCase(), path: p, name: op.summary || op.operationId || (m.toUpperCase() + " " + p), status: ok, asrt: ok + " · 스키마", src: "OpenAPI", script: false });
+      const bs = bodySkeleton(op);   // 스펙에 requestBody 스키마가 있으면 필드 골격을 만든다
+      // 검증 골격은 상태코드만 — 스키마 검증은 에디터에서 보강한다(스키마 자동 생성은 하지 않는다)
+      out.push({ m: m.toUpperCase(), path: p, name: op.summary || op.operationId || (m.toUpperCase() + " " + p), status: ok, asrt: "상태 " + ok + (bs.count ? " · 본문 " + bs.count + "필드" : ""), bodyTpl: bs.tpl, src: "OpenAPI", script: false });
     });
   });
   return out;
 }
-function parsePostman(col) {
-  const out = [];
-  const walk = (items) => (items || []).forEach((it) => {
-    if (Array.isArray(it.item)) { walk(it.item); return; }
-    if (!it.request) return;
-    const req = typeof it.request === "string" ? { method: "GET", url: it.request } : it.request;
-    let path = "";
-    const url = req.url;
-    if (typeof url === "string") path = url;
-    else if (url && Array.isArray(url.path)) path = "/" + url.path.join("/");
-    else if (url && url.raw) path = url.raw;
-    const hasTest = Array.isArray(it.event) && it.event.some((e) => e.listen === "test");
-    const resp = Array.isArray(it.response) && it.response[0];
-    const status = resp && resp.code ? String(resp.code) : "200";
-    out.push({ m: String(req.method || "GET").toUpperCase(), path: path || "/", name: it.name || (req.method + " " + path), status, asrt: status + (hasTest ? " · 스크립트" : " · 예시"), src: "Postman", script: hasTest });
-  });
-  walk(col.item);
-  return out;
-}
-// 스펙 엔드포인트 → 요청/응답 검증 스텝. 인증 헤더는 환경에서 주입되므로 넣지 않는다.
+// 요청 IR → 요청/응답 검증 스텝. 인증 헤더는 환경에서 주입되므로 넣지 않는다.
 const apiSteps = (ep) => {
   const write = ["POST", "PUT", "PATCH"].includes(ep.m);
+  // 본문: 스펙 스키마 골격 또는 cURL/HAR의 마스킹된 실제 본문, 없으면 쓰기 메서드에 한해 빈 객체
+  const body = write ? (ep.bodyTpl || "{ }") : (ep.bodyTpl || "");   // cURL/HAR은 GET에도 본문이 있을 수 있음(마스킹된 실값)
   const steps = [
-    { act: "요청", loc: ep.m + " " + ep.path, val: "-", body: write ? "{ }" : "", headers: "", save: "" },
+    { act: "요청", loc: ep.m + " " + ep.path, val: "-", body, headers: ep.headers || "", save: "" },
     { act: "응답 검증", loc: "상태코드", val: String(ep.status || "200") },
   ];
-  if (ep.src === "Postman" && ep.script) steps.push({ act: "코드 스텝", loc: "", val: "", code: "// 기존 Postman 테스트 스크립트 — 수동 이관 필요" });
   return steps;
 };
+const SAMPLE_CURL = "curl 'https://api-stg.tworld.co.kr/v1/orders/checkout' \\\n  -X POST \\\n  -H 'Content-Type: application/json' \\\n  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc' \\\n  -d '{\"plan\":\"5G-premium\",\"payment\":\"card\",\"password\":\"P@ss1234\"}'";
+const SAMPLE_HAR = { log: { entries: [
+  { _resourceType: "fetch", request: { method: "POST", url: "https://api-stg.tworld.co.kr/v1/auth/login", headers: [{ name: "Content-Type", value: "application/json" }], postData: { text: '{"id":"qa_user01","pw":"P@ss1234"}' } }, response: { status: 200 } },
+  { _resourceType: "xhr", request: { method: "GET", url: "https://api-stg.tworld.co.kr/v1/plans", headers: [{ name: "Authorization", value: "Bearer eyJ...tok" }, { name: "Accept", value: "application/json" }] }, response: { status: 200 } },
+  { _resourceType: "xhr", request: { method: "POST", url: "https://api-stg.tworld.co.kr/v1/orders/checkout", headers: [{ name: "Authorization", value: "Bearer eyJ...tok" }, { name: "Content-Type", value: "application/json" }], postData: { text: '{"plan":"5G-premium","payment":"card"}' } }, response: { status: 201 } },
+  { _resourceType: "image", request: { method: "GET", url: "https://cdn.tworld.co.kr/logo.png", headers: [] }, response: { status: 200 } },
+  { _resourceType: "script", request: { method: "GET", url: "https://cdn.tworld.co.kr/app.js", headers: [] }, response: { status: 200 } },
+] } };
+
 export function FqaApiImportScreen({ onDone }) {
-  const { addFqaCase, fqaSuites } = useApp();
+  const { addFqaCase, fqaSuites, fqaCases } = useApp();
   const [msg, flash] = useToast();
-  // 스펙은 케이스 생성의 '계약 소스'일 뿐 — 저장하지 않는다. 대상 바인딩은 실행 계획에서 한다.
   const apiSuites = fqaSuites || [];
-  const [specUrl, setSpecUrl] = useState("https://api-stg.tworld.co.kr/openapi.json");
   const [suite, setSuite] = useState((apiSuites[0] && apiSuites[0].name) || "API 연동");
-  const [mode, setMode] = useState("파일 업로드");
+  const [src, setSrc] = useState("OpenAPI 파일"); // OpenAPI 파일 | OpenAPI URL | cURL | HAR
+  const [curlText, setCurlText] = useState("");
+  const [specUrl, setSpecUrl] = useState("");   // 비워 둔다 — 예시는 placeholder로
   const [phase, setPhase] = useState("idle");
   const [rows, setRows] = useState([]);
   const [picked, setPicked] = useState(new Set());
-  const [fmt, setFmt] = useState(null);
   const [fileName, setFileName] = useState("");
   const [err, setErr] = useState("");
-  const key = (r) => r.m + r.path;
+  const secretTotal = rows.reduce((n, r) => n + (r.secrets || 0), 0);
+  // 소스 전환 시 결과 초기화
+  const switchSrc = (v) => { setSrc(v); setRows([]); setPicked(new Set()); setErr(""); setFileName(""); setPhase("idle"); };
+  const setResult = (parsed, name) => {
+    const keyed = parsed.map((r, i) => ({ ...r, _k: i }));
+    setErr(keyed.length ? "" : "요청을 찾지 못했습니다 — 내용을 확인하세요."); setRows(keyed); setPicked(new Set()); if (name != null) setFileName(name); setPhase("done");
+  };
   const onFile = (file) => {
     if (!file) return;
     const rd = new FileReader();
     rd.onload = () => {
       let obj;
       try { obj = JSON.parse(rd.result); }
-      catch (e) { setErr("JSON 파싱 실패 — 데모는 JSON 스펙(openapi.json · postman_collection.json)을 지원합니다. YAML은 JSON으로 변환 후 업로드하세요."); setRows([]); setFmt(null); setFileName(file.name); setPhase("done"); return; }
-      const f = detectSpec(obj);
-      if (!f) { setErr("형식 인식 실패 — OpenAPI(openapi/swagger 키) 또는 Postman Collection(item)이어야 합니다."); setRows([]); setFmt(null); setFileName(file.name); setPhase("done"); return; }
-      const parsed = f === "OpenAPI" ? parseOpenApi(obj) : parsePostman(obj);
-      setErr(parsed.length ? "" : "엔드포인트를 찾지 못했습니다 — 스펙 내용을 확인하세요."); setFmt(f); setRows(parsed); setPicked(new Set()); setFileName(file.name); setPhase("done");
+      catch (e) { setErr("JSON 파싱 실패 — " + (src === "HAR" ? ".har 파일" : "openapi.json") + "을 올리세요."); setRows([]); setFileName(file.name); setPhase("done"); return; }
+      // 파일 소스: HAR 또는 OpenAPI 파일
+      if (src === "HAR") {
+        if (!(obj.log && obj.log.entries)) { setErr("HAR 형식이 아닙니다 (log.entries 없음)."); setRows([]); setFileName(file.name); setPhase("done"); return; }
+        setResult(parseHar(obj), file.name);
+      } else {
+        if (!detectSpec(obj)) { setErr("OpenAPI 형식이 아닙니다 (openapi/swagger 키 없음)."); setRows([]); setFileName(file.name); setPhase("done"); return; }
+        setResult(parseOpenApi(obj), file.name);
+      }
     };
     rd.readAsText(file);
   };
-  const loadUrl = () => { setPhase("running"); setErr(""); setFileName(""); setTimeout(() => { setFmt("OpenAPI"); setRows(parseOpenApi(SAMPLE_OPENAPI)); setPicked(new Set()); setPhase("done"); }, 600); };
+  // 샘플로 시연 — 소스별 샘플 데이터로 결과를 채운다(모든 탭 공통 보조 링크)
+  const loadSample = () => { setPhase("running"); setErr(""); setFileName("샘플"); setTimeout(() => { setResult(src === "cURL" ? parseCurl(SAMPLE_CURL) : src === "HAR" ? parseHar(SAMPLE_HAR) : parseOpenApi(SAMPLE_OPENAPI), "샘플"); }, 400); };
+  // OpenAPI URL — 실제로는 서버가 가져온다(브라우저 직접 fetch는 CORS 제한). 여기선 URL 검증만.
+  const loadUrl = () => { if (!specUrl.trim()) { setErr("스펙 URL을 입력하세요 (또는 아래 '샘플로 시연')"); return; } setPhase("running"); setErr(""); setTimeout(() => setResult(parseOpenApi(SAMPLE_OPENAPI), specUrl), 500); };
+  const runCurl = () => { if (!curlText.trim()) { setErr("cURL을 붙여넣으세요 (또는 아래 '샘플로 시연')"); return; } const r = parseCurl(curlText); if (!r.length) { setErr("cURL을 인식하지 못했습니다 — 'curl '로 시작해야 합니다."); setRows([]); setPhase("done"); return; } setResult(r); };
   const toggle = (k) => setPicked((pv) => { const n = new Set(pv); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const commit = () => { if (!picked.size) { flash("엔드포인트를 선택하세요"); return; } const sel = rows.filter((r) => picked.has(key(r))); sel.forEach((ep, i) => addFqaCase({ id: "TC-API-" + Date.now().toString().slice(-4) + "-" + i, name: ep.name, suite, tags: "api," + (ep.src === "Postman" ? "postman" : "openapi"), status: "검토중", level: "Low-Code", dataset: "-", steps: apiSteps(ep) })); if (onDone) onDone(sel.length + "건 API 케이스 검토중 등록 · 목록에 추가됨"); };
+  // 다건 임포트 → 목록에 '초안'으로 쌓는다. 각 케이스는 목록에서 에디터로 열어 보강한다.
+  const commit = () => { if (!picked.size) { flash("요청을 선택하세요"); return; } const sel = rows.filter((r) => picked.has(r._k)); sel.forEach((ep, i) => addFqaCase({ id: nextTcId(fqaCases, i), origin: "API 임포트", name: ep.name, suite, tags: "", status: "초안", level: "Low-Code", dataset: "-", steps: apiSteps(ep) })); if (onDone) onDone(sel.length + "건 API 케이스 초안 등록 · 목록에서 에디터로 보강하세요"); };
   return (
     <>
-      <Hdr icon={FileText} title="스펙 임포트 (API 테스트 생성)" badge="API" desc="OpenAPI · Postman → 엔드포인트별 요청·검증 케이스 골격" />
+      <Hdr icon={FileText} title="API 임포트" badge="API" desc="OpenAPI · cURL · HAR → 요청·검증 케이스 골격" />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-5 space-y-4">
           <Card className="p-4 space-y-3">
-            <Seg options={["파일 업로드", "URL 임포트"]} value={mode} onChange={(v) => { setMode(v); setErr(""); }} />
-            {mode === "파일 업로드" ? (
+            {/* 각 탭은 '실제 액션 하나' + 공통 '샘플로 시연' 링크. 실 개발 시 링크만 지우면 된다. */}
+            <Seg options={["OpenAPI 파일", "OpenAPI URL", "cURL", "HAR"]} value={src} onChange={switchSrc} />
+            {src === "cURL" ? (
               <>
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-700 bg-slate-900 px-4 py-6 text-center hover:border-teal-600 hover:bg-slate-800">
-                  <Upload size={20} className="text-teal-400" />
-                  <span className="text-sm text-slate-300">스펙 파일 선택</span>
-                  <span className="text-xs text-slate-500">openapi.json · swagger.json · postman_collection.json</span>
-                  <input type="file" accept=".json,.yaml,.yml" className="hidden" onChange={(e) => onFile(e.target.files && e.target.files[0])} />
-                </label>
-                {fileName && !err && <div className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={13} />{fileName} · 형식 {fmt} · {rows.length}개 감지</div>}
+                <Field label="cURL 붙여넣기" hint="개발자도구 · Postman에서 'Copy as cURL'"><textarea value={curlText} onChange={(e) => setCurlText(e.target.value)} rows={6} placeholder={SAMPLE_CURL} className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200 outline-none focus:border-teal-500" /></Field>
+                <Btn kind="primary" icon={RefreshCw} className="w-full" onClick={runCurl}>요청 분석</Btn>
+              </>
+            ) : src === "OpenAPI URL" ? (
+              <>
+                <Field label="스펙 URL" hint="대개 /openapi.json · /swagger.json 로 노출"><Input value={specUrl} onChange={(e) => setSpecUrl(e.target.value)} placeholder="https://api.example.com/openapi.json" /></Field>
+                <Btn kind="primary" icon={RefreshCw} className="w-full" onClick={loadUrl}>{phase === "running" ? "불러오는 중…" : "스펙 불러오기"}</Btn>
+                <div className="text-xs text-slate-500">서버가 URL을 가져와 파싱합니다.</div>
               </>
             ) : (
               <>
-                <Field label="스펙 URL" hint="생성 근거용 계약 스펙 · 실제 호스트는 실행 계획의 대상·환경에서 주입"><Input value={specUrl} onChange={(e) => setSpecUrl(e.target.value)} /></Field>
-                <Btn kind="primary" icon={RefreshCw} className="w-full" onClick={loadUrl}>{phase === "running" ? "불러오는 중…" : "스펙 불러오기"}</Btn>
-                <div className="rounded-lg border border-amber-800 bg-amber-950 p-3 text-xs text-amber-300">브라우저 직접 fetch는 CORS·인증 제한 — 데모는 번들 샘플 스펙으로 시뮬합니다. 실제 제품은 <span className="text-amber-200">서버/러너</span>가 스펙 URL을 가져옵니다.</div>
+                <label className={"flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-7 text-center hover:bg-slate-800 " + (err ? "border-red-800 bg-red-950 hover:border-red-600" : "border-slate-700 bg-slate-900 hover:border-teal-600")}>
+                  <Upload size={20} className={err ? "text-red-400" : "text-teal-400"} />
+                  <span className="text-sm text-slate-300">{err ? "다른 파일 선택" : (src === "HAR" ? "HAR 파일 선택" : "스펙 파일 선택")}</span>
+                  <span className="text-xs text-slate-500">{src === "HAR" ? "network export · .har" : "openapi.json · swagger.json"}</span>
+                  <input type="file" accept={src === "HAR" ? ".har,.json" : ".json,.yaml,.yml"} className="hidden" onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; onFile(f); }} />
+                </label>
+                {fileName && fileName !== "샘플" && !err && phase === "done" && <div className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={13} />{fileName} · {rows.length}개 감지</div>}
               </>
             )}
+            {/* 모든 탭 공통 보조 링크 — 입력 없이 동작을 확인. 실 개발 시 이 줄만 제거. */}
+            <div className="text-center"><button type="button" onClick={loadSample} className="text-xs text-slate-500 underline decoration-dotted hover:text-teal-300">샘플 {src.replace("OpenAPI ", "")}로 시연</button></div>
             <Field label="등록 스위트"><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{apiSuites.map((x) => <option key={x.id}>{x.name}</option>)}{apiSuites.length === 0 && <option>API 연동</option>}</Select></Field>
             {err && <div className="rounded-lg border border-red-900 bg-red-950 p-3 text-xs text-red-300">{err}</div>}
-            <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">스펙에서 엔드포인트를 읽어 <span className="text-slate-300">요청+검증</span> 케이스 골격을 만듭니다. 등록 후 에디터에서 파라미터·검증을 보강합니다.</div>
+            <div className="text-xs text-slate-500">요청+상태 검증 골격을 만듭니다. 본문·검증은 에디터에서 보강합니다.{(src === "cURL" || src === "HAR") && <span className="text-amber-300"> 인증·비밀번호는 <span className="font-mono">${"{…}"}</span>로 마스킹됩니다.</span>}</div>
           </Card>
         </div>
         <div className="col-span-7">
           <Card className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold text-slate-200">감지된 엔드포인트{fmt && phase === "done" && <Badge kind={fmt === "Postman" ? "active" : "info"}>{fmt}</Badge>}</div>{phase === "done" && rows.length > 0 && <span className="text-xs text-slate-400">{rows.length}개 · 선택 {picked.size}</span>}</div>
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold text-slate-200">감지된 요청{rows.length > 0 && <Badge kind="info">{src.startsWith("OpenAPI") ? "OpenAPI" : src}</Badge>}{fileName === "샘플" && rows.length > 0 && <Badge kind="draft">샘플</Badge>}{secretTotal > 0 && <Badge kind="warn">🔒 시크릿 {secretTotal} 마스킹</Badge>}</div>{phase === "done" && rows.length > 0 && <span className="text-xs text-slate-400">{rows.length}개 · 선택 {picked.size}</span>}</div>
             {phase !== "done" || rows.length === 0 ? (
-              <div className="px-4 py-16 text-center text-sm text-slate-500">{phase === "running" ? "스펙을 분석하는 중…" : mode === "파일 업로드" ? "스펙 파일을 선택하세요" : "스펙 URL을 확인하고 \"스펙 불러오기\"를 누르세요"}</div>
+              <div className="px-4 py-16 text-center text-sm text-slate-500">{phase === "running" ? "분석하는 중…" : src === "cURL" ? "cURL을 붙여넣고 \"요청 분석\"을 누르세요" : src === "OpenAPI URL" ? "스펙 URL을 확인하고 \"스펙 불러오기\"를 누르세요" : src === "HAR" ? "HAR 파일을 선택하세요" : "스펙 파일을 선택하세요"}</div>
             ) : (
               <>
-                <div className="border-b border-slate-800 bg-slate-900 px-4 py-2"><button onClick={() => setPicked(picked.size === rows.length ? new Set() : new Set(rows.map((r) => r.m + r.path)))} className="rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700">{picked.size === rows.length ? "전체 해제" : "전체 선택"}</button></div>
+                <div className="border-b border-slate-800 bg-slate-900 px-4 py-2"><button onClick={() => setPicked(picked.size === rows.length ? new Set() : new Set(rows.map((r) => r._k)))} className="rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700">{picked.size === rows.length ? "전체 해제" : "전체 선택"}</button></div>
                 <div className="overflow-y-auto" style={{ maxHeight: 360 }}>
-                  {rows.map((r) => { const k = r.m + r.path; return (
+                  {rows.map((r) => { const k = r._k; return (
                     <div key={k} onClick={() => toggle(k)} className="flex cursor-pointer items-center gap-3 border-b border-slate-800 px-4 py-2.5 hover:bg-slate-800">
                       <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(k)} className="accent-teal-500" />
                       <Badge kind={M_K[r.m] || "info"}>{r.m}</Badge>
-                      <span className="font-mono text-xs text-slate-300">{r.path}</span>
-                      <span className="flex-1 text-sm text-slate-200">{r.name}</span>
-                      {r.script && <span className="rounded bg-amber-900 px-1.5 py-0.5 text-xs text-amber-300">script</span>}
-                      <span className="text-xs text-slate-500">{r.asrt}</span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-300">{r.path}</span>
+                      {/* OpenAPI는 summary가 유용, cURL/HAR은 이름이 'M path'라 중복 → 생략 */}
+                      {r.name && r.name !== r.m + " " + r.path && <span className="truncate text-sm text-slate-300" style={{ maxWidth: 140 }}>{r.name}</span>}
+                      <span className="shrink-0 text-xs text-slate-500">{r.asrt}</span>
                     </div>
                   ); })}
                 </div>
-                <div className="flex items-center justify-end gap-2 border-t border-slate-800 px-4 py-3"><Btn kind="primary" icon={Plus} disabled={!picked.size} onClick={commit}>검토중으로 등록</Btn></div>
+                <div className="flex items-center justify-end gap-2 border-t border-slate-800 px-4 py-3"><Btn kind="primary" icon={Plus} disabled={!picked.size} onClick={commit}>초안으로 등록</Btn></div>
               </>
             )}
           </Card>
-          <div className="mt-2 text-xs text-slate-500">생성된 API 케이스는 <span className="text-amber-300">검토중</span>으로 등록되며, 스텝은 요청/검증 구조입니다. 이후 에디터에서 보강합니다.</div>
+          <div className="mt-2 text-xs text-slate-500">선택한 엔드포인트가 <span className="text-slate-300">초안</span> 케이스로 등록됩니다. 목록에서 에디터로 열어 요청 본문·검증을 채운 뒤 검토·승인합니다.</div>
         </div>
       </div>
       <Toast msg={msg} />
@@ -754,6 +861,8 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
   const [tags, setTags] = useState((tc && tc.tags) || "");
   const [dataset, setDataset] = useState(tc ? (tc.dataset && tc.dataset !== "-" ? tc.dataset : "") : "");
   const [acctRole, setAcctRole] = useState((tc && tc.acctRole) || "");
+  // 운영주의 — 운영 환경에서 실데이터를 변경/삭제하는 케이스. 태그와 별개 플래그.
+  const [prodCaution, setProdCaution] = useState(!!(tc && tc.prodCaution));
   // 등록된 모든 환경의 계정 역할 (케이스는 역할만 고르고, 실제 계정은 실행 계획의 환경이 주입)
   const roleOpts = [...new Set((fqaSystems || []).flatMap((sy) => (sy.envs || []).flatMap((e) => (e.accts || []).map((a) => a.role))).filter(Boolean))];
   // 계정 변수 사용 여부 — Full-Code는 V['계정 ID'] 형태로 나타난다
@@ -763,8 +872,8 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
   const toggleCode = (i) => setCodeOpen((m) => ({ ...m, [i]: !m[i] }));
   const reorder = (from, to) => { setSteps((prev) => { const arr = [...prev]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return arr; }); setCodeOpen({}); };
   const vi = LV.indexOf(view);
-  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, code: initCode, committed: ei, suite: tc ? tc.suite : ((fqaSuites[0] || {}).name || ""), name: (tc && tc.name) || "", tags: (tc && tc.tags) || "", dataset: tc ? (tc.dataset && tc.dataset !== "-" ? tc.dataset : "") : "", acctRole: (tc && tc.acctRole) || "" }));
-  const dirty = snap !== JSON.stringify({ steps, code, committed, suite, name, tags, dataset, acctRole });
+  const [snap, setSnap] = useState(() => JSON.stringify({ steps: initSteps, code: initCode, committed: ei, suite: tc ? tc.suite : ((fqaSuites[0] || {}).name || ""), name: (tc && tc.name) || "", tags: (tc && tc.tags) || "", dataset: tc ? (tc.dataset && tc.dataset !== "-" ? tc.dataset : "") : "", acctRole: (tc && tc.acctRole) || "", prodCaution: !!(tc && tc.prodCaution) }));
+  const dirty = snap !== JSON.stringify({ steps, code, committed, suite, name, tags, dataset, acctRole, prodCaution });
   const versions = (tc && tc.versions) || [];
   const curRev = (tc && tc.rev) || 1;
   /* 내가 편집을 시작한 리비전 — 저장 시 낙관적 잠금의 기준.
@@ -834,7 +943,7 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
   /* Low-Code는 스텝이 진실 — code를 저장하면 스텝과 어긋난 낡은 코드가 DB에 남는다(실행 시 서버가 스텝에서 생성한다).
      Full-Code는 code가 진실 — 스텝은 참고용으로 그대로 둔다(변환 시점의 흔적). */
   // origin(생성 경로)은 최초 생성 때 정해지고 이후 바뀌지 않는다 — 편집·변환·복제와 무관한 '출생' 정보
-  const body = () => ({ steps, code: isFull ? code : "", level: LV[committed], suite, name: name.trim(), tags, dataset: dataset || "-", acctRole: usesAcct ? acctRole : "", origin: (tc && tc.origin) || "직접 작성" });
+  const body = () => ({ steps, code: isFull ? code : "", level: LV[committed], suite, name: name.trim(), tags, dataset: dataset || "-", acctRole: usesAcct ? acctRole : "", prodCaution, origin: (tc && tc.origin) || "직접 작성" });
   /* 저장 = 새 리비전 INSERT. baseRev로 낙관적 잠금 — 그 사이 남이 저장했으면 거부한다. */
   /* 충돌 후 탈출구 — 최신본을 다시 읽어 편집 상태를 갈아끼운다.
      이게 없으면 baseRev가 낡은 채로 남아 다시 저장해도 또 충돌한다(영원히 저장 불가). */
@@ -842,25 +951,30 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
     const c = tc || {};
     setSteps(c.steps || []); setCode(c.code || ""); setCommitted(Math.max(0, LV.indexOf(c.level)));
     setView(c.level || "Low-Code"); setName(c.name || ""); setTags(c.tags || ""); setSuite(c.suite || "");
-    setDataset(c.dataset && c.dataset !== "-" ? c.dataset : ""); setAcctRole(c.acctRole || "");
+    setDataset(c.dataset && c.dataset !== "-" ? c.dataset : ""); setAcctRole(c.acctRole || ""); setProdCaution(!!c.prodCaution);
     setStatus(c.status || "검토중");
     baseRev.current = c.rev || 1;
-    setSnap(JSON.stringify({ steps: c.steps || [], code: c.code || "", committed: Math.max(0, LV.indexOf(c.level)), suite: c.suite || "", name: c.name || "", tags: c.tags || "", dataset: c.dataset && c.dataset !== "-" ? c.dataset : "", acctRole: c.acctRole || "" }));
+    setSnap(JSON.stringify({ steps: c.steps || [], code: c.code || "", committed: Math.max(0, LV.indexOf(c.level)), suite: c.suite || "", name: c.name || "", tags: c.tags || "", dataset: c.dataset && c.dataset !== "-" ? c.dataset : "", acctRole: c.acctRole || "", prodCaution: !!c.prodCaution }));
     flash("rev " + (c.rev || 1) + " 최신본을 불러왔습니다");
   };
+  /* 저장하면 상태는 검토중으로 수렴한다 — 내용이 바뀌었으니 다시 검토 대상이 된다.
+       초안  → 검토중 (작성 완료, 검토 요청)
+       검토중 → 검토중 (유지)
+       승인  → 검토중 (승인 해제 · 재검토 필요)
+     API 임포트의 '초안'은 편집 없이 대량 생성된 골격 — 에디터에서 저장할 때 비로소 검토중이 된다. */
   const save = () => {
     if (!name.trim()) { flash("TC 이름을 입력하세요"); return false; }
     if (saveErr) { flash(saveErr); return false; }
-    // 아직 목록에 없는 케이스(직접 작성)면 첫 저장 = 생성
+    const wasApproved = status === "승인";
+    // 아직 목록에 없는 케이스(직접 작성)면 첫 저장 = 생성 → 검토중
     if (!fqaCases.some((c) => c.id === tc.id)) {
-      addFqaCase({ id: tc.id, ...body(), status });
-      baseRev.current = 1;
-      setSnap(JSON.stringify({ steps, code, committed, suite, name, tags, dataset, acctRole }));
-      flash("저장됨");
+      addFqaCase({ id: tc.id, ...body(), status: "검토중" });
+      baseRev.current = 1; setStatus("검토중");
+      setSnap(JSON.stringify({ steps, code, committed, suite, name, tags, dataset, acctRole, prodCaution }));
+      flash("검토중으로 저장됨");
       return true;
     }
-    const revert = status === "승인";
-    const ok = commitFqaCase(tc.id, { ...body(), ...(revert ? { status: "검토중" } : {}) }, { baseRev: baseRev.current });
+    const ok = commitFqaCase(tc.id, { ...body(), status: "검토중" }, { baseRev: baseRev.current });
     if (!ok) {
       // 내 편집을 덮어쓰지 않는다 — 최신을 불러올지(내 변경 폐기) 사용자가 정한다
       if (window.confirm("다른 사람이 이 케이스를 수정했습니다 (rev " + baseRev.current + " → rev " + curRev + ").\n\n최신본을 불러올까요?\n지금 편집 중인 내용은 사라집니다. (취소하면 변경 이력에서 차이를 확인할 수 있습니다)")) reload();
@@ -868,9 +982,9 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
       return false;
     }
     baseRev.current = curRev + 1;
-    if (revert) setStatus("검토중");
-    setSnap(JSON.stringify({ steps, code, committed, suite, name, tags, dataset, acctRole }));
-    flash(revert ? "rev " + (curRev + 1) + " 저장 · 승인 해제(검토중)" : "rev " + (curRev + 1) + " 저장");
+    setStatus("검토중");
+    setSnap(JSON.stringify({ steps, code, committed, suite, name, tags, dataset, acctRole, prodCaution }));
+    flash(wasApproved ? "rev " + (curRev + 1) + " 저장 · 승인 해제(검토중)" : "rev " + (curRev + 1) + " 검토중으로 저장");
     return true;
   };
   /* 복제 — 사본은 '지금 편집 중인 내용'을 받는다. 원본에 미저장 변경이 있으면 먼저 저장한다. */
@@ -879,7 +993,7 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
       if (!window.confirm("저장하지 않은 변경이 있습니다.\n원본을 저장하고 사본을 열까요?")) return;
       if (!save()) return;
     }
-    const nid = "TC-" + Date.now().toString().slice(-4);
+    const nid = nextTcId(fqaCases);
     const copy = { id: nid, ...body(), name: name + " (사본)", status: "검토중" };
     addFqaCase(copy);
     if (onOpen) { onOpen({ ...copy, rev: 1 }); flash(nid + " 사본을 열었습니다"); }
@@ -887,13 +1001,21 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
   };
   return (
     <div className="space-y-4">
-      <Hdr icon={Code2} title="테스트 에디터" />
+      <Hdr icon={Code2} title="테스트케이스 에디터" />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-3 space-y-3">
           <Card className="p-3">
             <div className="mb-2 text-xs font-semibold text-slate-400">태그</div>
             <TagPicker value={tags} onChange={setTags} />
             <div className="mt-1.5 text-xs text-slate-500">실행 계획이 태그로 대상을 고릅니다.</div>
+          </Card>
+          {/* 운영주의 — 태그와 별개 플래그. 운영 환경 실행 시 경고(막지 않고 알린다). */}
+          <Card className="p-3">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input type="checkbox" checked={prodCaution} onChange={(e) => setProdCaution(e.target.checked)} className="accent-amber-500" />
+              <span className="text-sm text-slate-200">운영주의</span>
+            </label>
+            <div className="mt-1.5 text-xs text-slate-500">데이터 변경/삭제 — 운영 환경 테스트 시 주의</div>
           </Card>
           {/* 계정 변수를 쓰는 케이스에서만 의미가 있다 — 안 쓰면 골라도 아무 일이 없으므로 감춘다 */}
           {usesAcct && (
@@ -1111,7 +1233,8 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
               {committed < 1 && view === LV[committed] && (
                 <Btn icon={ArrowRight} disabled={!!errs.length || steps.length === 0} onClick={descend}>Full-Code로 변환</Btn>
               )}
-              <Btn kind="primary" icon={Save} disabled={!dirty || !!saveErr} title={saveErr || undefined} onClick={save}>{dirty ? "저장" : "저장됨"}</Btn>
+              {/* 저장하면 검토중으로 수렴 — 라벨이 결과를 말해준다 */}
+              <Btn kind="primary" icon={Save} disabled={!dirty || !!saveErr} title={saveErr || undefined} onClick={save}>{dirty ? "검토중으로 저장" : "저장됨"}</Btn>
             </div>
           </Card>
         </div>
@@ -1218,13 +1341,27 @@ export function FqaEditorScreen({ entry = "Low-Code", tc, onDirty, onOpen }) {
 const SF0 = { name: "", desc: "" };
 export function FqaSuiteScreen() {
   const [msg, flash] = useToast();
-  const { fqaSuites: suites, addFqaSuite, updateFqaSuite, removeFqaSuite, fqaCases, fqaRuns, setFqaEditTc, setFqaSuiteFocus, goto } = useApp();
+  const { fqaSuites: suites, addFqaSuite, updateFqaSuite, removeFqaSuite, fqaCases, updateFqaCase, setFqaEditTc, goto } = useApp();
   const casesOf = (name) => fqaCases.filter((c) => c.suite === name);
   const tcOf = (name) => casesOf(name).length;
-  const [tcOpen, setTcOpen] = useState(null); // TC 수 클릭 → 소속 케이스 모달 (스위트 이름)
-  const [tcQ, setTcQ] = useState("");
+  const [sel, setSel] = useState(suites[0] ? suites[0].id : null);
+  const [q, setQ] = useState("");
+  const [draft, setDraft] = useState({});
   const stK = { "승인": "pass", "검토중": "warn", "초안": "draft" };
-  const tcList = tcOpen ? casesOf(tcOpen).filter((c) => !tcQ || (c.id + " " + c.name + " " + (c.tags || "")).toLowerCase().includes(tcQ.toLowerCase())) : [];
+  const selSuite = suites.find((x) => x.id === sel) || suites[0] || null;
+  const rows = selSuite ? casesOf(selSuite.name).filter((c) => !q || (c.id + " " + c.name + " " + (c.tags || "")).toLowerCase().includes(q.toLowerCase())) : [];
+  const pick = (id) => { setSel(id); setDraft({}); };
+  const nm = draft.name != null ? draft.name : (selSuite ? selSuite.name : "");
+  const ds = draft.desc != null ? draft.desc : (selSuite ? (selSuite.desc || "") : "");
+  const dirty = !!selSuite && (nm !== selSuite.name || ds !== (selSuite.desc || ""));
+  const saveSuite = () => {
+    const name = nm.trim();
+    if (!name) { flash("이름을 입력하세요"); return; }
+    if (name !== selSuite.name && suites.some((s) => s.id !== selSuite.id && s.name === name)) { flash("같은 이름의 스위트가 이미 있습니다"); return; }
+    // 스위트 이름을 바꾸면 소속 케이스(c.suite)까지 함께 갱신 — 소속이 끊기지 않게
+    if (name !== selSuite.name) casesOf(selSuite.name).forEach((c) => updateFqaCase(c.id, { suite: name }));
+    updateFqaSuite(selSuite.id, { name, desc: ds }); setDraft({}); flash("스위트가 수정되었습니다");
+  };
   // 혼합 여부는 소속 케이스의 스텝에서 파생 — 스위트는 platform을 갖지 않는다
   const mixOf = (name) => {
     const cs = fqaCases.filter((c) => c.suite === name);
@@ -1234,95 +1371,99 @@ export function FqaSuiteScreen() {
     return web && api ? "웹+API" : api ? "API" : web ? "웹" : "-";
   };
   const [open, setOpen] = useState(false);
-  const [edit, setEdit] = useState(null);
   const [form, setForm] = useState(SF0);
-  const openAdd = () => { setEdit(null); setForm(SF0); setOpen(true); };
-  const openEdit = (sId) => { const sv = suites.find((x) => x.id === sId); setEdit(sId); setForm({ ...SF0, ...sv }); setOpen(true); };
+  const openAdd = () => { setForm(SF0); setOpen(true); };
   const save = () => {
-    if (!form.name.trim()) { flash("이름을 입력하세요"); return; }
-    if (edit === null) addFqaSuite({ ...form, id: Date.now() });
-    else updateFqaSuite(edit, form);
-    setOpen(false); flash(edit === null ? "스위트가 추가되었습니다" : "스위트가 수정되었습니다");
+    const name = form.name.trim();
+    if (!name) { flash("이름을 입력하세요"); return; }
+    if (suites.some((s) => s.name === name)) { flash("같은 이름의 스위트가 이미 있습니다"); return; }
+    const id = Date.now();
+    addFqaSuite({ ...form, name, id }); setSel(id); setDraft({}); setOpen(false); flash("스위트가 추가되었습니다");
   };
   const del = (s) => {
     if (tcOf(s.name) > 0) { flash("사용 중인 스위트는 삭제 불가 (" + tcOf(s.name) + "건)"); return; }
-    removeFqaSuite(s.id); flash("삭제됨");
+    removeFqaSuite(s.id); setDraft({}); flash("삭제됨");
   };
   const mixK = { "웹+API": "teal", "API": "warn", "웹": "info" };
   return (
     <div className="space-y-4">
       <PageToolbar desc="업무 흐름 묶음" />
-      <Card className="overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <span className="text-sm font-semibold text-slate-200">스위트 목록 <span className="text-xs font-normal text-slate-500">{suites.length}개</span></span>
-          <Btn kind="primary" icon={Plus} onClick={openAdd}>스위트 추가</Btn>
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-3 space-y-3">
+          <Btn kind="primary" icon={Plus} className="w-full" onClick={openAdd}>스위트 추가</Btn>
+          {suites.map((s) => (
+            <Card key={s.id} className={"p-3 " + ((selSuite && selSuite.id === s.id) ? "border-teal-500" : "hover:border-slate-700")}>
+              <div className="cursor-pointer" onClick={() => pick(s.id)}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0"><div className="truncate font-medium text-slate-200">{s.name}</div>{s.desc && <div className="truncate text-xs text-slate-500">{s.desc}</div>}</div>
+                  <button onClick={(e) => { e.stopPropagation(); del(s); }} className="shrink-0 text-slate-500 hover:text-red-400"><X size={13} /></button>
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5">{mixOf(s.name) !== "-" && <Badge kind={mixK[mixOf(s.name)] || "info"}>{mixOf(s.name)}</Badge>}<span className="text-xs text-slate-500">TC {tcOf(s.name)}</span></div>
+              </div>
+            </Card>
+          ))}
+          {suites.length === 0 && <div className="rounded-lg border border-dashed border-slate-800 py-8 text-center text-xs text-slate-600">스위트가 없습니다.</div>}
         </div>
-        <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">스위트</th><th className="font-medium">구성 (케이스에서 파생)</th><th className="font-medium">TC</th><th className="font-medium">수정</th><th></th></tr></thead>
-          <tbody>
-            {suites.map((s) => (
-              <tr key={s.id} className="border-b border-slate-800 text-slate-300 hover:bg-slate-800">
-                <td className="px-4 py-3"><div className="font-medium text-slate-200">{s.name}</div>{s.desc && <div className="text-xs text-slate-500">{s.desc}</div>}</td>
-                <td>{mixOf(s.name) === "-" ? <span className="text-xs text-slate-600">-</span> : <Badge kind={mixK[mixOf(s.name)] || "info"}>{mixOf(s.name)}</Badge>}</td>
-                <td>{tcOf(s.name) > 0
-                  ? <button onClick={() => { setTcOpen(s.name); setTcQ(""); }} className="font-semibold text-teal-400 underline decoration-dotted underline-offset-2 hover:text-teal-300">{tcOf(s.name)}</button>
-                  : <span className="text-slate-600">0</span>}</td>
-                <td className="pr-2 text-xs text-slate-500 whitespace-nowrap">{s.updatedBy || "—"} · {s.updatedAt || "—"}</td>
-                <td className="pr-4 text-right whitespace-nowrap"><button onClick={() => openEdit(s.id)} className="mr-3 text-xs text-slate-400 hover:text-teal-400">편집</button><button onClick={() => del(s)} className="text-slate-500 hover:text-red-400"><X size={14} /></button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+        <div className="col-span-9 space-y-4">
+          {selSuite ? (
+            <>
+              <Card className="space-y-2.5 p-4">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1"><Input value={nm} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="스위트 이름" /></div>
+                  {dirty && <span className="shrink-0 text-xs text-amber-300">미저장 변경</span>}
+                  <Btn kind="primary" icon={Save} onClick={saveSuite} disabled={!dirty}>저장</Btn>
+                </div>
+                <Input value={ds} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} placeholder="설명 (선택)" />
+                <div className="flex items-center gap-2 text-xs text-slate-500">소속 <span className="font-semibold text-teal-400">{casesOf(selSuite.name).length}</span>건{mixOf(selSuite.name) !== "-" && <Badge kind={mixK[mixOf(selSuite.name)] || "info"}>{mixOf(selSuite.name)}</Badge>}</div>
+              </Card>
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
+                  <span className="shrink-0 text-sm font-semibold text-slate-200">포함 테스트케이스 <span className="text-xs font-normal text-slate-500">{casesOf(selSuite.name).length}건</span></span>
+                  <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5" style={{ maxWidth: 300 }}>
+                    <Search size={14} className="text-slate-500" />
+                    <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="TC·이름·태그 검색" className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none" />
+                    {q && <span className="shrink-0 text-xs text-slate-500">{rows.length}</span>}
+                  </div>
+                </div>
+                <div className="overflow-y-auto p-2" style={{ maxHeight: 520 }}>
+                  {rows.map((c) => (
+                    <div key={c.id} className="flex items-start gap-2 rounded-lg px-2 py-2 text-xs hover:bg-slate-800">
+                      <span className="w-24 shrink-0 pt-0.5 font-mono text-teal-400">{c.id}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-slate-200">{c.name}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-slate-500">
+                          {tagList(c.tags).map((t) => <span key={t} className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-400">{t}</span>)}
+                          <span>수정 {c.updatedBy || "—"} · {c.updatedAt || "—"}</span>
+                        </div>
+                      </div>
+                      <Badge kind={SURF_K[surfacesOf(c)] || "info"}>{surfacesOf(c)}</Badge>
+                      <Badge kind={stK[c.status] || "draft"}>{c.status}</Badge>
+                      <button onClick={() => { setFqaEditTc(c.id); goto("fqa-cases"); }} className="shrink-0 pt-0.5 text-slate-400 hover:text-teal-400">편집</button>
+                    </div>
+                  ))}
+                  {rows.length === 0 && <div className="py-10 text-center text-xs text-slate-600">{casesOf(selSuite.name).length === 0 ? "이 스위트에 포함된 테스트케이스가 없습니다." : "검색 결과가 없습니다."}</div>}
+                </div>
+              </Card>
+            </>
+          ) : (
+            <Card className="flex items-center justify-center py-16 text-xs text-slate-600">왼쪽에서 스위트를 선택하세요.</Card>
+          )}
+        </div>
+      </div>
 
       {open && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setOpen(false)}>
           <div className="w-full max-w-lg rounded-xl border border-slate-800 bg-slate-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5"><h3 className="font-semibold text-slate-100">{edit === null ? "스위트 추가" : "스위트 편집"}</h3><button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button></div>
+            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5"><h3 className="font-semibold text-slate-100">스위트 추가</h3><button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button></div>
             <div className="space-y-3.5 p-5">
-              {edit !== null && <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs text-slate-400">이 스위트에 속한 케이스 <span className="font-semibold text-teal-400">{tcOf(form.name)}</span>건 · 구성 {mixOf(form.name)}</div>}
               <Field label="이름"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 결제 / 요금제" /></Field>
               <Field label="설명 (선택)"><Input value={form.desc || ""} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="이 스위트가 검증하는 업무 흐름" /></Field>
-              <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setOpen(false)}>취소</Btn><Btn kind="primary" icon={Save} onClick={save}>{edit === null ? "추가" : "저장"}</Btn></div>
+              <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setOpen(false)}>취소</Btn><Btn kind="primary" icon={Save} onClick={save}>추가</Btn></div>
             </div>
           </div>
         </div>
       )}
 
-      {/* TC 수 클릭 → 소속 케이스 목록. 건수가 많아도 모달 안에서 검색·스크롤로 처리한다. */}
-      {tcOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setTcOpen(null)}>
-          <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5">
-              <h3 className="flex items-center gap-2 font-semibold text-slate-100">{tcOpen}<span className="text-xs font-normal text-slate-500">{casesOf(tcOpen).length}건</span>{mixOf(tcOpen) !== "-" && <Badge kind={mixK[mixOf(tcOpen)] || "info"}>{mixOf(tcOpen)}</Badge>}</h3>
-              <button onClick={() => setTcOpen(null)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button>
-            </div>
-            <div className="space-y-3 p-5">
-              <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
-                <Search size={14} className="text-slate-500" />
-                <input value={tcQ} onChange={(e) => setTcQ(e.target.value)} placeholder="TC·이름·태그 검색" className="flex-1 bg-transparent text-sm text-slate-200 outline-none" />
-                {tcQ && <span className="text-xs text-slate-500">{tcList.length}건</span>}
-              </div>
-              <div className="space-y-1 overflow-y-auto" style={{ maxHeight: 380 }}>
-                {tcList.map((c) => (
-                  <div key={c.id} onClick={() => { setTcOpen(null); setFqaEditTc(c.id); goto("fqa-cases"); }} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs hover:border-teal-700">
-                    <span className="w-24 shrink-0 font-mono text-teal-400">{c.id}</span>
-                    <span className="min-w-0 flex-1 truncate text-slate-200">{c.name}</span>
-                    <Badge kind={SURF_K[surfacesOf(c)] || "info"}>{surfacesOf(c)}</Badge>
-                    <Badge kind={stK[c.status] || "draft"}>{c.status}</Badge>
-                    <span className="w-12 shrink-0 text-right text-slate-500">{lastOf(fqaRuns, c.id)}</span>
-                  </div>
-                ))}
-                {tcList.length === 0 && <div className="py-8 text-center text-xs text-slate-600">검색 결과가 없습니다.</div>}
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-800 pt-3">
-                <span className="text-xs text-slate-500">행을 클릭하면 해당 테스트케이스 편집으로 이동합니다.</span>
-                <Btn onClick={() => { const n = tcOpen; setTcOpen(null); setFqaSuiteFocus(n); goto("fqa-cases"); }}>테스트케이스에서 열기</Btn>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       <Toast msg={msg} />
     </div>
   );
@@ -1371,8 +1512,8 @@ export function FqaRunScreen({ nav }) {
   const gatePlan = (plan) => { if (!suiteNames(plan).length) { flash(plan.name + " — 스위트가 선택되지 않았습니다"); return false; } return true; };
   // 실행 시점의 대상·환경·빌드 버전을 run에 스탬프 — "이 회귀가 어느 빌드에서 나왔나"를 추적하기 위함
   const stampOf = (plan) => { const { e, label } = envRefOf(plan); return { target: label, ver: (e && e.ver && e.ver !== "-") ? e.ver : "-" }; };
-  const runImmediate = (plan) => { if (!gatePlan(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); const st = nowStamp(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", startedAt: st, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", endedAt: nowStamp(), pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
-  const runDeferred = (plan, when) => { if (!gatePlan(plan)) return; const total = buildTcs(plan).length; const id = nextId(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: when + " 실행 예정", dur: "-", at: when, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] }); setRunOpen(false); flash(plan.name + " " + when + " 지연 실행 예약 · " + id); };
+  const runImmediate = (plan) => { if (!gatePlan(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); const st = nowStamp(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", startedAt: st, gate: plan.gate != null ? plan.gate : 95, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", endedAt: nowStamp(), pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
+  const runDeferred = (plan, when) => { if (!gatePlan(plan)) return; const total = buildTcs(plan).length; const id = nextId(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: when + " 실행 예정", dur: "-", at: when, gate: plan.gate != null ? plan.gate : 95, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] }); setRunOpen(false); flash(plan.name + " " + when + " 지연 실행 예약 · " + id); };
   const [runOpen, setRunOpen] = useState(false);
   const [rf, setRf] = useState({ plan: planNames[0] || "", mode: "즉시", when: "10분 후" });
   const PlanInfo = ({ name }) => { const pl = fqaPlans.find((p) => p.name === name); if (!pl) return null; const { e, label } = envRefOf(pl); return <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400">계획에서 상속 · 대상 <span className="text-slate-300">{label}</span> <Badge kind={SURF_K[surfLabel(pl)] || "info"}>{surfLabel(pl)}</Badge> · 스위트 <span className="text-slate-300">{suiteNames(pl).join(", ") || "없음"}</span> · <span className="text-slate-300">{[(e && e.webUrl) ? "브라우저 " + ((pl.brow || []).join(", ") || "Chrome") : null, (e && e.apiUrl) ? "타임아웃 " + (pl.timeout || 30) + "s" : null].filter(Boolean).join(" · ")}</span></div>; };
@@ -1511,7 +1652,8 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const tcs = run.tcs || [];
   const cur = tcs.find((t) => t.id === selId) || tcs[0] || null;
   const passRate = run.total ? Math.round((run.pass / run.total) * 1000) / 10 : 0;
-  const gate = run.fail > 0 || passRate < 95 ? "FAIL" : "PASS";
+  const gval = run.gate != null ? run.gate : 95;
+  const gate = run.fail > 0 || passRate < gval ? "FAIL" : "PASS";
   const evTabs = !run.brow ? ["요청", "응답", "로그"] : ["스크린샷", "영상", "단말 로그"];
   const evTab = evTabs.includes(etab) ? etab : evTabs[0];
   const _dur = (seed, base) => { let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 9973; return (base + (h % 500)).toLocaleString() + "ms"; };
@@ -1602,7 +1744,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
             {SUM.map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
             <Card className="p-3 text-center"><div className="text-2xl font-bold text-slate-100">{run.dur}</div><div className="mt-0.5 text-xs text-slate-500">소요</div></Card>
           </div>
-          <Card className="flex flex-wrap items-center gap-3 p-3 text-sm"><span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>품질 게이트: {gate}</span><span className="text-slate-400">기준 95% · 실제 <span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>{passRate}%</span></span>{run.platform !== "API" && (<><span className="text-slate-600">·</span><span className="text-slate-400">보정 제안 {tcs.filter((t) => t.heal).length}건</span></>)}</Card>
+          <Card className="flex flex-wrap items-center gap-3 p-3 text-sm"><span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>품질 게이트: {gate}</span><span className="text-slate-400">기준 {gval}% · 실제 <span className={"font-semibold " + (gate === "FAIL" ? "text-red-300" : "text-emerald-300")}>{passRate}%</span></span>{run.platform !== "API" && (<><span className="text-slate-600">·</span><span className="text-slate-400">보정 제안 {tcs.filter((t) => t.heal).length}건</span></>)}</Card>
           {tcs.length === 0 ? (
             <Card className="p-8 text-center text-sm text-slate-500">{run.status === "실행 중" || run.status === "대기 중" ? "실행이 진행 중입니다 — 완료 후 케이스 결과가 표시됩니다." : "이 실행에는 케이스 상세 결과가 없습니다."}</Card>
           ) : (
@@ -1842,58 +1984,6 @@ export function FqaDashboardScreen({ nav }) {
   );
 }
 /* ═══════════ 9. 테스트케이스 (통합 저장소) ═══════════ */
-/* ═══════════ API 케이스 뷰 (A안: 읽기 전용 · B안 확장 지점) ═══════════ */
-function FqaApiCaseView({ tc }) {
-  const { updateFqaCase, fqaSuites } = useApp();
-  const [msg, flash] = useToast();
-  const apiSuites = fqaSuites || [];
-  const [suite, setSuite] = useState(tc ? tc.suite : "");
-  const suiteDirty = suite !== (tc ? tc.suite : "");
-  const [tab, setTab] = useState("Form");
-  const [resp, setResp] = useState(null);
-  const steps = (tc && tc.steps) || [];
-  const req = steps.find((s) => s.act === "요청");
-  const asserts = steps.filter((s) => s.act === "검증");
-  const method = req ? (req.loc.split(" ")[0] || "GET") : "GET";
-  const path = req ? req.loc.split(" ").slice(1).join(" ") : "";
-  const status = (asserts[0] && parseInt(asserts[0].val, 10)) || 200;
-  const send = () => { setResp({ s: "run" }); setTimeout(() => setResp({ s: "done", code: status, ms: 40 + (method.length * 17) % 120, body: '{ "id": 1, "result": "ok" }' }), 600); };
-  const script = "import { test, expect } from '@playwright/test';\n\ntest('" + (tc ? tc.id + " " + tc.name : "") + "', async ({ request }) => {\n  const res = await request." + method.toLowerCase() + "('" + (path || "/") + "');\n  expect(res.status()).toBe(" + status + ");\n  // 응답 스키마·본문 검증 ...\n});";
-  return (
-    <>
-      <Hdr icon={Code2} title={"API 케이스 · " + (tc ? tc.id : "")} badge="API" desc="요청 / 검증 정의 · 전용 편집기 준비 중" />
-      <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-300">API 전용 편집기는 준비 중입니다 — 현재는 요청·검증 구조를 조회만 할 수 있습니다. (스펙 임포트로 생성 · 폼 편집은 B단계 제공)</div>
-      <div className="mt-3 flex items-center gap-2"><span className="text-xs font-semibold text-slate-400">테스트 스위트</span><div style={{ width: 240 }}><Select value={suite} onChange={(e) => setSuite(e.target.value)}>{apiSuites.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}{apiSuites.length === 0 && <option>{tc ? tc.suite : "API 연동"}</option>}</Select></div>{suiteDirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={Save} disabled={!suiteDirty} onClick={() => { if (tc) updateFqaCase(tc.id, { suite }); flash("스위트 저장됨: " + suite); }}>저장</Btn></div>
-      <div className="mt-3"><Seg options={["Form", "Script"]} value={tab} onChange={setTab} /></div>
-      {tab === "Form" ? (
-        <Card className="mt-3 space-y-4 p-4">
-          <div>
-            <div className="mb-1.5 text-xs font-semibold text-slate-400">요청</div>
-            {req ? (<div className="flex items-center gap-2"><Badge kind={M_K[method] || "info"}>{method}</Badge><span className="font-mono text-sm text-slate-200">{path}</span></div>) : <span className="text-xs text-slate-500">요청 정의 없음</span>}
-            {req && req.val && <div className="mt-1.5 font-mono text-xs text-slate-500">{req.val}</div>}
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-semibold text-slate-400">검증 ({asserts.length})</div>
-            <div className="space-y-1.5">
-              {asserts.map((a, i) => (<div key={i} className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-800 px-3 py-1.5 text-xs"><CheckCircle2 size={13} className="text-emerald-400" /><span className="text-slate-300">{a.loc}</span><span className="font-mono text-slate-400">{a.val}</span></div>))}
-              {asserts.length === 0 && <span className="text-xs text-slate-500">검증 없음</span>}
-            </div>
-          </div>
-        </Card>
-      ) : (
-        <Card className="mt-3 p-4"><div className="mb-2 text-xs font-semibold text-slate-400">스크립트 미리보기 <span className="font-normal text-slate-500">· 읽기 전용</span></div><pre className="overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300" style={{ fontFamily: "monospace" }}>{script}</pre></Card>
-      )}
-      <div className="mt-3 flex items-center gap-2"><Btn kind="primary" icon={Send} onClick={send}>{resp && resp.s === "run" ? "전송 중…" : "요청 전송 (Send)"}</Btn><span className="text-xs text-slate-500">＊ 브라우저·러너 없이 요청 직접 전송 · 공식 이력·게이트 미집계(디버그)</span></div>
-      {resp && resp.s === "done" && (
-        <Card className="mt-2 space-y-2 p-3">
-          <div className="flex items-center gap-2 text-xs"><Badge kind={resp.code < 400 ? "pass" : "fail"}>{resp.code}</Badge><span className="text-slate-400">{resp.ms}ms</span><span className={"font-semibold " + (resp.code === status ? "text-emerald-400" : "text-red-400")}>{resp.code === status ? "기대 상태 일치" : "기대 불일치"}</span></div>
-          <pre className="overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300" style={{ fontFamily: "monospace" }}>{resp.body}</pre>
-        </Card>
-      )}
-      <Toast msg={msg} />
-    </>
-  );
-}
 export function FqaCasesScreen() {
   const { fqaCases, fqaSuites, addFqaCase, setFqaCaseStatus, removeFqaCase, fqaEditTc, setFqaEditTc, fqaSuiteFocus, setFqaSuiteFocus } = useApp();
   const editorDirty = useRef(false);
@@ -1916,7 +2006,9 @@ export function FqaCasesScreen() {
   const stK = { "승인": "pass", "검토중": "warn", "초안": "draft" };
   const lvK2 = { "Low-Code": "teal", "Full-Code": "warn" };
   const lvLabel = (c) => c.level;
-  const list = fqaCases.filter((c) => (stf === "전체" || c.status === stf) && (suiteF === "전체" || c.suite === suiteF) && (tagF === "전체" || tagList(c.tags).includes(tagF)) && (platF === "전체" || surfacesOf(c) === platF) && (c.id + c.name + c.suite + c.tags).toLowerCase().includes(q.toLowerCase()));
+  // 수정 최신순 — 방금 만들거나 고친 케이스가 위로. (updatedAt 없는 시드는 뒤로)
+  const list = fqaCases.filter((c) => (stf === "전체" || c.status === stf) && (suiteF === "전체" || c.suite === suiteF) && (tagF === "전체" || tagList(c.tags).includes(tagF)) && (platF === "전체" || surfacesOf(c) === platF) && (c.id + c.name + c.suite + c.tags).toLowerCase().includes(q.toLowerCase()))
+    .slice().sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
   const delCase = (c, after) => { if (!window.confirm(c.id + " 삭제할까요? 되돌릴 수 없습니다.")) return; removeFqaCase(c.id); if (after) after(); flash(c.id + " 삭제됨"); };
   const togglePick = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allPicked = list.length > 0 && list.every((c) => picked.has(c.id));
@@ -1930,7 +2022,7 @@ export function FqaCasesScreen() {
     const name = (blank.name || "").trim();
     if (!name) { flash("TC 이름을 입력하세요"); return; }
     // 목록에 넣지 않는다 — 다른 경로처럼 첫 저장 때 생성된다(열기만 하고 안 쓰면 남지 않음)
-    const c = { id: "TC-" + Date.now().toString().slice(-4), origin: "직접 작성", name, suite: blank.suite, tags: "", status: "초안", level: blank.level, dataset: "-", steps: [] };
+    const c = { id: nextTcId(fqaCases), origin: "직접 작성", name, suite: blank.suite, tags: "", status: "초안", level: blank.level, dataset: "-", steps: [] };
     if (blank.level === "Full-Code") c.code = stepsToCode([], c);   // 주입 계약이 담긴 골격
     setBlank(null); setSel(c); setMode("edit");
   };
@@ -1954,7 +2046,7 @@ export function FqaCasesScreen() {
           {addOpen && (
             <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-xl">
               {/* 모든 경로는 '실행 가능한 스텝'을 만든다 — 스텝 없는 TC는 만들지 않는다 */}
-              {[["직접 작성", Pencil, "빈 케이스", true], ["레코딩 (웹)", Video, "레코딩", true], ["API 스펙 임포트", FileText, "api-import", true], ["cURL / HAR", Terminal, "", false]].map(([l, Ic, m, ok]) => (
+              {[["직접 작성", Pencil, "빈 케이스", true], ["레코딩 (웹)", Video, "레코딩", true], ["API 임포트", FileText, "api-import", true]].map(([l, Ic, m, ok]) => (
                 <button key={l} disabled={!ok} onClick={() => { if (!ok) return; setAddOpen(false); if (m === "빈 케이스") { setBlank({ name: "", suite: (fqaSuites[0] || {}).name || "", level: "Low-Code" }); return; } setMode(m); }} className={"flex w-full items-center gap-2 px-3 py-2 text-sm " + (ok ? "text-slate-200 hover:bg-slate-800" : "cursor-not-allowed text-slate-600")}><Ic size={14} className={ok ? "text-teal-400" : "text-slate-600"} />{l}{!ok && <span className="ml-auto text-slate-500" style={{ fontSize: 10 }}>준비 중</span>}</button>
               ))}
             </div>
@@ -2178,7 +2270,7 @@ export function FqaTargetScreen() {
     if (!tf.name.trim()) { flash("대상 이름을 입력하세요"); return; }
     if (!tf.webUrl.trim() && !tf.apiUrl.trim()) { flash("웹 또는 API 접점 중 하나 이상을 입력하세요"); return; }
     const ns = { id: Date.now(), name: tf.name, envs: [{ env: tf.env, webUrl: tf.webUrl, apiUrl: tf.apiUrl, status: "미확인", ver: "-", prod: tf.env === "운영", accts: [] }] };
-    guardSwitch(() => { addFqaSystem(ns); setSel(systems.length); setEnvIdx(0); setModal(null); flash("대상이 추가되었습니다"); });
+    guardSwitch(() => { addFqaSystem(ns); setSel(0); setEnvIdx(0); setModal(null); flash("대상이 추가되었습니다"); });
   };
   const addEnv = () => {
     if (!ef.env) { flash("추가할 수 있는 환경이 없습니다 — 이미 모두 등록되었습니다"); return; }
@@ -2389,7 +2481,7 @@ export function FqaTargetScreen() {
 const TG = ({ on, onClick }) => (
   <button onClick={onClick} className={"relative h-5 w-9 rounded-full transition " + (on ? "bg-teal-600" : "bg-slate-700")}><span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all" style={{ left: on ? 18 : 2 }} /></button>
 );
-export function FqaPlanScreen({ nav }) {
+export function FqaPlanScreen() {
   const { fqaSuites, fqaSystems, fqaCases, fqaRuns, addFqaRun, updateFqaRun, fqaPlans, addFqaPlan, updateFqaPlan, removeFqaPlan, jiraConfig } = useApp();
   const [msg, flash] = useToast();
   // 대상·환경은 ID 참조 { systemId, env } — 이름 변경에도 참조가 깨지지 않는다
@@ -2397,21 +2489,18 @@ export function FqaPlanScreen({ nav }) {
   const keyOf = (ref) => (ref ? ref.systemId + "|" + ref.env : "");
   const envOf = (ref) => { const sy = (fqaSystems || []).find((s) => s.id === (ref || {}).systemId); return sy ? (sy.envs || []).find((e) => e.env === (ref || {}).env) : null; };
   const labelOf = (ref) => { const o = targetOpts.find((t) => keyOf(t) === keyOf(ref)); return o ? o.label : "미지정"; };
-  // 이 환경이 제공하는 접점 → 실행 옵션 노출 여부를 결정 (platform 축 없음)
-  const surfOf = (ref) => { const e = envOf(ref) || {}; return { web: !!e.webUrl, api: !!e.apiUrl }; };
   const defRef = targetOpts[0] ? { systemId: targetOpts[0].systemId, env: targetOpts[0].env } : { systemId: 0, env: "" };
   const [addOpen, setAddOpen] = useState(false);
   const [nf, setNf] = useState({ name: "", targetRef: defRef, suites: [], tags: "" });
   const [selId, setSelId] = useState(fqaPlans[0] ? fqaPlans[0].id : null);
   const sel = fqaPlans.find((p) => p.id === selId) || fqaPlans[0] || { id: 0, name: "-", targetRef: defRef, suites: [], tags: "" };
+  const [name, setName] = useState(sel.name);
   const [targetRef, setTargetRef] = useState(sel.targetRef || defRef);
   const [suites, setSuites] = useState(sel.suites || []);
   const toggleSuite = (n) => setSuites((s) => (s.includes(n) ? s.filter((x) => x !== n) : [...s, n]));
-  const surf = surfOf(targetRef);
   const [tags, setTags] = useState(sel.tags);
   const [brow, setBrow] = useState(sel.brow || ["Chrome"]);
   const [res, setRes] = useState(sel.res || "1920×1080");
-  const [headless, setHeadless] = useState(sel.headless !== false);
   const [workers, setWorkers] = useState(sel.workers || "4");
   const [retry, setRetry] = useState(sel.retry != null ? sel.retry : 1);
   const [onfail, setOnfail] = useState(sel.onfail || "계속 진행");
@@ -2419,6 +2508,7 @@ export function FqaPlanScreen({ nav }) {
   const [apiTimeout, setApiTimeout] = useState(sel.timeout || 30);
   const [gate, setGate] = useState(sel.gate != null ? sel.gate : 95);
   const [planStatus, setPlanStatus] = useState(sel.status || "초안");
+  const [sched, setSched] = useState(sel.schedule || DEFAULT_SCHED);
   const [jira, setJira] = useState(sel.jira || { override: false });
   const jgc = jiraConfig || {};
   const enableJira = (on) => setJira(on ? { override: true, project: jira.project || jgc.project || "", issueType: jira.issueType || jgc.issueType || "Bug", assignee: jira.assignee != null ? jira.assignee : (jgc.assignee || ""), labels: jira.labels != null ? jira.labels : (jgc.labels || ""), titleTpl: jira.titleTpl || jgc.titleTpl || "" } : { override: false });
@@ -2427,14 +2517,20 @@ export function FqaPlanScreen({ nav }) {
   // 실행 대상 = 스위트 ∩ 태그 ∩ 승인 (실행 화면의 buildTcs와 같은 규칙)
   const planCases = fqaCases.filter((c) => suites.includes(c.suite) && !c.quarantined && tagMatch(c, tags) && c.status === "승인");
   const planTargets = planCases.length;
+  // 실행 옵션·접점은 이 계획이 실제로 테스트하는 케이스에서 파생 — 환경이 제공하는 접점이 아니라
+  const planSurf = planCases.map((c) => surfacesOf(c));
+  const surf = { web: planSurf.some((s) => s === "웹" || s === "웹+API"), api: planSurf.some((s) => s === "API" || s === "웹+API") };
   /* 대상 케이스가 이 환경에서 실제로 돌 수 있는가 —
      API 케이스인데 환경에 apiUrl이 없으면 전 건 실패한다. 조용히 빼지 않고 경고한다. */
   const uncovered = planCases.filter((c) => !envCovers(envOf(targetRef), surfacesOf(c)));
-  const pick = (p) => { setSelId(p.id); setTargetRef(p.targetRef || defRef); setSuites(p.suites || []); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setHeadless(p.headless !== false); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setApiTimeout(p.timeout != null ? p.timeout : 30); setGate(p.gate != null ? p.gate : 95); setPlanStatus(p.status || "초안"); setJira(p.jira || { override: false }); };
-  const saveCfg = () => { updateFqaPlan(sel.id, { targetRef, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus, jira }); flash(sel.name + " 설정 저장됨"); };
-  const dirty = JSON.stringify({ targetRef, suites, tags, brow, res, headless, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus, jira }) !== JSON.stringify({ targetRef: sel.targetRef || defRef, suites: sel.suites || [], tags: sel.tags, brow: sel.brow || ["Chrome"], res: sel.res || "1920×1080", headless: sel.headless !== false, workers: sel.workers || "4", retry: sel.retry != null ? sel.retry : 1, onfail: sel.onfail || "계속 진행", video: sel.video || "실패 시만", timeout: sel.timeout != null ? sel.timeout : 30, gate: sel.gate != null ? sel.gate : 95, status: sel.status || "초안", jira: sel.jira || { override: false } });
+  // 운영주의 — 대상이 운영(prod) 환경인데 실데이터를 건드리는 케이스가 섞였을 때 경고(막지 않음)
+  const isProdTarget = !!(envOf(targetRef) || {}).prod;
+  const cautionCases = isProdTarget ? planCases.filter((c) => c.prodCaution) : [];
+  const pick = (p) => { setSelId(p.id); setName(p.name); setTargetRef(p.targetRef || defRef); setSuites(p.suites || []); setTags(p.tags); setBrow(p.brow || ["Chrome"]); setRes(p.res || "1920×1080"); setWorkers(p.workers || "4"); setRetry(p.retry != null ? p.retry : 1); setOnfail(p.onfail || "계속 진행"); setVideo(p.video || "실패 시만"); setApiTimeout(p.timeout != null ? p.timeout : 30); setGate(p.gate != null ? p.gate : 95); setPlanStatus(p.status || "초안"); setSched(p.schedule || DEFAULT_SCHED); setJira(p.jira || { override: false }); };
+  const saveCfg = () => { const nm = name.trim() || sel.name; updateFqaPlan(sel.id, { name: nm, targetRef, suites, tags, brow, res, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus, jira, schedule: sched, sched: (sched && sched.summary) || "예약 없음" }); flash(nm + " 설정 저장됨"); };
+  const dirty = JSON.stringify({ name, targetRef, suites, tags, brow, res, workers, retry, onfail, video, timeout: apiTimeout, gate, status: planStatus, jira }) !== JSON.stringify({ name: sel.name, targetRef: sel.targetRef || defRef, suites: sel.suites || [], tags: sel.tags, brow: sel.brow || ["Chrome"], res: sel.res || "1920×1080", workers: sel.workers || "4", retry: sel.retry != null ? sel.retry : 1, onfail: sel.onfail || "계속 진행", video: sel.video || "실패 시만", timeout: sel.timeout != null ? sel.timeout : 30, gate: sel.gate != null ? sel.gate : 95, status: sel.status || "초안", jira: sel.jira || { override: false } }) || schedKey(sched) !== schedKey(sel.schedule || DEFAULT_SCHED);
   const choosePlan = (p) => { if (p.id === sel.id) return; if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; pick(p); };
-  const createPlan = () => { const nm = nf.name.trim(); if (!nm) { flash("계획 이름을 입력하세요"); return; } if (!nf.suites.length) { flash("스위트를 1개 이상 선택하세요"); return; } const id = Math.max(0, ...fqaPlans.map((x) => x.id)) + 1; const np = { id, name: nm, targetRef: nf.targetRef, suites: nf.suites, tags: nf.tags, sched: "예약 없음", status: "초안", brow: ["Chrome"], res: "1920×1080", headless: true, workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", timeout: 30, gate: 95 }; addFqaPlan(np); pick(np); setAddOpen(false); setNf({ name: "", targetRef: defRef, suites: [], tags: "" }); flash(nm + " 계획 생성 (초안)"); };
+  const createPlan = () => { const nm = nf.name.trim(); if (!nm) { flash("계획 이름을 입력하세요"); return; } if (!nf.suites.length) { flash("스위트를 1개 이상 선택하세요"); return; } const id = Math.max(0, ...fqaPlans.map((x) => x.id)) + 1; const np = { id, name: nm, targetRef: nf.targetRef, suites: nf.suites, tags: nf.tags, sched: "예약 없음", status: "초안", brow: ["Chrome"], res: "1920×1080", workers: "4", retry: 1, onfail: "계속 진행", video: "실패 시만", timeout: 30, gate: 95 }; addFqaPlan(np); pick(np); setAddOpen(false); setNf({ name: "", targetRef: defRef, suites: [], tags: "" }); flash(nm + " 계획 생성 (초안)"); };
   const delPlan = (pl) => { if (!window.confirm(pl.name + " 계획을 삭제할까요?")) return; removeFqaPlan(pl.id); if (selId === pl.id) { const rest = fqaPlans.filter((x) => x.id !== pl.id); setSelId(rest[0] ? rest[0].id : null); } flash(pl.name + " 삭제됨"); };
   return (
     <div className="space-y-4">
@@ -2454,14 +2550,14 @@ export function FqaPlanScreen({ nav }) {
           ))}
         </div>
         <Card className="col-span-9 p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="text-base font-semibold text-slate-100">상세 설정 — {sel.name}</div>
-            <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><TG on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="min-w-0 max-w-sm flex-1"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="계획 이름" /></div>
+            <div className="flex shrink-0 items-center gap-3"><div className="flex items-center gap-2 text-sm text-slate-300"><span>{planStatus === "활성" ? "활성" : "초안"}</span><TG on={planStatus === "활성"} onClick={() => setPlanStatus(planStatus === "활성" ? "초안" : "활성")} /></div>{dirty && <span className="text-xs text-amber-300">미저장 변경</span>}<Btn kind="primary" icon={RefreshCw} onClick={saveCfg} disabled={!dirty}>설정 저장</Btn></div>
           </div>
           <div className="mb-4 flex items-center gap-3 text-xs text-slate-500"><span>생성 <span className="text-slate-400">{sel.createdBy || "—"}</span> · {sel.createdAt || "—"}</span><span className="text-slate-600">·</span><span>수정 <span className="text-slate-400">{sel.updatedBy || "—"}</span> · {sel.updatedAt || "—"}</span></div>
           <div className="grid grid-cols-2 gap-5">
             <div className="space-y-3.5">
-              <Field label="대상·환경" hint={"접점: " + [surf.web ? "웹" : null, surf.api ? "API" : null].filter(Boolean).join("+") || "없음"}>
+              <Field label="대상·환경" hint={"접점: " + ([surf.web ? "웹" : null, surf.api ? "API" : null].filter(Boolean).join("+") || "없음")}>
                 <Select value={keyOf(targetRef)} onChange={(e) => { const o = targetOpts.find((t) => keyOf(t) === e.target.value); if (o) setTargetRef({ systemId: o.systemId, env: o.env }); }}>
                   {targetOpts.map((t) => <option key={keyOf(t)} value={keyOf(t)}>{t.label}</option>)}
                 </Select>
@@ -2486,6 +2582,13 @@ export function FqaPlanScreen({ nav }) {
                 <div className="rounded-lg border border-red-800 bg-red-950 px-2.5 py-1.5 text-xs text-red-300">
                   ⚠ <span className="font-semibold">{uncovered.length}건</span>은 이 환경에서 돌 수 없습니다 — {[...new Set(uncovered.map((c) => surfacesOf(c)))].join(" · ")} 접점이 필요한데 <span className="font-semibold">{labelOf(targetRef)}</span>에 해당 URL이 없습니다.
                   <div className="mt-0.5 font-mono text-red-400">{uncovered.slice(0, 4).map((c) => c.id).join(", ")}{uncovered.length > 4 ? " 외 " + (uncovered.length - 4) + "건" : ""}</div>
+                </div>
+              )}
+              {/* 운영주의 — 막지 않고 알린다. 운영에 실데이터 테스트를 정당하게 하는 경우도 있으므로. */}
+              {cautionCases.length > 0 && (
+                <div className="rounded-lg border border-amber-800 bg-amber-950 px-2.5 py-1.5 text-xs text-amber-300">
+                  ⚠ <span className="font-semibold">운영 환경</span>에 <span className="font-semibold">운영주의 {cautionCases.length}건</span>이 포함됩니다 — 실데이터를 변경·삭제할 수 있습니다.
+                  <div className="mt-0.5 font-mono text-amber-400">{cautionCases.slice(0, 4).map((c) => c.id).join(", ")}{cautionCases.length > 4 ? " 외 " + (cautionCases.length - 4) + "건" : ""}</div>
                 </div>
               )}
               <Field label="품질 게이트 (PASS 기준 %)"><Input type="number" value={gate} onChange={(e) => setGate(+e.target.value || 0)} className="w-28" /></Field>
@@ -2513,15 +2616,14 @@ export function FqaPlanScreen({ nav }) {
               </div>
               <div className="flex items-center gap-4">
                 <Field label="종료 조건"><Select value={onfail} onChange={(e) => setOnfail(e.target.value)}><option>계속 진행</option><option>첫 에러 시 중단</option></Select></Field>
-                {surf.web && <div className="flex items-center gap-2 pt-5 text-sm text-slate-300"><span>Headless</span><TG on={headless} onClick={() => setHeadless(!headless)} /></div>}
               </div>
-              {surf.web && surf.api && <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">이 환경은 <span className="text-slate-300">웹·API 접점을 모두</span> 제공합니다 — 브라우저 옵션은 화면 스텝에, 타임아웃은 요청 스텝에 적용됩니다(혼합 케이스 실행 가능).</div>}
+              {surf.web && surf.api && <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">이 계획은 <span className="text-slate-300">웹·API 케이스를 모두</span> 포함합니다 — 브라우저 옵션은 화면 스텝에, 타임아웃은 요청 스텝에 적용됩니다.</div>}
             </div>
           </div>
           <div className="mt-5 border-t border-slate-800 pt-4">
             {planStatus === "활성" ? (
               <>
-                <ScheduleConfig events={fqaEvents(envOf(targetRef), labelOf(targetRef))} singleSelect manualHint="자동 실행 없음 — 수동 실행으로만 수행합니다." toast={flash} />
+                <ScheduleConfig key={sel.id} value={sched} onChange={setSched} events={fqaEvents(envOf(targetRef), labelOf(targetRef))} singleSelect manualHint="자동 실행 없음 — 수동 실행으로만 수행합니다." toast={flash} />
                 <div className="mt-3 text-xs text-slate-500">스케줄·이벤트 트리거 실행은 항상 켜진 <span className="text-slate-300">공유/CI 러너</span>에서 무인 수행됩니다 — 저작용 개인 로컬 러너와 분리.</div>
               </>
             ) : (
@@ -2582,4 +2684,3 @@ export function FqaPlanScreen({ nav }) {
     </div>
   );
 }
-
