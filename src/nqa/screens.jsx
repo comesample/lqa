@@ -16,22 +16,7 @@ const NQA_META = {
   "nqa-trend": ["성능 추이", "회차/빌드 간 처리량·p95·에러율 추이 · 성능 회귀 감지"],
 };
 
-function SubSwitch() {
-  const { toast } = useApp();
-  return (
-    <div className="flex items-center gap-1.5">
-      {NQA_SUBTYPES.map((s) => (
-        <button
-          key={s.id}
-          onClick={() => { if (!s.ready) toast(s.label + "은 비활성 상태입니다 (준비 중)", "info"); }}
-          className={"rounded-lg px-3 py-1.5 text-xs font-semibold " + (s.ready ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-800")}
-        >
-          {s.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+// 워크스페이스 전환(앱 성능/부하)은 App.jsx 사이드바에서 1회 선택 — 화면별 탭 제거(2026-07).
 
 /* ═══════════ 측정 대상·환경 (부하 대상 SUT · 인증 · 부하 생성 인프라) — 기능 QA 독립 ═══════════ */
 const M_LK = { GET: "info", POST: "pass", PUT: "warn", DELETE: "fail", PATCH: "warn" };
@@ -72,7 +57,6 @@ export function NqaTargetScreen() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="부하 대상(SUT) · 인증 · 부하 생성 인프라" />
-      <SubSwitch />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-3 space-y-3">
           <Btn kind="primary" icon={Plus} className="w-full" onClick={() => { setNf({ name: "", baseUrl: "", protocol: "HTTP/HTTPS", env: "스테이징" }); setModal(true); }}>부하 대상 추가</Btn>
@@ -222,7 +206,6 @@ export function NqaScenarioScreen() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="부하 대상 선택 · 워크로드(비율 혼합/순차 진행) · 부하 형상(VU/RPS 램프·지속)" />
-      <SubSwitch />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-3 space-y-3">
           <Btn kind="primary" icon={Plus} className="w-full" onClick={openModal}>새 시나리오</Btn>
@@ -432,7 +415,6 @@ export function NqaPlanScreen() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="측정 시나리오 + SLA 판정 임계(합격/불합격) — 계획이 아우름" />
-      <SubSwitch />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-3 space-y-3">
           <Btn kind="primary" icon={Plus} className="w-full" onClick={openModal}>새 계획</Btn>
@@ -596,11 +578,10 @@ export function NqaRunScreen({ nav }) {
   };
   const promote = (r) => { const p = (nqaPlans || []).find((x) => x.id === r.planId) || {}; const s = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {}; const target = simResult(s, p.sla || {}); updateNqaRun(r.id, { status: "완료", startedAt: nqaNow(), endedAt: stampPlus(900), durationSec: 900, result: target }); flash("실행 완료 · " + target.verdict); };
   const cancelResv = (r) => { removeNqaRun(r.id); flash("예약 취소됨"); };
-  if (!plans.length) return <div className="space-y-4"><PageToolbar desc="부하 주입 + 실시간 관측(RPS/에러율/p95)" /><SubSwitch /><div className="p-8 text-center text-sm text-slate-500">활성 상태인 측정 계획이 없습니다 — 측정 계획에서 계획을 활성화하세요.</div></div>;
+  if (!plans.length) return <div className="space-y-4"><PageToolbar desc="부하 주입 + 실시간 관측(RPS/에러율/p95)" /><div className="p-8 text-center text-sm text-slate-500">활성 상태인 측정 계획이 없습니다 — 측정 계획에서 계획을 활성화하세요.</div></div>;
   return (
     <div className="space-y-4">
       <PageToolbar desc="부하 주입 + 실시간 관측(RPS/에러율/p95)" />
-      <SubSwitch />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-5 space-y-3">
           <Card className="p-4 space-y-3">
@@ -681,7 +662,6 @@ export function NqaHistoryScreen() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="부하 실행 이력 · 처리량·p95·에러율·SLA 결과" />
-      <SubSwitch />
       <Card className="overflow-hidden p-0">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">회차</th><th className="px-3 py-2 text-left">계획</th><th className="px-3 py-2 text-left">시각</th><th className="px-3 py-2 text-right">처리량</th><th className="px-3 py-2 text-right">p95</th><th className="px-3 py-2 text-right">에러율</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
@@ -737,7 +717,6 @@ export function NqaTrendScreen() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="회차/빌드 간 처리량·p95·에러율 추이 · 성능 회귀 감지" />
-      <SubSwitch />
       <Card className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><TrendingUp size={15} className="text-teal-400" />p95 추이 <span className="text-xs font-normal text-slate-500">· 회차별</span></div>
@@ -800,7 +779,6 @@ export function NqaDashboardScreen({ nav }) {
   return (
     <div className="space-y-4">
       <PageToolbar desc="부하 KPI · SLA 판정 추이 · 계획별 처리량/지연 요약" />
-      <SubSwitch />
       <div className="grid grid-cols-4 gap-3">
         <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><CheckCircle2 size={14} className="text-teal-400" />SLA 합격률</div><div className="mt-1 text-2xl font-semibold text-slate-100">{rate}<span className="text-sm text-slate-500">%</span></div><div className="text-xs text-slate-500">최근 {recent.length}회 중 {passN} 합격</div></Card>
         <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><Bug size={14} className="text-red-400" />미해결 성능 결함</div><div className={"mt-1 text-2xl font-semibold " + (openDef > 0 ? "text-red-300" : "text-slate-100")}>{openDef}</div><div className="text-xs text-slate-500">SLA 불합격 결함 (Open)</div></Card>
@@ -849,7 +827,6 @@ export function NqaScreen({ view }) {
   return (
     <div className="space-y-4">
       <PageToolbar desc={desc} />
-      <SubSwitch />
       <Card className="flex flex-col items-center justify-center gap-2 p-12 text-center">
         <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-slate-800"><Gauge size={22} className="text-teal-400" /></div>
         <div className="text-sm font-semibold text-slate-200">{active} · {label}</div>

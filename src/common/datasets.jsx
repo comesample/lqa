@@ -28,7 +28,7 @@ export function DatasetsScreen() {
   // 참조처: NQA 측정 시나리오(scn.dataset) + FQA 테스트케이스(c.dataset)
   const refsOf = (name) => [
     ...(fqaCases || []).filter((c) => c.dataset === name).map((c) => ({ domain: "FQA", domLabel: "기능 QA", code: c.id, title: c.name, tc: c.id })),
-    ...(nqaScenarios || []).filter((s) => s.dataset === name).map((s) => ({ domain: "NQA", domLabel: "비기능 QA · 부하", code: "시나리오", title: s.name, id: s.id })),
+    ...(nqaScenarios || []).filter((s) => s.dataset === name).map((s) => ({ domain: "NQA", domLabel: "성능 QA · 부하", code: "시나리오", title: s.name, id: s.id })),
   ];
   const refCount = (name) => refsOf(name).length;
   const goRef = (r) => {

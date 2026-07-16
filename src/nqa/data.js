@@ -1,6 +1,6 @@
 import { LayoutDashboard, Plug, Code2, ClipboardList, Play, History, TrendingUp } from "lucide-react";
 
-/* 비기능 QA · 클라이언트 성능(v1) 메뉴 IA — FQA와 동일한 준비·설계 / 실행·분석 골격 */
+/* 성능 QA · 메뉴 IA (앱 성능 주력 · 부하 별도) — FQA와 동일한 준비·설계 / 실행·분석 골격 */
 export const NQA_SECTIONS = [
   { group: "모니터링", items: [
     { id: "nqa-dashboard", label: "대시보드", icon: LayoutDashboard },
@@ -17,10 +17,10 @@ export const NQA_SECTIONS = [
   ] },
 ];
 
-/* 비기능 하위 유형 — 클라이언트 성능(v1)·부하(준비중). 접근성·보안은 향후(미노출). */
+/* 성능 QA 하위 워크스페이스 — 앱 성능(주력·준비중, 전면)·부하(현재 v1, 별도). 접근성·보안은 향후 별도 도메인. */
 export const NQA_SUBTYPES = [
+  { id: "perf", label: "앱 성능", ready: false },
   { id: "load", label: "부하", ready: true },
-  { id: "perf", label: "클라이언트 성능", ready: false },
 ];
 
 /* 부하(v1) — 서버 엔드포인트 자극(HTTP). 기능 QA와 완전 독립. */
