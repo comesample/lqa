@@ -284,7 +284,7 @@ export function JiraForm({ close, data }) {
         <Toggle on={jira} onClick={() => { if (!jconn) { toast("Jira 미연동 — 결함 화면의 ‘Jira 연동’에서 먼저 연결하세요", "warn"); return; } setJira(!jira); }} />
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></Field>
+        <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">성능 QA</option></Select></Field>
         <Field label="심각도"><Select value={sev} onChange={(e) => { setSev(e.target.value); setPrio(prioMap[e.target.value] || "High"); }}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
         <Field label="담당자"><Select value={assignee} onChange={(e) => setAssignee(e.target.value)}><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
       </div>
@@ -1401,8 +1401,15 @@ export function Run() {
     const next = waiting.reduce((a, b) => (String(a.id) <= String(b.id) ? a : b));
     if (procRef.current[next.id]) return;
     procRef.current[next.id] = true;
-    updateRun(next.id, { status: "진행중", startedAt: nowStamp() });
-    setTimeout(() => completeRef.current && completeRef.current(next.id), 1800);
+    const total = (next.results || []).length || 1;
+    updateRun(next.id, { status: "진행중", startedAt: nowStamp(), prog: 0, progt: "0/" + total });
+    // 진행률 시뮬레이션 — 케이스가 하나씩 '챗봇 호출→LLM 판정'을 끝낼 때마다 완료수·비율 증가(완료/전체). 실제도 같은 방식으로 표시 가능.
+    let f = 0; const FR = Math.min(total, 12);
+    const iv = setInterval(() => {
+      f += 1;
+      if (f >= FR) { clearInterval(iv); updateRun(next.id, { prog: 100, progt: total + "/" + total }); completeRef.current && completeRef.current(next.id); }
+      else updateRun(next.id, { prog: Math.round((f / FR) * 100), progt: Math.round((f / FR) * total) + "/" + total });
+    }, 950);
   }, [runs]);
   useEffect(() => {
     if (!runIntent) return;
@@ -1456,9 +1463,12 @@ export function Run() {
           </div>
           <div className="mt-2 space-y-1.5">
             {queueRuns.map((r) => (
-              <div key={r.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2 text-xs">
-                <div><span className="font-mono text-teal-400">{r.id}</span> <span className="text-slate-200">{r.planName}</span></div>
-                <div className="flex items-center gap-2 text-slate-400"><Badge kind={r.status === "진행중" ? "warn" : "info"}>{r.status}</Badge><Badge kind="info">{r.trigger}</Badge></div>
+              <div key={r.id} className="rounded-lg bg-slate-800 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div><span className="font-mono text-teal-400">{r.id}</span> <span className="text-slate-200">{r.planName}</span></div>
+                  <div className="flex items-center gap-2 text-slate-400">{r.status === "진행중" && r.progt && <span className="text-slate-500">{r.progt} 케이스</span>}<Badge kind={r.status === "진행중" ? "warn" : "info"}>{r.status}</Badge><Badge kind="info">{r.trigger}</Badge></div>
+                </div>
+                {r.status === "진행중" && <div className="mt-1.5 h-1.5 rounded bg-slate-700"><div className="h-1.5 rounded bg-teal-500 transition-all" style={{ width: (r.prog || 0) + "%" }} /></div>}
               </div>
             ))}
           </div>
@@ -1669,7 +1679,7 @@ export function Defects() {
   const sev = KIND.severity;
   const st = KIND.issueStatus;
   const domKind = KIND.domain;
-  const domLabel = { LQA: "AI 품질", FQA: "기능 QA", NQA: "비기능 QA" };
+  const domLabel = { LQA: "AI 품질", FQA: "기능 QA", NQA: "성능 QA" };
   const [dom, setDom] = useState(domain || "전체");
   const [stf, setStf] = useState("전체");
   const [sel, setSel] = useState(null);
@@ -1687,7 +1697,7 @@ export function Defects() {
   const resN = list.filter((d) => d.status === "Resolved").length;
   const reverify = (d) => {
     const dm = d.domain || "LQA";
-    if (dm === "NQA") { toast("비기능 QA는 준비 중입니다 (확장 예정)", "info"); return; }
+    if (dm === "NQA") { toast("성능 QA는 준비 중입니다 (확장 예정)", "info"); return; }
     if (dm !== domain) setDomain(dm);
     if (dm === "FQA") { if (setFqaEditTc) setFqaEditTc(d.tc); toast(d.tc + " 재검증 — 테스트케이스 편집으로 이동", "info"); goto("fqa-cases"); }
     else { toast(d.tc + " 재검증 — 평가 실행으로 이동", "info"); goto("run"); }
@@ -1695,7 +1705,7 @@ export function Defects() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="GitLab / Jira 연계 · 전 도메인 공통">
-        <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">비기능 QA</option></Select></div>
+        <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">성능 QA</option></Select></div>
         <div style={{ width: 130 }}><Select value={stf} onChange={(e) => setStf(e.target.value)}><option value="전체">전체 상태</option><option value="Open">Open</option><option value="In Progress">In Progress</option><option value="Resolved">Resolved</option></Select></div>
         <Btn icon={SlidersHorizontal} onClick={() => openModal("jiraConfig")}>Jira 연동</Btn>
         <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
@@ -1715,7 +1725,7 @@ export function Defects() {
               <td className="pr-4" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-2"><button onClick={() => reverify(d)} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button>{jc.connected && <button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button>}</div></td>
             </tr>
           ))}
-          {list.length === 0 && <tr><td colSpan={8}><EmptyState icon={Bug} title="해당 조건의 결함이 없습니다" hint="평가/실행 실패 시 자동·수동으로 이슈를 등록하세요" /></td></tr>}
+          {list.length === 0 && <tr><td colSpan={10}><EmptyState icon={Bug} title="해당 조건의 결함이 없습니다" hint="평가/실행 실패 시 자동·수동으로 이슈를 등록하세요" /></td></tr>}
         </tbody>
       </table>
       </Card>
@@ -1838,7 +1848,7 @@ export function Report() {
           <div className="-mt-1 text-xs text-slate-500">선택 범위 대시보드 지표를 <span className="text-slate-300">기간 스냅샷 + 직전 대비 델타 + 주요 실패·회귀·신규 결함 하이라이트</span>로 취합해 지정된 알림 채널로 발송합니다.</div>
           {rsched.on && (
             <div className="space-y-3">
-              <Field label="범위"><Select value={scope} onChange={(e) => setScope(e.target.value)}><option>AI 품질</option><option>기능 QA</option><option>비기능 QA · 부하</option><option>통합 (전체 도메인)</option></Select></Field>
+              <Field label="범위"><Select value={scope} onChange={(e) => setScope(e.target.value)}><option>AI 품질</option><option>기능 QA</option><option>성능 QA · 부하</option><option>통합 (전체 도메인)</option></Select></Field>
               <Field label="형식"><div className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">HTML <span className="text-xs text-slate-500">· PDF·Excel은 후속 지원</span></div></Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="주기"><Select value={rsched.freq} onChange={(e) => setRsched({ ...rsched, freq: e.target.value })}><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option></Select></Field>
@@ -1946,7 +1956,7 @@ export function MembersView() {
   const MENU_GROUPS = [
     { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge · Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
     { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "실행 이력", "회귀 비교", "불안정(Flaky)"] },
-    { id: "NQA", label: "비기능 QA", menus: ["대시보드", "대상·환경", "측정 시나리오", "측정 계획", "측정 실행", "실행 이력", "성능 추이"] },
+    { id: "NQA", label: "성능 QA", menus: ["대시보드", "대상·환경", "측정 시나리오", "측정 계획", "측정 실행", "실행 이력", "성능 추이"] },
     { id: "COM", label: "공통", menus: ["결함", "리포트·알림", "데이터셋", "변수"] },
   ];
   // QA 엔지니어 기본 조회: 설정성/민감 메뉴 + 부하 실행(위험 작업) + 변수(시크릿)
