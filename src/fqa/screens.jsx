@@ -1475,27 +1475,54 @@ const RUN_LOG = [
   { lv: "STEP", t: "fill [data-testid=username]" },
   { lv: "STEP", t: "click role=button[로그인]" },
   { lv: "PASS", t: "TC-031 PASS (0.7s)" },
+  { lv: "TC", t: "TC-203 OTP 재발송" },
+  { lv: "RETRY", t: "TC-203 1차 실패 → 재시도 (1/2)" },
+  { lv: "PASS", t: "TC-203 PASS (재시도 후, 2.1s)" },
   { lv: "TC", t: "TC-156 부가서비스 신청" },
   { lv: "FAIL", t: "TC-156 상태 미반영 (8.4s)" },
+  { lv: "ERROR", t: "TC-401 대상 응답 없음 · ECONNREFUSED (러너 오류)" },
 ];
 export function FqaRunScreen({ nav }) {
-  const { fqaRuns, addFqaRun, updateFqaRun, fqaCases, fqaSuites, fqaSystems, fqaPlans } = useApp();
+  const { fqaRuns, addFqaRun, updateFqaRun, removeFqaRun, fqaCases, fqaSuites, fqaSystems, fqaPlans } = useApp();
   const [msg, flash] = useToast();
   const [lvl, setLvl] = useState("ALL");
   const [tab, setTab] = useState("진행");
   const [fSt, setFSt] = useState("전체 상태");
   const [fPlan, setFPlan] = useState("전체 계획");
   const sK = { "실행 중": "warn", "대기 중": "info", "완료": "pass", "오류": "fail", "실패": "fail" };
-  const lvK = { INFO: "text-slate-400", TC: "text-teal-300", STEP: "text-slate-400", PASS: "text-emerald-300", FAIL: "text-red-300" };
+  // 예약 스케줄 = 오늘 시각에 발동하도록 스케줄된 활성 계획 수 (예보 — 발동하면 큐에 '대기'로 쌓인다)
+  const _now = new Date();
+  const _dow = _now.getDay(), _dom = _now.getDate(), _isWeekday = _dow >= 1 && _dow <= 5;
+  const _nowMin = _now.getHours() * 60 + _now.getMinutes();
+  const _tMin = (t) => { const p = String(t || "00:00").split(":"); return (+p[0] || 0) * 60 + (+p[1] || 0); };
+  // 예약 스케줄 = 오늘 '아직 발동 전(현재 시각 이후)'인 시간 스케줄 계획 수. 이미 지난 발동은 실행/완료 쪽에 있어야 하므로 제외.
+  // 계획 화면과 같은 소스(스케줄 객체)만 본다 — sched 요약 문자열 폴백 없음.
+  const firesToday = (p) => {
+    if (p.status !== "활성") return false;
+    const s = p.schedule;
+    if (!s || s.mode !== "schedule" || !s.active) return false;
+    if (s.freq === "hourly") return _now.getHours() < 23;   // 남은 정각이 오늘 안에 있음
+    const upcoming = _tMin(s.time) > _nowMin;                // 예정 시각이 아직 안 지났나
+    if (s.freq === "daily") return upcoming;
+    if (s.freq === "weekdays") return _isWeekday && upcoming;
+    if (s.freq === "weekly") return s.dow === _dow && upcoming;
+    if (s.freq === "monthly") return s.dom === _dom && upcoming;
+    return false;
+  };
+  const scheduledToday = fqaPlans.filter(firesToday).length;
+  const lvK = { INFO: "text-slate-400", TC: "text-teal-300", STEP: "text-slate-400", PASS: "text-emerald-300", FAIL: "text-red-300", RETRY: "text-amber-300", ERROR: "text-red-400" };
   const logs = RUN_LOG.filter((l) => lvl === "ALL" || l.lv === lvl);
   const tK = { "수동": "info", "스케줄": "pass", "CI": "warn", "예약": "info" };
   const hK = { "완료": "pass", "실패": "fail" };
   const planNames = fqaPlans.map((p) => p.name);
+  const runnableNames = fqaPlans.filter((p) => p.status === "활성").map((p) => p.name);
   const match = (r) => (fSt === "전체 상태" || r.status === fSt) && (fPlan === "전체 계획" || r.plan === fPlan);
-  const rows = fqaRuns.filter((r) => r.status === "실행 중" || r.status === "대기 중").filter(match);
+  const rows = fqaRuns.filter((r) => r.status === "실행 중" || r.status === "대기 중").filter(match).sort((a, b) => { const rk = (s) => (s === "실행 중" ? 0 : 1); if (rk(a.status) !== rk(b.status)) return rk(a.status) - rk(b.status); return parseInt(a.id.split("-")[1] || "0", 10) - parseInt(b.id.split("-")[1] || "0", 10); });
   const liveRun = fqaRuns.find((r) => r.status === "실행 중");
   const cnt = (fn) => fqaRuns.filter(fn).length;
-  const KPI = [["실행 중", cnt((r) => r.status === "실행 중"), "text-amber-400"], ["대기", cnt((r) => r.status === "대기 중"), "text-slate-100"], ["완료", cnt((r) => r.status === "완료"), "text-emerald-400"], ["오류", cnt((r) => r.status === "오류"), "text-red-400"], ["예약", cnt((r) => r.trig === "예약"), "text-teal-400"]];
+  const today = nowStamp().slice(0, 10);
+  const dateOf = (r) => String((r.endedAt && r.endedAt !== "-") ? r.endedAt : (r.startedAt || "")).slice(0, 10);
+  const KPI = [["실행 중", cnt((r) => r.status === "실행 중"), "text-amber-400"], ["대기", cnt((r) => r.status === "대기 중"), "text-slate-100"], ["예약 스케줄", scheduledToday, "text-teal-400"], ["완료", cnt((r) => r.status === "완료" && dateOf(r) === today), "text-emerald-400"], ["오류", cnt((r) => r.status === "오류" && dateOf(r) === today), "text-red-400"]];
   const nextId = () => "FRUN-" + (fqaRuns.reduce((m, r) => Math.max(m, parseInt((r.id.split("-")[1] || "0"), 10)), 500) + 1);
   // 계획의 대상·환경은 ID 참조 → 접점(웹/API)을 조회해 실행 옵션 표시에 사용
   const envRefOf = (plan) => { const sy = (fqaSystems || []).find((s) => s.id === ((plan.targetRef || {}).systemId)); const e = sy ? (sy.envs || []).find((x) => x.env === (plan.targetRef || {}).env) : null; return { sy, e, label: sy ? sy.name + " · " + (plan.targetRef || {}).env : "미지정" }; };
@@ -1509,82 +1536,103 @@ export function FqaRunScreen({ nav }) {
     const src = appr.length ? appr : fqaCases.filter(inSuite);
     return src.map((c) => ({ id: c.id, name: c.name, v: lastOf(fqaRuns, c.id) === "FAIL" ? "FAIL" : "PASS", dur: (Math.round((Math.random() * 3 + 0.3) * 10) / 10) + "s" }));
   };
-  const gatePlan = (plan) => { if (!suiteNames(plan).length) { flash(plan.name + " — 스위트가 선택되지 않았습니다"); return false; } return true; };
+  const gatePlan = (plan) => { if (plan.status !== "활성") { flash(plan.name + " — 초안 계획은 실행할 수 없습니다. 계획을 활성화하세요"); return false; } if (!suiteNames(plan).length) { flash(plan.name + " — 스위트가 선택되지 않았습니다"); return false; } return true; };
   // 실행 시점의 대상·환경·빌드 버전을 run에 스탬프 — "이 회귀가 어느 빌드에서 나왔나"를 추적하기 위함
   const stampOf = (plan) => { const { e, label } = envRefOf(plan); return { target: label, ver: (e && e.ver && e.ver !== "-") ? e.ver : "-" }; };
-  const runImmediate = (plan) => { if (!gatePlan(plan)) return; const tcs = buildTcs(plan); const fail = tcs.filter((t) => t.v === "FAIL").length; const total = tcs.length; const id = nextId(); const st = nowStamp(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", at: "방금 전", startedAt: st, gate: plan.gate != null ? plan.gate : 95, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setRunOpen(false); flash(plan.name + " 실행 시작 · " + id + " — 진행 상황은 큐에서 확인"); setTimeout(() => { updateFqaRun(id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", endedAt: nowStamp(), pass: total - fail, fail }); if (nav) nav(id); }, 1800); };
-  const runDeferred = (plan, when) => { if (!gatePlan(plan)) return; const total = buildTcs(plan).length; const id = nextId(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: when + " 실행 예정", dur: "-", at: when, gate: plan.gate != null ? plan.gate : 95, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] }); setRunOpen(false); flash(plan.name + " " + when + " 지연 실행 예약 · " + id); };
-  const [runOpen, setRunOpen] = useState(false);
-  const [rf, setRf] = useState({ plan: planNames[0] || "", mode: "즉시", when: "10분 후" });
-  const PlanInfo = ({ name }) => { const pl = fqaPlans.find((p) => p.name === name); if (!pl) return null; const { e, label } = envRefOf(pl); return <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400">계획에서 상속 · 대상 <span className="text-slate-300">{label}</span> <Badge kind={SURF_K[surfLabel(pl)] || "info"}>{surfLabel(pl)}</Badge> · 스위트 <span className="text-slate-300">{suiteNames(pl).join(", ") || "없음"}</span> · <span className="text-slate-300">{[(e && e.webUrl) ? "브라우저 " + ((pl.brow || []).join(", ") || "Chrome") : null, (e && e.apiUrl) ? "타임아웃 " + (pl.timeout || 30) + "s" : null].filter(Boolean).join(" · ")}</span></div>; };
+  const [runPlan, setRunPlan] = useState(runnableNames[0] || "");
+  const [selRunId, setSelRunId] = useState(null);
+  const selRun = fqaRuns.find((r) => r.id === selRunId && (r.status === "실행 중" || r.status === "대기 중")) || liveRun || rows[0] || null;
+  // 실행 = 큐 맨끝에 '대기'로 적재만. 픽업·실행·완료는 아래 큐 프로세서가 담당(앞선 작업이 없어야 실행).
+  const runNow = (plan) => { if (!gatePlan(plan)) return; const tcs = buildTcs(plan); const total = tcs.length; const id = nextId(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "수동", by: "QA Engineer", status: "대기 중", prog: 0, progt: "대기", dur: "-", at: "방금 전", gate: plan.gate != null ? plan.gate : 95, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setSelRunId(id); flash(plan.name + " 실행 요청 · " + id + " — 큐 맨끝에 적재"); };
+  // 큐 프로세서(단일 러너 FIFO) — 러너가 비면(실행 중 0) 대기 큐의 맨앞(가장 오래된)을 픽업해 실행→완료
+  const procRef = useRef({});
+  useEffect(() => {
+    if (fqaRuns.some((r) => r.status === "실행 중")) return;
+    const waiting = fqaRuns.filter((r) => r.status === "대기 중");
+    if (!waiting.length) return;
+    const next = waiting.reduce((a, b) => (parseInt(a.id.split("-")[1] || "0", 10) <= parseInt(b.id.split("-")[1] || "0", 10) ? a : b));
+    if (procRef.current[next.id]) return;
+    procRef.current[next.id] = true;
+    const total = next.total || 0;
+    const fail = (next.tcs || []).filter((t) => t.v === "FAIL").length;
+    updateFqaRun(next.id, { status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", startedAt: nowStamp() });
+    setTimeout(() => updateFqaRun(next.id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", endedAt: nowStamp(), pass: total - fail, fail }), 1800);
+  }, [fqaRuns]);
+  const cancelRun = (r) => { if (!window.confirm(r.id + " 실행을 큐에서 취소할까요?")) return; removeFqaRun(r.id); if (selRunId === r.id) setSelRunId(null); flash(r.id + " 취소됨 — 큐에서 제거"); };
+  const stopRun = (r) => { if (!window.confirm(r.id + " 실행을 중지할까요? — 러너에 취소 신호를 보내고 큐에서 제거합니다")) return; removeFqaRun(r.id); if (selRunId === r.id) setSelRunId(null); flash(r.id + " 중지됨 — 러너 취소 · 큐에서 제거"); };
+  const PlanInfo = ({ name }) => { const pl = fqaPlans.find((p) => p.name === name); if (!pl) return null; const { label } = envRefOf(pl); return <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400">계획에서 상속 · 대상 <span className="text-slate-300">{label}</span> <Badge kind={SURF_K[surfLabel(pl)] || "info"}>{surfLabel(pl)}</Badge> · 스위트 <span className="text-slate-300">{suiteNames(pl).join(", ") || "없음"}</span></div>; };
   return (
     <div className="space-y-4">
       <PageToolbar desc="진행 중 · 실행 큐 (지금 실행 중·대기)" />
-      <>
-          <div className="grid grid-cols-5 gap-3">
-            {KPI.map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-6 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            {KPI.slice(0, 2).map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
           </div>
-          <div className="flex items-center gap-2">
-            <div style={{ width: 120 }}><Select value={fSt} onChange={(e) => setFSt(e.target.value)}><option>전체 상태</option><option>실행 중</option><option>대기 중</option></Select></div>
-            <div style={{ width: 200 }}><Select value={fPlan} onChange={(e) => setFPlan(e.target.value)}><option>전체 계획</option>{planNames.map((n) => (<option key={n}>{n}</option>))}</Select></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div style={{ width: 116 }}><Select value={fSt} onChange={(e) => setFSt(e.target.value)}><option>전체 상태</option><option>실행 중</option><option>대기 중</option></Select></div>
             <div className="flex-1" />
-            <Btn kind="primary" icon={Play} onClick={() => setRunOpen(true)}>실행</Btn>
+            <div style={{ width: 200 }}><Select value={runPlan} onChange={(e) => setRunPlan(e.target.value)} disabled={!runnableNames.length}>{runnableNames.length ? runnableNames.map((n) => <option key={n}>{n}</option>) : <option value="">활성 계획 없음</option>}</Select></div>
+            <Btn kind="primary" icon={Play} disabled={!runnableNames.length} onClick={() => { const pl = fqaPlans.find((x) => x.name === runPlan); if (!pl) { flash("실행할 계획을 선택하세요"); return; } runNow(pl); }}>실행</Btn>
           </div>
-          <div className="grid grid-cols-12 gap-4">
-            <Card className="col-span-8 overflow-hidden">
+          {!runnableNames.length && <div className="text-xs text-amber-400">활성 상태의 실행 계획이 없습니다 — 계획을 활성화해야 실행할 수 있습니다.</div>}
+          <Card className="overflow-hidden">
               <table className="w-full text-sm">
-                <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">스위트</th><th className="font-medium">환경</th><th className="font-medium">상태</th><th className="font-medium">진행</th><th className="font-medium">소요</th><th></th></tr></thead>
+                <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">상태</th><th className="font-medium">진행</th><th className="font-medium">소요</th><th></th></tr></thead>
                 <tbody>
-                  {rows.length === 0 && (<tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 실행이 없습니다</td></tr>)}
+                  {rows.length === 0 && (<tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">진행 중이거나 대기 중인 실행이 없습니다</td></tr>)}
                   {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-800 text-slate-300 hover:bg-slate-800">
-                      <td className="px-4 py-3"><div className="font-mono text-xs text-teal-400">{r.id}</div><div className="text-slate-200">{r.name}</div></td>
-                      <td className="text-slate-400">{r.suite}</td>
-                      <td className="text-xs text-slate-400">{r.brow || "API · REST"}</td>
-                      <td><Badge kind={sK[r.status]}>{r.status}</Badge></td>
+                    <tr key={r.id} onClick={() => setSelRunId(r.id)} className={"cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800 " + ((selRun && selRun.id === r.id) ? "bg-slate-800" : "")}>
+                      <td className="px-4 py-3"><div className="font-mono text-xs text-teal-400">{r.id}</div><div className="text-slate-200">{r.name}</div><div className="text-xs text-slate-500">{r.suite}</div></td>
+                      <td><Badge kind={sK[r.status] || "info"}>{r.status}</Badge></td>
                       <td style={{ minWidth: 90 }}>{r.status === "대기 중" ? <span className="text-xs text-slate-500">{r.progt}</span> : <div><div className="mb-0.5 text-xs text-slate-400">{r.progt}</div><div className="h-1.5 rounded bg-slate-800"><div className="h-1.5 rounded bg-teal-500" style={{ width: r.prog + "%" }} /></div></div>}</td>
                       <td className="text-xs text-slate-400">{r.dur}</td>
-                      <td className="pr-4 text-right whitespace-nowrap">{r.status === "실행 중" ? <button onClick={() => flash(r.id + " 중단")} className="mr-2 text-slate-500 hover:text-red-400"><Square size={13} /></button> : null}<button onClick={() => nav && nav(r.id)} className="text-xs text-slate-400 hover:text-teal-400">상세</button></td>
+                      <td className="pr-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>{r.status === "실행 중" ? <button onClick={() => stopRun(r)} className="text-xs text-slate-400 hover:text-red-400">중지</button> : <button onClick={() => cancelRun(r)} className="text-xs text-slate-400 hover:text-red-400">취소</button>}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </Card>
-            <Card className="col-span-4 overflow-hidden">
-              <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2.5"><span className="text-sm font-semibold text-slate-200">실시간 로그 <span className="font-normal text-slate-500">· 예시</span></span>{liveRun ? <span className="flex items-center gap-1 text-xs text-red-300"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />LIVE {liveRun.id}</span> : <span className="text-xs text-slate-600">대기</span>}</div>
-              {liveRun ? (<>
-              <div className="flex flex-wrap gap-1 border-b border-slate-800 px-2 py-1.5">
-                {["ALL", "INFO", "TC", "STEP", "PASS", "FAIL"].map((l) => (<button key={l} onClick={() => setLvl(l)} className={"rounded px-1.5 py-0.5 text-xs " + (lvl === l ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{l}</button>))}
-              </div>
-              <div className="overflow-y-auto p-2 font-mono text-xs" style={{ maxHeight: 230 }}>
-                {logs.map((l, i) => (<div key={i} className="flex gap-2 py-0.5"><span className={"w-9 shrink-0 font-semibold " + (lvK[l.lv] || "text-slate-500")}>{l.lv}</span><span className="text-slate-400">{l.t}</span></div>))}
-              </div>
-              </>) : (<div className="flex items-center justify-center p-8 text-xs text-slate-500" style={{ minHeight: 120 }}>실행 중인 작업이 없습니다</div>)}
+        </div>
+        <div className="col-span-6 space-y-3">
+          <div>
+            <div className="grid grid-cols-3 gap-3">
+              {KPI.slice(2).map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
+            </div>
+            <div className="mt-2 text-xs font-medium text-slate-500" style={{ marginBottom: 38 }}>오늘 · {today}</div>
+          </div>
+          <Card className="overflow-hidden">
+              {!selRun ? (
+                <div className="flex items-center justify-center p-8 text-xs text-slate-500" style={{ minHeight: 160 }}>왼쪽에서 실행을 선택하세요.</div>
+              ) : selRun.status === "실행 중" ? (
+                <>
+                  <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2.5">
+                    <div className="min-w-0"><div className="truncate text-sm font-semibold text-slate-200">{selRun.name}</div><div className="font-mono text-xs text-teal-400">{selRun.id}</div></div>
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-red-300"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />LIVE</span>
+                  </div>
+                  <div className="flex items-center gap-3 border-b border-slate-800 px-3 py-2 text-xs text-slate-400"><span>진행 <span className="text-slate-200">{selRun.progt}</span></span><div className="h-1.5 flex-1 rounded bg-slate-800"><div className="h-1.5 rounded bg-teal-500" style={{ width: selRun.prog + "%" }} /></div><span>경과 <span className="text-slate-200">{selRun.dur}</span></span></div>
+                  <div className="flex flex-wrap gap-1 border-b border-slate-800 px-2 py-1.5">
+                    {["ALL", "INFO", "TC", "STEP", "PASS", "FAIL", "RETRY", "ERROR"].map((l) => (<button key={l} onClick={() => setLvl(l)} className={"rounded px-1.5 py-0.5 text-xs " + (lvl === l ? "bg-teal-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>{l}</button>))}
+                  </div>
+                  <div className="overflow-y-auto p-2 font-mono text-xs" style={{ maxHeight: "58vh" }}>
+                    {logs.map((l, i) => (<div key={i} className="flex gap-2 py-0.5"><span className={"w-9 shrink-0 font-semibold " + (lvK[l.lv] || "text-slate-500")}>{l.lv}</span><span className="text-slate-400">{l.t}</span></div>))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2.5">
+                    <div className="min-w-0"><div className="truncate text-sm font-semibold text-slate-200">{selRun.name}</div><div className="font-mono text-xs text-teal-400">{selRun.id}</div></div>
+                    <button onClick={() => cancelRun(selRun)} className="shrink-0 text-xs text-slate-400 hover:text-red-400">취소</button>
+                  </div>
+                  <div className="space-y-2 p-4 text-xs text-slate-400">
+                    <div className="flex items-center gap-2"><Badge kind={sK[selRun.status] || "info"}>{selRun.status}</Badge><span className="text-slate-500">러너 배정 대기</span></div>
+                    <PlanInfo name={selRun.plan} />
+                  </div>
+                </>
+              )}
             </Card>
           </div>
-        </>
-      {runOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setRunOpen(false)}>
-          <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5"><h3 className="font-semibold text-slate-100">실행 시작</h3><button onClick={() => setRunOpen(false)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button></div>
-            <div className="space-y-3.5 p-5">
-              <Field label="실행 계획"><Select value={rf.plan} onChange={(e) => setRf({ ...rf, plan: e.target.value })}>{planNames.map((n) => <option key={n}>{n}</option>)}</Select></Field>
-              <PlanInfo name={rf.plan} />
-              <Field label="실행 방식">
-                <div className="flex gap-1.5">
-                  {[["즉시", "즉시 실행"], ["지연", "지연 예약"]].map(([k, l]) => (<button key={k} onClick={() => setRf({ ...rf, mode: k })} className={"flex-1 rounded-lg border px-3 py-1.5 text-xs " + (rf.mode === k ? "border-teal-500 bg-teal-900 text-teal-200" : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700")}>{l}</button>))}
-                </div>
-              </Field>
-              {rf.mode === "지연" && (
-                <Field label="실행 지연"><Select value={rf.when} onChange={(e) => setRf({ ...rf, when: e.target.value })}><option>5분 후</option><option>10분 후</option><option>30분 후</option><option>1시간 후</option></Select></Field>
-              )}
-              <div className="flex items-center gap-1.5 rounded-lg border border-teal-900 bg-teal-950 px-3 py-2 text-xs text-teal-200"><Server size={12} />공유/CI 러너에서 실행 · 품질 게이트 판정 · 실행 이력·대시보드에 집계</div>
-              <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-500">{rf.mode === "즉시" ? "선택한 계획을 지금 실행합니다 — 진행 상황은 큐에서 확인 후 결과로 이동합니다." : "지금 바쁠 때 잠시 뒤 실행하도록 큐에 대기로 적재합니다. 정기·이벤트(커밋/배포) 자동 실행은 실행 계획의 스케줄에서 설정하세요."}</div>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-slate-800 px-5 py-3.5"><Btn onClick={() => setRunOpen(false)}>취소</Btn><Btn kind="primary" icon={rf.mode === "즉시" ? Play : Calendar} onClick={() => { const pl = fqaPlans.find((x) => x.name === rf.plan); if (!pl) return; rf.mode === "즉시" ? runImmediate(pl) : runDeferred(pl, rf.when); }}>{rf.mode === "즉시" ? "실행 시작" : "예약 추가"}</Btn></div>
-          </div>
         </div>
-      )}
       <Toast msg={msg} />
     </div>
   );
@@ -2627,7 +2675,7 @@ export function FqaPlanScreen() {
                 <div className="mt-3 text-xs text-slate-500">스케줄·이벤트 트리거 실행은 항상 켜진 <span className="text-slate-300">공유/CI 러너</span>에서 무인 수행됩니다 — 저작용 개인 로컬 러너와 분리.</div>
               </>
             ) : (
-              <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2.5 text-xs text-amber-300">이 계획은 <span className="font-semibold">초안</span>입니다 — 스케줄·이벤트(무인) 실행 설정은 <span className="font-semibold">활성화</span> 후 가능합니다. 초안 상태에서는 수동 실행만 됩니다.</div>
+              <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2.5 text-xs text-amber-300">이 계획은 <span className="font-semibold">초안</span>입니다 — 스케줄과 실행 모두 <span className="font-semibold">활성화</span> 후 가능합니다.</div>
             )}
           </div>
           {(jgc.connected !== false) && (

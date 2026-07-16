@@ -186,8 +186,10 @@ export const INIT_FQA_CASES = [
 ];
 
 /* ── 실행 이력 ─────────────────────────────────────────────── */
+// 데모용 상대 날짜 — 시드가 항상 "오늘/어제" 기준으로 보이도록 (offsetDays: 0=오늘, -1=어제)
+const _rd = (offsetDays, hhmm) => { const t = new Date(); t.setDate(t.getDate() + offsetDays); const z = (n) => String(n).padStart(2, "0"); return t.getFullYear() + "-" + z(t.getMonth() + 1) + "-" + z(t.getDate()) + " " + hhmm; };
 export const INIT_FQA_RUNS = [
-  { id: "FRUN-503", name: "API 스모크", plan: "API 스모크 (스테이징)", suite: "API 연동", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "CI", by: "CI/CD Bot", status: "완료", prog: 100, progt: "5/5", dur: "0분 9초", at: "오늘 10:30", startedAt: "2026-07-09 10:30", endedAt: "2026-07-09 10:30", total: 5, pass: 4, fail: 1, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-503", name: "API 스모크", plan: "API 스모크 (스테이징)", suite: "API 연동", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "CI", by: "CI/CD Bot", status: "완료", prog: 100, progt: "5/5", dur: "0분 9초", at: "오늘 10:30", startedAt: _rd(0, "10:30"), endedAt: _rd(0, "10:30"), total: 5, pass: 4, fail: 1, warn: 0, heal: 0, tcs: [
     { id: "TC-0401", name: "사용자 조회", v: "PASS", dur: "0.3s" },
     { id: "TC-0402", name: "사용자 생성 후 조회", v: "PASS", dur: "0.4s" },
     { id: "TC-0403", name: "로그인 토큰 발급", v: "PASS", dur: "0.5s" },
@@ -197,16 +199,16 @@ export const INIT_FQA_RUNS = [
   { id: "FRUN-512", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 62, progt: "2/3", dur: "3분 12초", at: "방금 전", total: 3, pass: 2, fail: 0, warn: 0, heal: 1, tcs: [] },
   { id: "FRUN-511", name: "결제 회귀", plan: "결제 회귀 (웹+API)", suite: "결제 / 요금제", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "CI", by: "CI/CD Bot", status: "실행 중", prog: 50, progt: "1/2", dur: "5분 02초", at: "방금 전", total: 2, pass: 1, fail: 0, warn: 0, heal: 0, tcs: [] },
   { id: "FRUN-509", name: "회원가입 검증", plan: "전체 스모크 (운영)", suite: "회원가입", target: "T월드 · 운영", ver: "v5.11.3", brow: "Chrome", trig: "예약", by: "예약", status: "대기 중", prog: 0, progt: "대기 #1", dur: "-", at: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-505", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", suite: "메인 화면", target: "T월드 · 운영", ver: "v5.11.3", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "2/2", dur: "2분 41초", at: "어제 18:20", startedAt: "2026-07-08 18:20", endedAt: "2026-07-08 18:22", total: 2, pass: 2, fail: 0, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-505", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", suite: "메인 화면", target: "T월드 · 운영", ver: "v5.11.3", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "2/2", dur: "2분 41초", at: "어제 18:20", startedAt: _rd(-1, "18:20"), endedAt: _rd(-1, "18:22"), total: 2, pass: 2, fail: 0, warn: 0, heal: 0, tcs: [
     { id: "TC-0101", name: "메인 배너 노출", v: "PASS", dur: "0.6s" },
     { id: "TC-0102", name: "추천 요금제 카드 렌더", v: "PASS", dur: "0.9s" },
   ] },
-  { id: "FRUN-502", name: "결제 회귀", plan: "결제 회귀 (웹+API)", suite: "결제 / 요금제", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "2/2", dur: "3분 30초", at: "오늘 11:10", startedAt: "2026-07-09 11:10", endedAt: "2026-07-09 11:13", total: 2, pass: 1, fail: 1, warn: 0, heal: 1, tcs: [
+  { id: "FRUN-502", name: "결제 회귀", plan: "결제 회귀 (웹+API)", suite: "결제 / 요금제", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "2/2", dur: "3분 30초", at: "오늘 11:10", startedAt: _rd(0, "11:10"), endedAt: _rd(0, "11:13"), total: 2, pass: 1, fail: 1, warn: 0, heal: 1, tcs: [
     { id: "TC-0301", name: "요금제 선택(웹) → 결제(API) → 주문 확인(웹)", v: "PASS", dur: "8.4s", heal: { step: "장바구니 버튼", from: "[data-testid=cart]", to: "[data-testid=cart-add]", conf: 90 } },
     { id: "TC-0156", name: "부가서비스 상태 반영", v: "FAIL", dur: "1.2s" },
   ] },
-  { id: "FRUN-499", name: "API 스모크", plan: "API 스모크 (스테이징)", suite: "API 연동", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "CI", by: "CI/CD Bot", status: "오류", prog: 0, progt: "연결 실패", dur: "-", at: "오늘 08:50", startedAt: "2026-07-09 08:50", endedAt: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-487", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 22초", at: "어제 09:00", startedAt: "2026-07-08 09:00", endedAt: "2026-07-08 09:03", total: 3, pass: 2, fail: 0, warn: 1, heal: 0, tcs: [
+  { id: "FRUN-499", name: "API 스모크", plan: "API 스모크 (스테이징)", suite: "API 연동", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "CI", by: "CI/CD Bot", status: "오류", prog: 0, progt: "연결 실패", dur: "-", at: "오늘 08:50", startedAt: _rd(0, "08:50"), endedAt: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
+  { id: "FRUN-487", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 22초", at: "어제 09:00", startedAt: _rd(-1, "09:00"), endedAt: _rd(-1, "09:03"), total: 3, pass: 2, fail: 0, warn: 1, heal: 0, tcs: [
     { id: "TC-0031", name: "로그인 성공", v: "PASS", dur: "1.1s" },
     { id: "TC-0203", name: "OTP 재발송", v: "WARN", dur: "1.0s" },
     { id: "TC-0055", name: "세션 만료 처리", v: "PASS", dur: "3.1s" },
@@ -215,12 +217,12 @@ export const INIT_FQA_RUNS = [
 
 /* ── 실행 계획 = 환경 1개(ID참조) + 스위트 다중 + 실행 옵션 ── */
 export const INIT_FQA_PLANS = [
-  { id: 1, name: "로그인 회귀 (스테이징)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["로그인 / 인증"], tags: "regression", sched: "매일 09:00", status: "활성",
+  { id: 1, name: "로그인 회귀 (스테이징)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["로그인 / 인증"], tags: "regression", sched: "매일 22:00", schedule: { mode: "schedule", freq: "daily", time: "22:00", dow: 1, dom: 1, cron: "0 22 * * *", tz: "Asia/Seoul", active: true, ev: {}, summary: "매일 22:00" }, status: "활성",
     brow: ["Chrome"], res: "1920×1080", headless: true, video: "실패 시만", timeout: 30, workers: "4", retry: 1, onfail: "계속 진행", gate: 95 },
-  { id: 2, name: "전체 스모크 (운영)", targetRef: { systemId: 1, env: "운영" }, suites: ["로그인 / 인증", "메인 화면", "회원가입"], tags: "smoke", sched: "커밋 시(CI)", status: "활성",
+  { id: 2, name: "전체 스모크 (운영)", targetRef: { systemId: 1, env: "운영" }, suites: ["로그인 / 인증", "메인 화면", "회원가입"], tags: "smoke", sched: "이벤트 · 배포 시", schedule: { mode: "event", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: { deploy: true }, summary: "이벤트 · 배포 시" }, status: "활성",
     brow: ["Chrome", "Firefox"], res: "1920×1080", headless: true, video: "녹화 안 함", timeout: 30, workers: "auto", retry: 0, onfail: "계속 진행", gate: 98 },
   { id: 3, name: "결제 회귀 (웹+API)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["결제 / 요금제"], tags: "critical", sched: "예약 없음", status: "초안",
     brow: ["Chrome"], res: "1440×900", headless: false, video: "전체 녹화", timeout: 30, workers: "2", retry: 2, onfail: "첫 에러 시 중단", gate: 100 },
-  { id: 4, name: "API 스모크 (스테이징)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["API 연동"], tags: "smoke", sched: "커밋 시(CI)", status: "활성",
+  { id: 4, name: "API 스모크 (스테이징)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["API 연동"], tags: "smoke", sched: "이벤트 · 배포 시", schedule: { mode: "event", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: { deploy: true }, summary: "이벤트 · 배포 시" }, status: "활성",
     brow: ["Chrome"], res: "1920×1080", headless: true, video: "녹화 안 함", timeout: 30, workers: "4", retry: 1, onfail: "계속 진행", gate: 95 },
 ];

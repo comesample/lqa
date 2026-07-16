@@ -112,7 +112,7 @@ const mkRun = (o, seed) => { const results = mkResults(poolOf(o.planId), seed); 
 const mkPending = (o) => ({ ...o, cases: poolOf(o.planId).length, score: null, passRate: null, pass: 0, warn: 0, fail: 0 });
 
 export const INIT_RUNS = [
-  mkPending({ id: "R-2056", planId: 1, planName: "요금/청구 상담 평가", trigger: "이벤트", startedAt: "2026-06-12 14:20", status: "진행중", snapshot: { model: "Claude sonnet-4-6", promptVer: "v3", caseVer: "2026-06-12" } }),
+  mkRun({ id: "R-2056", planId: 1, planName: "요금/청구 상담 평가", trigger: "이벤트", startedAt: "2026-06-12 14:20", finishedAt: "2026-06-12 14:26", status: "완료", snapshot: { model: "Claude sonnet-4-6", promptVer: "v3", caseVer: "2026-06-12" } }, 13),
   mkRun({ id: "R-2054", planId: 1, planName: "요금/청구 상담 평가", trigger: "스케줄", startedAt: "2026-06-10 09:00", finishedAt: "2026-06-10 09:08", status: "완료", snapshot: { model: "Claude sonnet-4-6", promptVer: "v3", caseVer: "2026-06-09" } }, 11),
   mkRun({ id: "R-2051", planId: 2, planName: "개통/부가서비스 안내", trigger: "스케줄", startedAt: "2026-06-09 09:00", finishedAt: "2026-06-09 09:05", status: "완료", snapshot: { model: "GPT-4o", promptVer: "v3", caseVer: "2026-06-08" } }, 4),
   mkRun({ id: "R-2047", planId: 1, planName: "요금/청구 상담 평가", trigger: "수동", startedAt: "2026-06-08 16:30", finishedAt: "2026-06-08 16:38", status: "완료", snapshot: { model: "Claude sonnet-4-6", promptVer: "v2", caseVer: "2026-06-07" } }, 23),

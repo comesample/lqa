@@ -155,7 +155,7 @@ export default function App() {
     nqaRuns, addNqaRun: (r) => setNqaRuns((x) => [r, ...x]), updateNqaRun: (id, patch) => setNqaRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))), removeNqaRun: (id) => setNqaRuns((x) => x.filter((r) => r.id !== id)),
     variables, addVariable: (v) => setVariables((x) => [v, ...x]), updateVariable: (id, patch) => setVariables((x) => x.map((v) => (v.id === id ? { ...v, ...patch } : v))), removeVariable: (id) => setVariables((x) => x.filter((v) => v.id !== id)),
     datasets, addDataset: (d) => setDatasets((x) => [withCreate(d), ...x]), updateDataset: (id, patch) => setDatasets((x) => x.map((d) => (d.id === id ? { ...d, ...withUpdate(patch) } : d))), removeDataset: (id) => setDatasets((x) => x.filter((d) => d.id !== id)),
-    fqaRuns, addFqaRun: (r) => setFqaRuns((x) => [r, ...x]), updateFqaRun: (id, patch) => setFqaRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))),
+    fqaRuns, addFqaRun: (r) => setFqaRuns((x) => [r, ...x]), updateFqaRun: (id, patch) => setFqaRuns((x) => x.map((r) => (r.id === id ? { ...r, ...patch } : r))), removeFqaRun: (id) => setFqaRuns((x) => x.filter((r) => r.id !== id)),
     fqaPlans, addFqaPlan: (pl) => setFqaPlans((x) => [withCreate(pl), ...x]), updateFqaPlan: (id, patch) => setFqaPlans((x) => x.map((pl) => (pl.id === id ? { ...pl, ...withUpdate(patch) } : pl))), removeFqaPlan: (id) => setFqaPlans((x) => x.filter((pl) => pl.id !== id)),
     fqaResultRun, setFqaResultRun,
     debugEnv, setDebugEnv,

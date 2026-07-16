@@ -1045,7 +1045,7 @@ export function Plans() {
           {planStatus === "활성" ? (
             <ScheduleConfig key={cur.id} value={sched} onChange={setSched} events={lqaEvents((chatbots || []).find((c) => c.name === cur.bot))} singleSelect manualHint="자동 실행 없음 — 평가 실행 화면에서 수동으로만 수행합니다." toast={toast} />
           ) : (
-            <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2.5 text-xs text-amber-300">이 계획은 <span className="font-semibold">초안</span>입니다 — 스케줄·이벤트 실행 설정은 <span className="font-semibold">활성화</span> 후 가능합니다. 초안 상태에서는 평가 실행 화면에서 수동으로만 수행합니다.</div>
+            <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-2.5 text-xs text-amber-300">이 계획은 <span className="font-semibold">초안</span>입니다 — 스케줄 설정과 평가 실행 모두 <span className="font-semibold">활성화</span> 후 가능합니다.</div>
           )}
         </div>
         {(jgc.connected !== false) && (
@@ -1336,7 +1336,7 @@ export function Cases() {
 }
 export function Run() {
   const { cases, plans, prompts, runs, defects, addDefect, addRun, updateRun, updatePlan, toast, notify, openModal, runIntent, setRunIntent, goto, jiraConfig, setPendingSelect } = useApp();
-  const runningRuns = runs.filter((r) => r.status === "진행중");
+  const queueRuns = runs.filter((r) => r.status === "대기" || r.status === "진행중").slice().sort((a, b) => { const rk = (s) => (s === "진행중" ? 0 : 1); return rk(a.status) - rk(b.status) || String(a.id).localeCompare(String(b.id)); });
   const runnablePlans = plans.filter((p) => p.status === "활성");
   /* 중복 결함 판정 키 = (도메인, 대상, TC).
      결함은 "이 챗봇의 이 발화가 잘못됐다"이므로 챗봇이 다르면 다른 결함이다.
@@ -1347,37 +1347,42 @@ export function Run() {
   const openDefectOf = (id, bot) => defectsOfTc(id, bot).find((d) => d.status !== "Resolved");
   const isRegression = (id, bot) => !openDefectOf(id, bot) && defectsOfTc(id, bot).length > 0;
   const [planId, setPlanId] = useState((runnablePlans[0] || plans[0] || {}).id);
-  const [mode, setMode] = useState("idle");
-  const [prog, setProg] = useState(0);
   const [activeRun, setActiveRun] = useState(null);
   const [fromHistory, setFromHistory] = useState(false);
   const [sel, setSel] = useState(null);
   const [revF, setRevF] = useState("검토 필요");
-  const timer = useRef(null);
-  const runReq = useRef(null);
-  useEffect(() => () => clearInterval(timer.current), []);
+  const pendingRef = useRef(null);
   const curPlan = plans.find((p) => p.id === planId) || runnablePlans[0] || plans[0];
   // 보고 있는 실행이 평가한 챗봇 — 결함 동일성 판정의 축
   const runBot = botOf(plans.find((p) => p.id === (activeRun || {}).planId) || curPlan);
 
-  const finish = (plan, trigger) => {
+  // 평가 실행 = 서버 잡. 큐에 '대기'로 적재 → 프로세서가 진행중→완료로 처리. 수동·스케줄·이벤트 통일.
+  const buildRun = (plan, trigger) => {
     const planTpl = prompts.find((p) => p.name === plan.promptTpl);
     const dims = (planTpl && planTpl.rubric && planTpl.rubric.length) ? planTpl.rubric : (plan.weights && !Array.isArray(plan.weights) ? Object.keys(plan.weights) : null);
     // 정책 게이트는 금지 행위 텍스트가 있어야만 성립한다 — 비어 있으면 검사하지 않는다
     const gates = plan.opts ? { hall: !!plan.opts.hall, pii: !!plan.opts.pii, policy: !!plan.opts.policy && !!(plan.opts.policyText || "").trim() } : undefined;
-    const jr = (jiraConfig && jiraConfig.connected !== false) ? ((plan.jira && plan.jira.override) ? plan.jira : jiraConfig) : {}; // 결함 라우팅: 미연동 시 내부 결함, 연동 시 계획 재정의 > 전역
-    // 계획이 고른 케이스만 실행한다 (caseIds)
-    const target = planCases(cases, plan);
-    const res = mkResults(target, Date.now() % 97, dims, gates);
-    const _st = nowStamp();
-    // 집계는 results에서 파생 (rollup) — 계획의 최근 점수·최근 실행도 저장하지 않고 이력에서 파생한다
-    const run = { id: "R-" + Date.now().toString().slice(-5), planId: plan.id, planName: plan.name, trigger, startedAt: _st, finishedAt: _st, status: "완료", ...rollup(res), snapshot: { model: (plan.judgeList && plan.judgeList[0]) || "Claude sonnet-4-6", promptTpl: plan.promptTpl || "—", promptVer: planTpl ? ("v" + planTpl.ver) : "v1", caseVer: "최신" }, results: res };
-    addRun(run);
-    let made = 0;
+    const res = mkResults(planCases(cases, plan), Date.now() % 97, dims, gates);
+    // 집계는 results에서 파생(rollup) — 결과는 완료 시점에 노출
+    return { id: "R-" + Date.now().toString().slice(-5), planId: plan.id, planName: plan.name, trigger, status: "대기", startedAt: nowStamp(), finishedAt: null, ...rollup(res), snapshot: { model: (plan.judgeList && plan.judgeList[0]) || "Claude sonnet-4-6", promptTpl: plan.promptTpl || "—", promptVer: planTpl ? ("v" + planTpl.ver) : "v1", caseVer: "최신" }, results: res };
+  };
+  const enqueue = (plan, trigger) => {
+    if (!plan || plan.status !== "활성") { toast("활성 상태의 평가 계획만 실행할 수 있습니다 — 계획을 먼저 활성화하세요", "warn"); return; }
+    if (!planCases(cases, plan).length) { toast("이 계획에 선택된 테스트케이스가 없습니다 — 계획에서 케이스를 선택하세요", "warn"); return; }
+    const run = buildRun(plan, trigger); addRun(run); pendingRef.current = run.id; setActiveRun(null); setFromHistory(false);
+    toast(plan.name + " 평가 요청 · " + run.id + " — 큐에 적재", "ok");
+  };
+  // 완료 처리는 항상 최신 상태로 — ref에 담아 setTimeout에서 호출(스테일 클로저 회피)
+  const completeRef = useRef();
+  completeRef.current = (id) => {
+    const run = runs.find((r) => r.id === id);
+    if (!run || run.status !== "진행중") return;
+    const plan = plans.find((p) => p.id === run.planId) || {};
     const bot = botOf(plan);
-    // 자동 결함 등록은 무인 실행(스케줄/이벤트)에서만 — 수동 실행은 사람이 검토 후 등록
-    // 중복 판정은 (대상 챗봇, TC) 기준 — 다른 챗봇의 같은 TC는 별개 결함이다
-    if (trigger !== "수동") res.filter((r) => r.verdict === "FAIL").forEach((r) => {
+    const jr = (jiraConfig && jiraConfig.connected !== false) ? ((plan.jira && plan.jira.override) ? plan.jira : jiraConfig) : {};
+    let made = 0;
+    // 자동 결함 등록은 무인 실행(스케줄/이벤트)에서만 — 수동은 사람이 검토 후 등록
+    if (run.trigger !== "수동") (run.results || []).filter((r) => r.verdict === "FAIL").forEach((r) => {
       if (!openDefectOf(r.id, bot)) {
         addDefect({ key: (jr.project || "AUTO") + "-" + Math.floor(1000 + Math.random() * 9000), tc: r.id, target: bot, sev: r.safety && r.safety.PII !== "PASS" ? "Critical" : "Major", title: (isRegression(r.id, bot) ? "[재발] " : "") + (r.judge || "평가 실패").slice(0, 40), status: "Open", domain: "LQA", project: jr.project || "", assignee: jr.assignee || "",
           desc: "[요약] " + (r.judge || "-") + "\n[점수] " + (r.score != null ? r.score + "점" : "-") + "\n[안전성] 환각 " + ((r.safety && r.safety.환각) || "-") + " · PII " + ((r.safety && r.safety.PII) || "-"),
@@ -1386,36 +1391,32 @@ export function Run() {
         made++;
       }
     });
-    setActiveRun(run); setSel(res[0] || null); setMode("done");
-    toast("평가 완료 · " + run.score + "점 · 실패 " + run.fail + "건" + (made ? " · 결함 " + made + "건 자동 등록" : ""), "ok");
-    notify({ icon: "play", text: plan.name + " 완료 — PASS " + run.pass + " / FAIL " + run.fail });
+    updateRun(id, { status: "완료", finishedAt: nowStamp() });
+    notify({ icon: "play", text: run.planName + " 완료 — PASS " + run.pass + " / FAIL " + run.fail });
     if (made) notify({ icon: "bug", text: "FAIL " + made + "건 결함 자동 등록 (Jira 규칙)" });
+    if (pendingRef.current === id) { pendingRef.current = null; setActiveRun({ ...run, status: "완료" }); setSel((run.results && run.results[0]) || null); setFromHistory(false); toast("평가 완료 · " + run.score + "점 · 실패 " + run.fail + "건" + (made ? " · 결함 " + made + "건 자동 등록" : ""), "ok"); }
   };
-  const start = (plan, trigger) => {
-    if (mode === "running") return;
-    if (!plan || plan.status !== "활성") { toast("활성 상태의 평가 계획만 실행할 수 있습니다 — 계획을 먼저 활성화하세요", "warn"); return; }
-    if (!planCases(cases, plan).length) { toast("이 계획에 선택된 테스트케이스가 없습니다 — 계획에서 케이스를 선택하세요", "warn"); return; }
-    runReq.current = { plan, trigger };
-    setMode("running"); setProg(0); setActiveRun(null); setSel(null); setFromHistory(false);
-    timer.current = setInterval(() => { setProg((p) => (p >= 100 ? 100 : p + 5)); }, 80);
-  };
+  const procRef = useRef({});
   useEffect(() => {
-    if (mode === "running" && prog >= 100 && runReq.current) {
-      clearInterval(timer.current);
-      const { plan, trigger } = runReq.current; runReq.current = null;
-      finish(plan, trigger);
-    }
-  }, [prog, mode]);
+    if (runs.some((r) => r.status === "진행중")) return;   // 러너 사용 중
+    const waiting = runs.filter((r) => r.status === "대기");
+    if (!waiting.length) return;
+    const next = waiting.reduce((a, b) => (String(a.id) <= String(b.id) ? a : b));
+    if (procRef.current[next.id]) return;
+    procRef.current[next.id] = true;
+    updateRun(next.id, { status: "진행중", startedAt: nowStamp() });
+    setTimeout(() => completeRef.current && completeRef.current(next.id), 1800);
+  }, [runs]);
   useEffect(() => {
     if (!runIntent) return;
-    if (runIntent.type === "start") { const p = plans.find((x) => x.id === runIntent.planId) || plans[0]; setPlanId(p.id); setRunIntent(null); start(p, "수동"); }
-    else if (runIntent.type === "view") { const r = runs.find((x) => x.id === runIntent.runId); if (r) { setActiveRun(r); setSel((r.results && r.results[0]) || null); setMode("done"); setFromHistory(true); } setRunIntent(null); }
+    if (runIntent.type === "start") { const p = plans.find((x) => x.id === runIntent.planId) || plans[0]; setPlanId(p.id); setRunIntent(null); enqueue(p, "수동"); }
+    else if (runIntent.type === "view") { const r = runs.find((x) => x.id === runIntent.runId); if (r) { setActiveRun(r); setSel((r.results && r.results[0]) || null); setFromHistory(true); } setRunIntent(null); }
   }, [runIntent]);
 
   const res = activeRun && activeRun.results ? activeRun.results : [];
   const needRev = (r) => r.verdict !== "PASS";
   const shown = res.filter((r) => (revF === "전체" ? true : revF === "통과" ? r.verdict === "PASS" : needRev(r)));
-  useEffect(() => { if (mode === "done" && shown.length && (!sel || !shown.some((r) => r.id === sel.id))) setSel(shown[0]); }, [revF, activeRun, mode]);
+  useEffect(() => { if (activeRun && shown.length && (!sel || !shown.some((r) => r.id === sel.id))) setSel(shown[0]); }, [revF, activeRun]);
   const needTotal = res.filter(needRev).length;
   const overridden = res.filter((r) => r.final && r.final !== r.verdict).length;
   const persist = (rs) => { const eff = (r) => r.final || r.verdict; const pass = rs.filter((r) => eff(r) === "PASS").length; const fail = rs.filter((r) => eff(r) === "FAIL").length; const warn = rs.length - pass - fail; const passRate = Math.round((pass / (rs.length || 1)) * 100); const nr = { ...activeRun, results: rs, pass, warn, fail, passRate }; setActiveRun(nr); updateRun(nr.id, { results: rs, pass, warn, fail, passRate }); setSel((cs) => (cs ? rs.find((x) => x.id === cs.id) || cs : cs)); };
@@ -1446,31 +1447,28 @@ export function Run() {
             <span className="text-slate-600">·</span>
             <div><span className="text-slate-500">대상</span> <span className="text-slate-200 font-medium">TC {planCases(cases, curPlan).length}건</span> <span className="text-xs text-slate-500">(계획 선택)</span></div>
           </div>
-          <Btn kind="primary" icon={Play} disabled={!runnablePlans.length} onClick={() => start(curPlan, "수동")}>{mode === "running" ? "실행 중…" : "평가 실행"}</Btn>
+          <Btn kind="primary" icon={Play} disabled={!runnablePlans.length} onClick={() => enqueue(curPlan, "수동")}>평가 실행</Btn>
         </div>
-        {(mode === "running" || (mode === "done" && prog > 0)) && (
-          <div className="mt-3"><div className="flex justify-between text-xs mb-1"><span className="text-slate-400">{mode === "running" ? "평가 수행 중…" : "완료"}</span><span className="text-teal-400 font-semibold">{prog}%</span></div><div className="h-2 rounded bg-slate-800"><div className="h-2 rounded" style={{ width: prog + "%", background: C.teal, transition: "width .1s" }} /></div></div>
-        )}
         {activeRun && <div className="mt-2 text-xs text-slate-500">실행 <span className="font-mono text-teal-400">{activeRun.id}</span> · 트리거 {activeRun.trigger} · {activeRun.startedAt} · 스냅샷 {activeRun.snapshot.model} / 프롬프트 {activeRun.snapshot.promptVer}</div>}
       </Card>)}
 
-      {!fromHistory && runningRuns.length > 0 && (
+      {!fromHistory && queueRuns.length > 0 && (
         <Card className="p-3">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-300"><span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />진행 중 {runningRuns.length}건 <span className="font-normal text-slate-500">· 스케줄·이벤트 포함 무인 실행</span></span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-300"><span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />평가 큐 {queueRuns.length}건 <span className="font-normal text-slate-500">· 수동·스케줄·이벤트 통합 · 완료되면 결과가 아래에 열립니다</span></span>
           </div>
           <div className="mt-2 space-y-1.5">
-            {runningRuns.map((r) => (
+            {queueRuns.map((r) => (
               <div key={r.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2 text-xs">
                 <div><span className="font-mono text-teal-400">{r.id}</span> <span className="text-slate-200">{r.planName}</span></div>
-                <div className="flex items-center gap-2 text-slate-400"><Badge kind="info">{r.trigger}</Badge><span>{r.startedAt}</span></div>
+                <div className="flex items-center gap-2 text-slate-400"><Badge kind={r.status === "진행중" ? "warn" : "info"}>{r.status}</Badge><Badge kind="info">{r.trigger}</Badge></div>
               </div>
             ))}
           </div>
         </Card>
       )}
 
-      {!activeRun && mode !== "running" && (
+      {!activeRun && (
         <Card className="p-10"><EmptyState icon={Play} title="평가를 실행하면 결과가 여기에 표시됩니다" hint="계획을 선택하고 “평가 실행”을 누르세요 · 실행 이력에 자동 적재" /></Card>
       )}
 
