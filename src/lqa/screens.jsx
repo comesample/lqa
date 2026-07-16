@@ -178,12 +178,10 @@ export function AiGenForm({ close }) {
         <div className="text-xs text-slate-500 mt-1">PDF · DOCX · XLSX (외부 전송 없음)</div>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="카테고리"><Select value={catMode} onChange={(e) => setCatMode(e.target.value)}><option>자동 분류</option><option>지정</option></Select></Field>
-        {catMode === "지정"
-          ? <Field label="지정 카테고리"><Select value={cat} onChange={(e) => setCat(e.target.value)}>{categories.map((c) => <option key={c}>{c}</option>)}</Select></Field>
-          : <Field label="생성 모델"><Select value={model} onChange={(e) => setModel(e.target.value)}>{activeModels.map((m) => <option key={m.id}>{m.name}</option>)}</Select></Field>}
+        <Field label="카테고리 분류"><Select value={catMode} onChange={(e) => setCatMode(e.target.value)}><option>자동 분류</option><option>지정</option></Select></Field>
+        <Field label="생성 모델"><Select value={model} onChange={(e) => setModel(e.target.value)}>{activeModels.map((m) => <option key={m.id}>{m.name}</option>)}</Select></Field>
       </div>
-      {catMode === "지정" && <Field label="생성 모델"><Select value={model} onChange={(e) => setModel(e.target.value)}>{activeModels.map((m) => <option key={m.id}>{m.name}</option>)}</Select></Field>}
+      {catMode === "지정" && <Field label="지정 카테고리"><Select value={cat} onChange={(e) => setCat(e.target.value)}>{categories.map((c) => <option key={c}>{c}</option>)}</Select></Field>}
       <Field label="발화 유형 믹스">
         <div className="grid grid-cols-3 gap-2">
           {Object.keys(types).map((k) => (
@@ -1094,7 +1092,7 @@ export function RunHistory() {
       </div>
       <Card>
         <table className="w-full text-sm">
-          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">실행ID</th><th className="font-medium">계획</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">케이스</th><th className="font-medium">종합점수</th><th className="font-medium">PASS율</th><th></th></tr></thead>
+          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2.5 px-4 font-medium">실행ID</th><th className="font-medium">계획</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">케이스</th><th className="font-medium">종합점수</th><th className="pr-4 font-medium">PASS율</th></tr></thead>
           <tbody>
             {list.map((r) => (
               <tr key={r.id} onClick={() => { if (r.status !== "완료") { toast(r.id + " 오류로 종료 — 상세 결과 없음", "info"); return; } setRunIntent({ type: "view", runId: r.id }); goto("lqa-result"); }} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer text-slate-300">
@@ -1105,11 +1103,10 @@ export function RunHistory() {
                 <td><Badge kind={stKind[r.status]}>{r.status}</Badge></td>
                 <td>{r.cases}</td>
                 <td className="font-semibold text-slate-100">{r.score != null ? r.score : "—"}</td>
-                <td>{r.passRate != null ? r.passRate + "%" : "—"}</td>
-                <td className="pr-4 text-slate-600"><ChevronRight size={16} /></td>
+                <td className="pr-4">{r.passRate != null ? r.passRate + "%" : "—"}</td>
               </tr>
             ))}
-            {list.length === 0 && <tr><td colSpan={9}><EmptyState icon={History} title="실행 이력이 없습니다" hint="평가를 실행하면 이력이 쌓입니다" /></td></tr>}
+            {list.length === 0 && <tr><td colSpan={8}><EmptyState icon={History} title="실행 이력이 없습니다" hint="평가를 실행하면 이력이 쌓입니다" /></td></tr>}
           </tbody>
         </table>
       </Card>
@@ -1947,13 +1944,13 @@ export function MembersView() {
   };
   const tName = (tenants.find((t) => t.id === tenantId) || {}).name;
   const MENU_GROUPS = [
-    { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge·Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
-    { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "결과"] },
-    { id: "NQA", label: "비기능 QA", menus: ["대시보드", "대상·환경", "측정 시나리오", "측정 계획", "측정 실행", "실행 이력", "추이"] },
+    { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge · Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
+    { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "실행 이력", "회귀 비교", "불안정(Flaky)"] },
+    { id: "NQA", label: "비기능 QA", menus: ["대시보드", "대상·환경", "측정 시나리오", "측정 계획", "측정 실행", "실행 이력", "성능 추이"] },
     { id: "COM", label: "공통", menus: ["결함", "리포트·알림", "데이터셋", "변수"] },
   ];
   // QA 엔지니어 기본 조회: 설정성/민감 메뉴 + 부하 실행(위험 작업) + 변수(시크릿)
-  const readOnlyForQA = new Set(["Judge·Prompt", "챗봇 연결", "대상·환경", "측정 실행", "변수"]);
+  const readOnlyForQA = new Set(["Judge · Prompt", "챗봇 연결", "대상·환경", "측정 실행", "변수"]);
   const ROLES = ["조직관리자", "QA 엔지니어", "Viewer"];
   const adminCount = members.filter((m) => m.role === "조직관리자").length;
   const changeRole = (u, role) => {
@@ -1968,6 +1965,15 @@ export function MembersView() {
   });
   const cycle = { "허용": "조회", "조회": "차단", "차단": "허용" };
   const pK = { "허용": "bg-emerald-900 text-emerald-300", "조회": "bg-slate-700 text-slate-300", "차단": "bg-red-900 text-red-300" };
+  // 작업 권한 = 메뉴 접근과 별개로 '최종 상태를 바꾸는' 민감 작업. 허용 ⇄ 차단 2단계.
+  const cycle2 = { "허용": "차단", "차단": "허용" };
+  const ACTIONS = [
+    { id: "tc-approve", label: "테스트케이스 승인", desc: "초안·검토중 케이스를 '승인'으로 — 실행 대상 확정 (LQA·FQA 공통)" },
+    { id: "plan-activate", label: "실행·평가 계획 활성화", desc: "초안 계획을 '활성'으로 — 스케줄·무인 실행 허용" },
+    { id: "defect-resolve", label: "결함 종결(Resolve)", desc: "결함을 최종 'Resolved'로 종결" },
+  ];
+  // 기본값: 관리자 허용 · Viewer 차단 · QA 엔지니어는 '승인'만 차단(리드·관리자 권한, 직무 분리)
+  const [actPerm, setActPerm] = useState(() => { const init = {}; ACTIONS.forEach((a) => ROLES.forEach((r) => { init[a.id + "|" + r] = r === "조직관리자" ? "허용" : r === "Viewer" ? "차단" : (a.id === "tc-approve" ? "차단" : "허용"); })); return init; });
   const stK = KIND.userStatus;
   return (
     <div className="space-y-4">
@@ -2015,6 +2021,23 @@ export function MembersView() {
                 </tr>
               ); }),
             ])}
+          </tbody>
+        </table>
+      </Card>
+      <Card className="p-4">
+        <div className="text-sm font-semibold text-slate-200 mb-1">작업 권한 <span className="font-normal text-slate-500">· 민감 작업 (승인 · 활성화 · 종결)</span></div>
+        <div className="text-xs text-slate-500 mb-3">메뉴 접근과 별개로, 최종 상태를 바꾸는 작업의 수행 권한 · 셀 클릭 시 허용 ⇄ 차단</div>
+        <table className="w-full text-sm">
+          <thead><tr className="text-slate-500 text-left border-b border-slate-800"><th className="py-2 font-medium">작업</th>{ROLES.map((r) => <th key={r} className="font-medium text-center">{r}</th>)}</tr></thead>
+          <tbody>
+            {ACTIONS.map((a) => (
+              <tr key={a.id} className="border-b border-slate-800">
+                <td className="py-2 pl-3"><div className="text-slate-300">{a.label}</div><div className="text-xs text-slate-500">{a.desc}</div></td>
+                {ROLES.map((r) => { const k = a.id + "|" + r; const v = actPerm[k]; return (
+                  <td key={r} className="text-center py-2"><button onClick={() => setActPerm({ ...actPerm, [k]: cycle2[v] })} className={"px-2.5 py-1 rounded text-xs font-semibold " + pK[v]}>{v}</button></td>
+                ); })}
+              </tr>
+            ))}
           </tbody>
         </table>
       </Card>

@@ -15,7 +15,7 @@ import {
 import { C, vKind } from "./common/theme.js";
 import { Badge, ScoreBar, Card, Field, Btn, Input, Select, Toggle, Modal } from "./common/ui.jsx";
 import { AppCtx, useApp } from "./common/context.js";
-import { ConsoleShell, NewTenantForm, AssignAdminForm, NewModelForm } from "./common/console.jsx";
+import { ConsoleShell, NewTenantForm, AssignAdminForm, NewModelForm, NewOperatorForm } from "./common/console.jsx";
 
 /* ============================ static data ============================ */
 import { SECTIONS, NAV, TREND, METRICS, INIT_CASES, APPROVED_INIT, mkResults, INIT_PLANS, INIT_RUNS, INIT_JUDGES, PROMPT_VARS, INIT_PROMPTS, INIT_DEFECTS, INIT_CHATBOTS, LQA_HIDDEN } from "./lqa/data.js";
@@ -95,7 +95,7 @@ export default function App() {
   };
   const now = () => new Date().toTimeString().slice(0, 5);
   const notify = (n) => setNotifs((x) => [{ ...n, t: now() }, ...x].slice(0, 12));
-  const USER_BY_ROLE = { admin: "김지훈", tadmin: "박지영", user: "이민준" };
+  const USER_BY_ROLE = { admin: "한도윤", tadmin: "박지영", user: "이민준" };
   const currentUser = USER_BY_ROLE[role] || "이민준";
   const auditNow = () => { const d = new Date(); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); };
   const withCreate = (o) => { const t = auditNow(); return { createdBy: currentUser, createdAt: t, updatedBy: currentUser, updatedAt: t, ...o }; };
@@ -280,10 +280,11 @@ export default function App() {
             planCases: ["평가 계획 케이스 선택", <PlanCasesForm close={close} data={modal.data} />, true],
             addChatbot: ["챗봇 " + (modal.data ? "편집" : "연결 추가"), <AddChatbotForm close={close} data={modal.data} />, false],
             jiraConfig: ["Jira 연동 설정", <JiraConfigForm close={close} />, true],
-            newTenant: ["조직(테넌트) 추가", <NewTenantForm close={close} />],
+            newTenant: ["조직 추가", <NewTenantForm close={close} />],
             assignAdmin: ["조직 관리자 지정", <AssignAdminForm close={close} data={modal.data} />],
             inviteMember: ["멤버 초대", <InviteMemberForm close={close} />],
             newModel: ["AI 모델 등록", <NewModelForm close={close} />],
+            newOperator: ["서비스 관리자 추가", <NewOperatorForm close={close} />],
           };
           const [title, body, wide] = map[modal.type] || ["", null, false];
           return <Modal title={title} onClose={close} wide={wide}>{body}</Modal>;

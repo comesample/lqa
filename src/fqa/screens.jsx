@@ -1512,7 +1512,7 @@ export function FqaRunScreen({ nav }) {
   const scheduledToday = fqaPlans.filter(firesToday).length;
   const lvK = { INFO: "text-slate-400", TC: "text-teal-300", STEP: "text-slate-400", PASS: "text-emerald-300", FAIL: "text-red-300", RETRY: "text-amber-300", ERROR: "text-red-400" };
   const logs = RUN_LOG.filter((l) => lvl === "ALL" || l.lv === lvl);
-  const tK = { "수동": "info", "스케줄": "pass", "CI": "warn", "예약": "info" };
+  const tK = { "수동": "info", "스케줄": "pass", "이벤트": "warn" };
   const hK = { "완료": "pass", "실패": "fail" };
   const planNames = fqaPlans.map((p) => p.name);
   const runnableNames = fqaPlans.filter((p) => p.status === "활성").map((p) => p.name);
@@ -1532,18 +1532,23 @@ export function FqaRunScreen({ nav }) {
   const buildTcs = (plan) => {
     // 스위트(업무 흐름) ∩ 태그(실행 목적) ∩ 승인 — 태그가 비면 스위트 전체
     const inSuite = (c) => suiteNames(plan).includes(c.suite) && !c.quarantined && tagMatch(c, plan.tags);
-    const appr = fqaCases.filter((c) => inSuite(c) && c.status === "승인");
-    const src = appr.length ? appr : fqaCases.filter(inSuite);
-    return src.map((c) => ({ id: c.id, name: c.name, v: lastOf(fqaRuns, c.id) === "FAIL" ? "FAIL" : "PASS", dur: (Math.round((Math.random() * 3 + 0.3) * 10) / 10) + "s" }));
+    const src = fqaCases.filter((c) => inSuite(c) && c.status === "승인");   // 승인 케이스만 실행 — 초안·검토중은 대상 아님(계획 경고와 일치)
+    const retry = plan.retry != null ? plan.retry : 0;
+    return src.map((c) => {
+      const base = lastOf(fqaRuns, c.id) === "FAIL" ? "FAIL" : "PASS";
+      // flaky = 1차 실패 후 재시도로 통과 — 재시도(retry>0)가 있어야 성립. 통과지만 불안정 → WARN. (healed는 self-healing 구현 시로 유보)
+      const flaky = retry > 0 && base === "PASS" && Math.random() < 0.18;
+      return { id: c.id, name: c.name, v: flaky ? "WARN" : base, flaky: flaky || undefined, dur: (Math.round((Math.random() * 3 + 0.3) * 10) / 10) + "s" };
+    });
   };
-  const gatePlan = (plan) => { if (plan.status !== "활성") { flash(plan.name + " — 초안 계획은 실행할 수 없습니다. 계획을 활성화하세요"); return false; } if (!suiteNames(plan).length) { flash(plan.name + " — 스위트가 선택되지 않았습니다"); return false; } return true; };
+  const gatePlan = (plan) => { if (plan.status !== "활성") { flash(plan.name + " — 초안 계획은 실행할 수 없습니다. 계획을 활성화하세요"); return false; } if (!suiteNames(plan).length) { flash(plan.name + " — 스위트가 선택되지 않았습니다"); return false; } if (!buildTcs(plan).length) { flash(plan.name + " — 실행할 승인 케이스가 없습니다 (스위트·태그·승인 상태 확인)"); return false; } return true; };
   // 실행 시점의 대상·환경·빌드 버전을 run에 스탬프 — "이 회귀가 어느 빌드에서 나왔나"를 추적하기 위함
   const stampOf = (plan) => { const { e, label } = envRefOf(plan); return { target: label, ver: (e && e.ver && e.ver !== "-") ? e.ver : "-" }; };
   const [runPlan, setRunPlan] = useState(runnableNames[0] || "");
   const [selRunId, setSelRunId] = useState(null);
   const selRun = fqaRuns.find((r) => r.id === selRunId && (r.status === "실행 중" || r.status === "대기 중")) || liveRun || rows[0] || null;
   // 실행 = 큐 맨끝에 '대기'로 적재만. 픽업·실행·완료는 아래 큐 프로세서가 담당(앞선 작업이 없어야 실행).
-  const runNow = (plan) => { if (!gatePlan(plan)) return; const tcs = buildTcs(plan); const total = tcs.length; const id = nextId(); const { e } = envRefOf(plan); addFqaRun({ id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "수동", by: "QA Engineer", status: "대기 중", prog: 0, progt: "대기", dur: "-", at: "방금 전", gate: plan.gate != null ? plan.gate : 95, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setSelRunId(id); flash(plan.name + " 실행 요청 · " + id + " — 큐 맨끝에 적재"); };
+  const runNow = (plan) => { if (!gatePlan(plan)) return; const tcs = buildTcs(plan); const total = tcs.length; const id = nextId(); const { e } = envRefOf(plan); addFqaRun({ id, planId: plan.id, plan: plan.name, name: plan.name, suite: suiteNames(plan).join(" · "), ...stampOf(plan), brow: (e && e.webUrl) ? ((plan.brow && plan.brow[0]) || "Chrome") : "", trig: "수동", by: "QA Engineer", status: "대기 중", prog: 0, progt: "대기", dur: "-", at: "방금 전", gate: plan.gate != null ? plan.gate : 95, total, pass: 0, fail: 0, warn: 0, heal: 0, tcs }); setSelRunId(id); flash(plan.name + " 실행 요청 · " + id + " — 큐 맨끝에 적재"); };
   // 큐 프로세서(단일 러너 FIFO) — 러너가 비면(실행 중 0) 대기 큐의 맨앞(가장 오래된)을 픽업해 실행→완료
   const procRef = useRef({});
   useEffect(() => {
@@ -1555,8 +1560,9 @@ export function FqaRunScreen({ nav }) {
     procRef.current[next.id] = true;
     const total = next.total || 0;
     const fail = (next.tcs || []).filter((t) => t.v === "FAIL").length;
+    const warn = (next.tcs || []).filter((t) => t.v === "WARN").length;   // flaky(재시도 통과)
     updateFqaRun(next.id, { status: "실행 중", prog: 25, progt: Math.max(1, Math.round(total * 0.25)) + "/" + total, dur: "0분 03초", startedAt: nowStamp() });
-    setTimeout(() => updateFqaRun(next.id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", endedAt: nowStamp(), pass: total - fail, fail }), 1800);
+    setTimeout(() => updateFqaRun(next.id, { status: "완료", prog: 100, progt: total + "/" + total, dur: "0분 " + (10 + total) + "초", endedAt: nowStamp(), pass: total - fail - warn, warn, fail }), 1800);
   }, [fqaRuns]);
   const cancelRun = (r) => { if (!window.confirm(r.id + " 실행을 큐에서 취소할까요?")) return; removeFqaRun(r.id); if (selRunId === r.id) setSelRunId(null); flash(r.id + " 취소됨 — 큐에서 제거"); };
   const stopRun = (r) => { if (!window.confirm(r.id + " 실행을 중지할까요? — 러너에 취소 신호를 보내고 큐에서 제거합니다")) return; removeFqaRun(r.id); if (selRunId === r.id) setSelRunId(null); flash(r.id + " 중지됨 — 러너 취소 · 큐에서 제거"); };
@@ -1643,7 +1649,9 @@ export function FqaHistoryScreen({ nav }) {
   const [fSt, setFSt] = useState("전체 상태");
   const [fPlan, setFPlan] = useState("전체 계획");
   const planNames = fqaPlans.map((p) => p.name);
-  const tK = { "수동": "info", "스케줄": "pass", "CI": "warn", "예약": "info" };
+  const planNow = (r) => (fqaPlans.find((p) => p.id === r.planId) || {}).name;      // 계획의 현재(최종) 이름
+  const planLabel = (r) => planNow(r) || r.plan || r.name;
+  const tK = { "수동": "info", "스케줄": "pass", "이벤트": "warn" };
   const hK = { "완료": "pass", "오류": "fail" };
   const vK = { "통과": "pass", "실패": "fail", "경고": "warn" };
   const verdict = (r) => { if (r.status !== "완료") return "-"; const tc = r.tcs || []; const hasFail = r.fail > 0 || tc.some((t) => t.v === "FAIL"); const hasWarn = r.warn > 0 || tc.some((t) => t.v === "WARN"); return hasFail ? "실패" : hasWarn ? "경고" : "통과"; };
@@ -1659,21 +1667,20 @@ export function FqaHistoryScreen({ nav }) {
       </div>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">빌드</th><th className="font-medium">실행 환경</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">판정</th><th className="font-medium">결과</th><th></th></tr></thead>
+          <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">빌드</th><th className="font-medium">대상·환경</th><th className="font-medium">트리거</th><th className="font-medium">시각</th><th className="font-medium">상태</th><th className="font-medium">판정</th><th className="pr-4 font-medium">결과</th></tr></thead>
           <tbody>
-            {hist.length === 0 && (<tr><td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
+            {hist.length === 0 && (<tr><td colSpan={9} className="px-4 py-6 text-center text-sm text-slate-500">조건에 맞는 이력이 없습니다</td></tr>)}
             {hist.map((r) => (
               <tr key={r.id} onClick={() => openRun(r)} className="cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                 <td className="px-4 py-3 font-mono text-xs text-teal-400">{r.id}</td>
-                <td className="text-slate-200">{r.plan || r.name}</td>
+                <td className="text-slate-200">{planLabel(r)}{planNow(r) && r.plan && planNow(r) !== r.plan && <span className="ml-1.5 text-xs text-slate-500">· 당시 “{r.plan}”</span>}</td>
                 <td className="font-mono text-xs text-slate-400">{r.ver && r.ver !== "-" ? r.ver : <span className="text-slate-600">-</span>}</td>
-                <td className="text-xs text-slate-400">{r.brow || "API"}</td>
+                <td className="text-xs text-slate-400">{r.target || "-"}</td>
                 <td><Badge kind={tK[r.trig]}>{r.trig}</Badge></td>
                 <td><RunTime start={r.startedAt} end={r.endedAt} /></td>
                 <td><Badge kind={hK[r.status]}>{r.status}</Badge></td>
                 <td>{verdict(r) === "-" ? <span className="text-xs text-slate-600">-</span> : <Badge kind={vK[verdict(r)]}>{verdict(r)}</Badge>}</td>
-                <td className="text-xs text-slate-400">{r.status === "완료" ? r.pass + "/" + r.total : "-"}</td>
-                <td className="pr-4 text-right">{r.status === "완료" && <button onClick={(e) => { e.stopPropagation(); openRun(r); }} className="text-xs text-slate-400 hover:text-teal-400">상세</button>}</td>
+                <td className="pr-4 text-xs text-slate-400">{r.status === "완료" ? r.pass + "/" + r.total : "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -1699,7 +1706,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const dkey = (base) => (jr.project || "DEF") + "-" + base;
   const tcs = run.tcs || [];
   const cur = tcs.find((t) => t.id === selId) || tcs[0] || null;
-  const passRate = run.total ? Math.round((run.pass / run.total) * 1000) / 10 : 0;
+  const passRate = run.total ? Math.round(((run.pass + (run.warn || 0)) / run.total) * 1000) / 10 : 0;
   const gval = run.gate != null ? run.gate : 95;
   const gate = run.fail > 0 || passRate < gval ? "FAIL" : "PASS";
   const evTabs = !run.brow ? ["요청", "응답", "로그"] : ["스크린샷", "영상", "단말 로그"];
@@ -1739,15 +1746,16 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const isRegression = (id) => !openDefectOf(id) && defectsOfTc(id).length > 0;
   const regDefect = (t) => { if (openDefectOf(t.id)) { flash(t.id + " 이미 열린 결함이 있습니다"); return; } const key = dkey(1900 + defects.length); addDefect({ key, tc: t.id, target: runTarget, sev: "Major", title: (isRegression(t.id) ? "[재발] " : "") + t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" }); flash(t.id + " 결함 등록 · " + key); };
   const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !openDefectOf(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다 — 모두 열린 결함이 있습니다"); return; } tgt.forEach((t, i) => addDefect({ key: dkey(1900 + defects.length + i), tc: t.id, target: runTarget, sev: "Major", title: (isRegression(t.id) ? "[재발] " : "") + t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
-  const FLAKY = fqaCases.filter((c) => histOf(fqaRuns, c.id).length >= 3).map((c) => {
-    const h = histOf(fqaRuns, c.id); const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length;
+  const FLAKY = fqaCases.filter((c) => histOf(fqaRuns, c.id).length >= 1).map((c) => {
+    const h = histOf(fqaRuns, c.id); const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length; const warns = h.filter((v) => v === "WARN").length;
     const flips = h.slice(1).reduce((n, v, i) => n + (v !== h[i] ? 1 : 0), 0);
     let trail = 0; for (let i = h.length - 1; i >= 0; i--) { if (h[i] === "FAIL") trail++; else break; }
     const rate = Math.round((fails / h.length) * 100);
-    const persistent = fails / h.length >= 0.6 && trail >= 2;
-    const flaky = !persistent && fails > 0 && passes > 0 && flips >= 1;
-    const streak = persistent ? ("최근 " + trail + "회 연속 실패 · " + rate + "% 실패") : ("PASS/FAIL 교차 " + flips + "회 · " + rate + "% 실패");
-    return { id: c.id, name: c.name, suite: c.suite, runs: h.length, fails, rate, flips, flaky, persistent, quarantined: !!c.quarantined, streak };
+    const persistent = h.length >= 3 && fails / h.length >= 0.6 && trail >= 2;
+    // 불안정 = 재시도 통과(flaky, Playwright가 직접 표시) 또는 PASS/FAIL 교차(데이터 3회+)
+    const flaky = !persistent && (warns > 0 || (h.length >= 3 && fails > 0 && passes > 0));
+    const streak = persistent ? ("최근 " + trail + "회 연속 실패 · " + rate + "% 실패") : (warns > 0 ? ("재시도 통과(flaky) " + warns + "회" + (flips >= 1 ? " · PASS/FAIL 교차 " + flips + "회" : "")) : ("PASS/FAIL 교차 " + flips + "회 · " + rate + "% 실패"));
+    return { id: c.id, name: c.name, suite: c.suite, runs: h.length, fails, rate, flips, warns, unstable: fails + warns, urate: Math.round(((fails + warns) / h.length) * 100), flaky, persistent, quarantined: !!c.quarantined, streak };
   }).filter((r) => r.flaky || r.persistent);
   const flakyN = FLAKY.filter((r) => r.flaky).length;
   const persistN = FLAKY.filter((r) => r.persistent).length;
@@ -1756,8 +1764,9 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const toggleQuar = (r) => { updateFqaCase(r.id, { quarantined: !r.quarantined }); flash(r.id + (r.quarantined ? " 격리 해제 — 차단 실행에 복귀" : " 격리(quarantine) — 차단 실행에서 제외")); };
   const vK = { PASS: "pass", FAIL: "fail", HEAL: "teal", WARN: "warn" };
   const shown = tcs.filter((t) => filt === "전체" || (filt === "실패만" && t.v === "FAIL") || (filt === "통과만" && t.v === "PASS") || (filt === "보정 제안" && t.heal));
-  const finishedOf = (pn) => fqaRuns.filter((r) => r.plan === pn && r.status === "완료").sort((x, y) => parseInt(y.id.split("-")[1] || "0", 10) - parseInt(x.id.split("-")[1] || "0", 10));
-  const [regPlan, setRegPlan] = useState((fqaPlans && fqaPlans[0] && fqaPlans[0].name) || "");
+  // 실행은 계획을 id로 참조(planId) — 이름이 바뀌어도 이력이 안 끊긴다. 레거시 런(planId 없음)은 이름으로 매칭.
+  const finishedOf = (pid) => fqaRuns.filter((r) => (r.planId != null ? r.planId === pid : r.plan === ((fqaPlans.find((p) => p.id === pid) || {}).name)) && r.status === "완료").sort((x, y) => parseInt(y.id.split("-")[1] || "0", 10) - parseInt(x.id.split("-")[1] || "0", 10));
+  const [regPlan, setRegPlan] = useState((fqaPlans && fqaPlans[0]) ? fqaPlans[0].id : null);
   const _ir = finishedOf(regPlan);
   const [bId, setBId] = useState(_ir[0] ? _ir[0].id : "");
   const [aId, setAId] = useState(_ir[1] ? _ir[1].id : (_ir[0] ? _ir[0].id : ""));
@@ -1785,7 +1794,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
       {mode === "상세" && (
         <>
           <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
-            <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-sm text-teal-400">{run.id}</span><span className="text-sm font-medium text-slate-200">{run.plan}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{!run.brow ? "API" : (run.brow || "Chrome")} · {run.suite}</span>{run.ver && run.ver !== "-" && <Badge kind="info">빌드 {run.ver}</Badge>}</div>
+            <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-sm text-teal-400">{run.id}</span><span className="text-sm font-medium text-slate-200">{(fqaPlans.find((p) => p.id === run.planId) || {}).name || run.plan}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{!run.brow ? "API" : (run.brow || "Chrome")} · {run.suite}</span>{run.ver && run.ver !== "-" && <Badge kind="info">빌드 {run.ver}</Badge>}</div>
             <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn><Btn icon={Download} onClick={() => flash(run.id + " 증적 번들 다운로드 — " + (!run.brow ? "요청·응답·trace·로그" : "스크린샷·영상·trace·로그"))}>증적 다운로드</Btn>{run.fail > 0 && <Btn kind="primary" icon={Bug} onClick={regAll}>결함 일괄 등록</Btn>}</div>
           </Card>
           <div className={"grid gap-3 " + (!run.brow ? "grid-cols-5" : "grid-cols-6")}>
@@ -1849,7 +1858,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
       )}
       {mode === "회귀" && (
         <>
-          <Card className="p-3"><Field label="실행 계획 (비교 맥락)"><Select value={regPlan} onChange={(e) => setRegPlan(e.target.value)}>{fqaPlans.map((p) => <option key={p.id}>{p.name}</option>)}</Select></Field></Card>
+          <Card className="p-3"><Field label="실행 계획 (비교 맥락)"><Select value={regPlan == null ? "" : regPlan} onChange={(e) => setRegPlan(+e.target.value)}>{fqaPlans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field></Card>
           {planRuns.length < 2 ? (
             <Card className="p-8 text-center text-sm text-slate-500">이 계획에는 비교할 완료된 실행이 2건 이상 필요합니다 (현재 {planRuns.length}건).</Card>
           ) : (
@@ -1891,13 +1900,13 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
           </div>
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">TC</th><th className="font-medium">실패 빈도</th><th className="font-medium">유형</th><th className="font-medium">최근 추세</th><th></th></tr></thead>
+              <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-4 py-2.5 font-medium">TC</th><th className="font-medium">문제 빈도</th><th className="font-medium">유형</th><th className="font-medium">최근 추세</th><th></th></tr></thead>
               <tbody>
                 {FLAKY.length === 0 && (<tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">불안정·지속 실패로 분류된 TC가 없습니다.</td></tr>)}
                 {FLAKY.map((r) => (
                   <tr key={r.id} className="border-b border-slate-800 text-slate-300 hover:bg-slate-800">
                     <td className="px-4 py-3"><div className="font-mono text-xs text-teal-400">{r.id}</div><div className="flex items-center gap-1.5 text-slate-200">{r.name}{r.quarantined && <Badge kind="draft">격리됨</Badge>}</div><div className="text-xs text-slate-500">{r.suite}</div></td>
-                    <td style={{ minWidth: 130 }}><div className="mb-0.5 text-xs text-slate-400">{r.fails}/{r.runs}회 · {r.rate}%</div><div className="h-1.5 rounded bg-slate-800"><div className="h-1.5 rounded" style={{ width: r.rate + "%", background: r.flaky ? "#f59e0b" : "#ef4444" }} /></div></td>
+                    <td className="pr-4" style={{ minWidth: 150 }}><div className="mb-0.5 text-xs text-slate-400">{r.unstable}/{r.runs}회 · {r.urate}%</div><div className="h-1.5 rounded bg-slate-800" style={{ width: 130 }}><div className="h-1.5 rounded" style={{ width: r.urate + "%", background: r.flaky ? "#f59e0b" : "#ef4444" }} /></div></td>
                     <td>{r.flaky ? <Badge kind="warn">Flaky</Badge> : <Badge kind="fail">지속 실패</Badge>}</td>
                     <td className="text-xs text-slate-400">{r.streak}</td>
                     <td className="pr-4 text-right whitespace-nowrap">{r.flaky ? <button onClick={() => toggleQuar(r)} className={"mr-3 text-xs " + (r.quarantined ? "text-teal-300 hover:text-teal-200" : "text-amber-300 hover:text-amber-200")}>{r.quarantined ? "격리 해제" : "격리"}</button> : (hasDefFQA(r.id) ? <span className="mr-3 text-xs text-slate-500">등록됨</span> : <button onClick={() => regFail(r)} className="mr-3 text-xs text-red-300 hover:text-red-200">결함 등록</button>)}<button onClick={() => (nav ? nav("fqa-cases", r.id) : flash(r.id + " 테스트케이스로 이동"))} className="text-xs text-slate-400 hover:text-teal-400">TC 보기</button></td>
@@ -1915,28 +1924,36 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
 }
 /* ═══════════ 8. FQA 대시보드 ═══════════ */
 const barColor = (p) => (p >= 90 ? "#14b8a6" : p >= 80 ? "#f59e0b" : "#ef4444");
-const FD_TREND = [
-  { d: "W1", runs: 32, pass: 88 }, { d: "W2", runs: 38, pass: 90 }, { d: "W3", runs: 41, pass: 89 },
-  { d: "W4", runs: 45, pass: 91 }, { d: "W5", runs: 52, pass: 90 }, { d: "W6", runs: 48, pass: 92 },
-];
-const FD_BROW = [["Chrome", 94, true], ["Firefox", 90, true], ["Safari", null, false]];
 export function FqaDashboardScreen({ nav }) {
-  const { fqaRuns, fqaCases, fqaSuites, defects } = useApp();
+  const { fqaRuns, fqaCases, fqaSuites, fqaPlans, defects } = useApp();
   const [msg, flash] = useToast();
+  const toISO = (d) => { const z = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()); };
+  const [today] = useState(() => toISO(new Date()));
+  const [defFrom] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 6); return toISO(d); });
+  const [planF, setPlanF] = useState("전체");
+  const [from, setFrom] = useState(defFrom);
+  const [to, setTo] = useState(today);
+  const minFromOf = (t) => { const d = new Date(t); d.setMonth(d.getMonth() - 6); return toISO(d); };
+  const setRange = (nf, nt) => { if (nf > nt) nf = nt; const mf = minFromOf(nt); if (nf < mf) { nf = mf; flash("기간은 최대 6개월까지 지정할 수 있습니다"); } setFrom(nf); setTo(nt); };
+  const dOf = (r) => String(r.startedAt || r.endedAt || "").slice(0, 10);
+  const inPlan = (r) => planF === "전체" || r.planId === planF;
+  const inPeriod = (r) => { const ds = dOf(r); if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return true; return ds >= from && ds <= to; };
+  const fruns = fqaRuns.filter((r) => inPlan(r) && inPeriod(r));   // 계획·기간으로 스코프한 실행 집합
+  const filtered = planF !== "전체" || from !== defFrom || to !== today;
   const sK = { "실행 중": "warn", "대기 중": "info", "완료": "pass", "오류": "fail" };
   const rate = (r) => (r && r.total ? Math.round((r.pass / r.total) * 1000) / 10 : 0);
-  const finished = fqaRuns.filter((r) => r.status === "완료").slice().sort((a, b) => parseInt(b.id.split("-")[1] || "0", 10) - parseInt(a.id.split("-")[1] || "0", 10));
+  const byDate = (a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || ""));
+  const finished = fruns.filter((r) => r.status === "완료").slice().sort(byDate);
   const lastRun = finished[0];
-  const recent = fqaRuns.slice().sort((a, b) => parseInt(b.id.split("-")[1] || "0", 10) - parseInt(a.id.split("-")[1] || "0", 10)).slice(0, 5);
+  const recent = fruns.slice().sort(byDate).slice(0, 5);
   const totalTc = fqaCases.length;
   const approved = fqaCases.filter((c) => c.status === "승인").length;
-  const flakyRows = fqaCases.filter((c) => histOf(fqaRuns, c.id).length >= 3).map((c) => {
-    const h = histOf(fqaRuns, c.id); const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length;
-    const flips = h.slice(1).reduce((n, v, i) => n + (v !== h[i] ? 1 : 0), 0);
+  const flakyRows = fqaCases.filter((c) => histOf(fruns, c.id).length >= 1).map((c) => {
+    const h = histOf(fruns, c.id); const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length; const warns = h.filter((v) => v === "WARN").length;
     let trail = 0; for (let i = h.length - 1; i >= 0; i--) { if (h[i] === "FAIL") trail++; else break; }
     const rt = Math.round((fails / h.length) * 100);
-    const persistent = fails / h.length >= 0.6 && trail >= 2;
-    const flaky = !persistent && fails > 0 && passes > 0 && flips >= 1;
+    const persistent = h.length >= 3 && fails / h.length >= 0.6 && trail >= 2;
+    const flaky = !persistent && (warns > 0 || (h.length >= 3 && fails > 0 && passes > 0));
     return { id: c.id, name: c.name, runs: h.length, fails, rate: rt, flaky, persistent };
   }).filter((r) => r.flaky || r.persistent);
   const unstableN = flakyRows.length;
@@ -1944,10 +1961,17 @@ export function FqaDashboardScreen({ nav }) {
   const openDef = defects.filter((d) => (d.domain || "LQA") === "FQA" && d.status !== "Resolved").length;
   const suiteHealth = fqaSuites.map((su) => {
     const cs = fqaCases.filter((c) => c.suite === su.name);
-    const rated = cs.filter((c) => ["PASS", "FAIL"].includes(lastOf(fqaRuns, c.id)));
-    const pass = rated.length ? Math.round((cs.filter((c) => lastOf(fqaRuns, c.id) === "PASS").length / rated.length) * 100) : null;
+    const rated = cs.filter((c) => ["PASS", "FAIL", "WARN"].includes(lastOf(fruns, c.id)));
+    const pass = rated.length ? Math.round((cs.filter((c) => ["PASS", "WARN"].includes(lastOf(fruns, c.id))).length / rated.length) * 100) : null;
     return { name: su.name, tc: cs.length, pass };
   });
+  // 추이 = 완료 실행을 일자별로 집계 (실행 수 + 평균 PASS율) — 하드코딩 없이 실행에서 파생
+  const byDay = {}; finished.forEach((r) => { const d = dOf(r); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return; (byDay[d] = byDay[d] || []).push(rate(r)); });
+  const trend = Object.keys(byDay).sort().map((d) => ({ d: d.slice(5).replace("-", "/"), runs: byDay[d].length, pass: Math.round(byDay[d].reduce((a, b) => a + b, 0) / byDay[d].length) }));
+  // 브라우저별 = 완료 실행을 '실행 브라우저(run.brow)'로 집계 (웹 실행만; API 실행은 brow 없음)
+  const browMap = {}; finished.filter((r) => r.brow).forEach((r) => (browMap[r.brow] = browMap[r.brow] || []).push(rate(r)));
+  const browRows = Object.keys(browMap).sort().map((b) => ({ b, p: Math.round(browMap[b].reduce((a, x) => a + x, 0) / browMap[b].length), runs: browMap[b].length }));
+  const planNow = (id) => (fqaPlans.find((p) => p.id === id) || {}).name;
   const KPI = [
     ["자동화 TC", totalTc, "text-slate-100", "저장소 등록"],
     ["PASS율(최근 실행)", lastRun ? rate(lastRun) + "%" : "—", "text-emerald-400", lastRun ? lastRun.id : "실행 없음"],
@@ -1957,24 +1981,34 @@ export function FqaDashboardScreen({ nav }) {
   ];
   return (
     <div className="space-y-4">
-      <PageToolbar desc="자동화 현황 · 스위트 건강도 (실데이터 파생)" />
+      <PageToolbar desc="자동화 현황 · 스위트 건강도 (실행·케이스·결함에서 파생)">
+        <div style={{ width: 200 }}><Select value={planF} onChange={(e) => setPlanF(e.target.value === "전체" ? "전체" : +e.target.value)}><option value="전체">전체 계획</option>{fqaPlans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></div>
+        <input type="date" value={from} min={minFromOf(to)} max={to} onChange={(e) => setRange(e.target.value, to)} className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" />
+        <span className="text-slate-500">~</span>
+        <input type="date" value={to} min={from} max={today} onChange={(e) => setRange(from, e.target.value)} className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-teal-500" />
+      </PageToolbar>
+      {filtered && <div className="text-xs text-slate-500">필터: {planF === "전체" ? "전체 계획" : planNow(planF)} · {from} ~ {to} · 실행 {fruns.length}건</div>}
       <div className="grid grid-cols-5 gap-3">
         {KPI.map((k) => (<Card key={k[0]} className="p-4"><div className="text-xs text-slate-400">{k[0]}</div><div className={"mt-1 text-3xl font-bold " + k[2]}>{k[1]}</div><div className="mt-1 text-xs text-slate-500">{k[3]}</div></Card>))}
       </div>
       <Card className="p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><TrendingUp size={15} className="text-teal-400" />실행·PASS율 추이 <span className="font-normal text-slate-500">· 예시(주간 집계)</span></div>
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><TrendingUp size={15} className="text-teal-400" />실행·PASS율 추이 <span className="font-normal text-slate-500">· 완료 실행 일자별</span></div>
+        {trend.length === 0 ? (
+          <div className="py-14 text-center text-xs text-slate-500">기간 내 완료된 실행이 없습니다.</div>
+        ) : (
         <ResponsiveContainer width="100%" height={220}>
-          <ComposedChart data={FD_TREND}>
+          <ComposedChart data={trend}>
             <CartesianGrid stroke="#1e293b" vertical={false} />
             <XAxis dataKey="d" stroke="#475569" fontSize={11} />
-            <YAxis yAxisId="l" stroke="#475569" fontSize={11} />
-            <YAxis yAxisId="r" orientation="right" domain={[70, 100]} stroke="#475569" fontSize={11} />
+            <YAxis yAxisId="l" stroke="#475569" fontSize={11} allowDecimals={false} />
+            <YAxis yAxisId="r" orientation="right" domain={[0, 100]} stroke="#475569" fontSize={11} />
             <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar yAxisId="l" dataKey="runs" name="실행 수" fill="#334155" radius={[3, 3, 0, 0]} />
             <Line yAxisId="r" type="monotone" dataKey="pass" name="PASS율(%)" stroke="#14b8a6" strokeWidth={2} dot={false} />
           </ComposedChart>
         </ResponsiveContainer>
+        )}
       </Card>
       <div className="grid grid-cols-3 gap-4">
         <Card className="col-span-2 p-4">
@@ -1989,16 +2023,17 @@ export function FqaDashboardScreen({ nav }) {
           </div>
         </Card>
         <Card className="p-4">
-          <div className="mb-3 text-sm font-semibold text-slate-200">웹 브라우저별 PASS율 <span className="font-normal text-slate-500">· 예시</span></div>
+          <div className="mb-3 text-sm font-semibold text-slate-200">브라우저별 PASS율 <span className="font-normal text-slate-500">· 실행 브라우저 기준</span></div>
           <div className="space-y-3">
-            {FD_BROW.map(([b, p, run]) => (
-              <div key={b}>
-                <div className="mb-1 flex justify-between text-xs"><span className="text-slate-300">{b}</span>{run ? <span className="font-semibold" style={{ color: barColor(p) }}>{p}%</span> : <span className="text-slate-600">미실행</span>}</div>
-                <div className="h-2 rounded bg-slate-800">{run && <div className="h-2 rounded" style={{ width: p + "%", background: barColor(p) }} />}</div>
+            {browRows.length === 0 && <div className="rounded-lg bg-slate-800 px-3 py-6 text-center text-xs text-slate-500">웹 실행 이력이 없습니다</div>}
+            {browRows.map((r) => (
+              <div key={r.b}>
+                <div className="mb-1 flex justify-between text-xs"><span className="text-slate-300">{r.b} <span className="text-slate-500">· {r.runs}회</span></span><span className="font-semibold" style={{ color: barColor(r.p) }}>{r.p}%</span></div>
+                <div className="h-2 rounded bg-slate-800"><div className="h-2 rounded" style={{ width: r.p + "%", background: barColor(r.p) }} /></div>
               </div>
             ))}
           </div>
-          <div className="mt-4 border-t border-slate-800 pt-3 text-xs text-slate-500">Safari는 최근 실행 없음 — 실행한 브라우저만 집계합니다.</div>
+          <div className="mt-4 border-t border-slate-800 pt-3 text-xs text-slate-500">실행한 브라우저만 집계 · API 실행은 제외합니다.</div>
         </Card>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -2020,13 +2055,12 @@ export function FqaDashboardScreen({ nav }) {
             <tbody className="text-slate-300">
               {recent.length === 0 && <tr><td className="px-4 py-6 text-center text-xs text-slate-500">실행 이력이 없습니다</td></tr>}
               {recent.map((r) => (
-                <tr key={r.id} onClick={() => nav && nav("fqa-result-detail", r.id)} className="cursor-pointer border-b border-slate-800 hover:bg-slate-800"><td className="px-4 py-2.5 font-mono text-xs text-teal-400">{r.id}</td><td className="text-slate-200">{r.name}</td><td className="text-xs text-slate-500">{r.progt}</td><td className="pr-4 text-right"><Badge kind={sK[r.status]}>{r.status}</Badge></td></tr>
+                <tr key={r.id} onClick={() => nav && nav("fqa-result-detail", r.id)} className="cursor-pointer border-b border-slate-800 hover:bg-slate-800"><td className="px-4 py-2.5 font-mono text-xs text-teal-400">{r.id}</td><td className="text-slate-200">{planNow(r.planId) || r.plan || r.name}</td><td className="text-xs text-slate-500">{r.progt}</td><td className="pr-4 text-right"><Badge kind={sK[r.status]}>{r.status}</Badge></td></tr>
               ))}
             </tbody>
           </table>
         </Card>
       </div>
-      <div className="text-xs text-slate-500">KPI·스위트 건강도·빈발 실패·최근 실행은 스토어(실행·케이스·스위트·결함)에서 파생 · 추이/브라우저 위젯은 예시입니다.</div>
       <Toast msg={msg} />
     </div>
   );
@@ -2037,7 +2071,7 @@ export function FqaCasesScreen() {
   const editorDirty = useRef(false);
   useEffect(() => { if (fqaEditTc) { const c = fqaCases.find((x) => x.id === fqaEditTc); if (c) { setSel(c); setMode("edit"); } setFqaEditTc(null); } }, [fqaEditTc]);
   const [msg, flash] = useToast();
-  const [mode, setMode] = useState("목록");
+  const [mode, setMode] = useState(() => (fqaEditTc && fqaCases.some((x) => x.id === fqaEditTc)) ? "edit" : "목록");
   const [addOpen, setAddOpen] = useState(false);
   const [blank, setBlank] = useState(null);   // 직접 작성 모달 { name, suite }
   const [newPlat, setNewPlat] = useState("Web");
@@ -2048,7 +2082,7 @@ export function FqaCasesScreen() {
   const [platF, setPlatF] = useState("전체");
   // 스위트 화면의 "전체 N건 보기" — 해당 스위트로 필터를 걸고 목록을 연다
   useEffect(() => { if (fqaSuiteFocus) { setMode("목록"); setSuiteF(fqaSuiteFocus); setQ(""); setStf("전체"); setTagF("전체"); setPlatF("전체"); setFqaSuiteFocus(null); } }, [fqaSuiteFocus]);
-  const [sel, setSel] = useState(null);
+  const [sel, setSel] = useState(() => (fqaEditTc ? fqaCases.find((x) => x.id === fqaEditTc) || null : null));
   const [open, setOpen] = useState(null);
   const [picked, setPicked] = useState(new Set());
   const stK = { "승인": "pass", "검토중": "warn", "초안": "draft" };

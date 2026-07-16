@@ -43,6 +43,10 @@ export const INIT_USERS = [
   { id: "u4", name: "박지영", email: "jiyoung.park@skt.com", tenant: "t2", role: "조직관리자", status: "활성", last: "2시간 전" },
   { id: "u5", name: "윤수빈", email: "subin.yoon@partner.com", tenant: "t1", role: "Viewer", status: "대기", last: "미로그인" },
   { id: "u6", name: "오현태", email: "hyuntae.oh@demo.com", tenant: "t3", role: "QA 엔지니어", status: "차단", last: "2026-05-12" },
+  // 서비스 관리자 = 조직에 속하지 않는 플랫폼(본사) 계정 — tenant "platform" 로 구분
+  { id: "op1", name: "한도윤", email: "admin@xq.skt", tenant: "platform", role: "서비스 관리자", status: "활성", last: "방금 전" },
+  { id: "op2", name: "서지안", email: "ops@xq.skt", tenant: "platform", role: "서비스 관리자", status: "활성", last: "오늘 09:40" },
+  { id: "op3", name: "노경원", email: "kw.noh@xq.skt", tenant: "platform", role: "서비스 관리자", status: "대기", last: "미로그인" },
 ];
 export const INIT_MODELS = [
   { id: "m1", name: "Claude (sonnet-4-6)", provider: "Anthropic", model: "claude-sonnet-4-6", price: "$3 / 1M", status: "활성", created: "2026-01-10" },
