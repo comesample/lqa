@@ -6,14 +6,12 @@ export const NQA_SECTIONS = [
     { id: "nqa-dashboard", label: "대시보드", icon: LayoutDashboard },
   ] },
   { group: "준비 · 설계", items: [
-    { id: "nqa-targets", label: "대상·환경", icon: Plug },
-    { id: "nqa-scenarios", label: "측정 시나리오", icon: Code2 },
-    { id: "nqa-plan", label: "측정 계획", icon: ClipboardList },
+    { id: "nqa-targets", label: "환경", icon: Plug },
+    { id: "nqa-scenarios", label: "부하 테스트", icon: Code2 },
   ] },
   { group: "실행 · 분석", items: [
     { id: "nqa-run", label: "측정 실행", icon: Play },
     { id: "nqa-history", label: "실행 이력", icon: History },
-    { id: "nqa-trend", label: "성능 추이", icon: TrendingUp },
   ] },
 ];
 
@@ -29,7 +27,7 @@ export const NQA_LOAD_ENVS = ["개발", "스테이징"];
 export const NQA_HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
 export const NQA_AUTH_TYPES = ["Bearer 토큰", "API Key", "OAuth 2.0 (client credentials)", "없음"];
 // (외부 Secrets 백엔드 제거 — 시크릿은 공통 "변수" 화면에서 관리·참조)
-export const NQA_MAX_AGENTS = 20; // 테넌트 부하 생성 한도(쿼터) — 데모 상수. 실제는 테넌트/플랜별 admin 설정.
+export const NQA_MAX_AGENTS = 10; // 테넌트 부하 생성 한도(쿼터) — 데모 상수. 실제는 테넌트/플랜별 admin 설정.
 
 /* 측정 플랫폼 — 앱 우선(Android/iOS), Web은 고스트(준비중). FQA(웹 우선·앱 고스트)의 반전. */
 export const NQA_PLATFORMS = [
@@ -116,9 +114,11 @@ export const NQA_LOAD_SHAPES = [
 ];
 /* 부하 시나리오 시드 — 대상(nqaSystems)과 sutId로 연결. 비율 혼합은 endpoints 가중치 사용, 순차 진행은 journey 순서 참조. 워크로드는 상관 유무로 자동 판정(forceOrder로 수동 순차). */
 export const INIT_NQA_SCENARIOS = [
-  { id: 1, name: "T월드 로그인 순차 부하", sutId: 1, unit: "가상 사용자(VU)", shape: "램프업", peak: 800, rampUp: 5, sustain: 20, rampDown: 3, thinkTime: 3, status: "활성", dataset: "accounts_10k", forceOrder: false,endpoints: [{ method: "GET", path: "/v1/plans", weight: 50, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v1/auth/login", weight: 30, headers: [{ k: "Content-Type", v: "application/json" }], body: '{ "phone": "${row.phone}", "pw": "${row.pw}" }', expect: 200, extracts: [{ var: "token", path: "$.data.token" }] }, { method: "GET", path: "/v1/users/{id}", weight: 20, headers: [{ k: "Authorization", v: "Bearer ${token}" }], body: "", expect: 200, extracts: [] }], journey: [{ method: "POST", path: "/v1/auth/login" }, { method: "GET", path: "/v1/users/{id}" }, { method: "GET", path: "/v1/plans" }] },
-  { id: 2, name: "T월드 조회 혼합 부하", sutId: 1, unit: "도착률(RPS)", shape: "스테디", peak: 1500, rampUp: 3, sustain: 15, rampDown: 2, thinkTime: 1, status: "초안", dataset: "", forceOrder: false,endpoints: [{ method: "GET", path: "/v1/plans", weight: 60, headers: [], body: "", expect: 200, extracts: [] }, { method: "GET", path: "/v1/users/{id}", weight: 40, headers: [{ k: "Authorization", v: "Bearer ${stg_tworld_token}" }], body: "", expect: 200, extracts: [] }], journey: [] },
-  { id: 3, name: "T다이렉트 스파이크", sutId: 2, unit: "가상 사용자(VU)", shape: "스파이크", peak: 400, rampUp: 1, sustain: 5, rampDown: 1, thinkTime: 2, status: "초안", dataset: "", forceOrder: false,endpoints: [{ method: "GET", path: "/v2/products", weight: 70, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v2/order", weight: 30, headers: [], body: "", expect: 200, extracts: [] }], journey: [] },
+  { id: 1, name: "커머스 로그인 순차 부하", sutId: 1, unit: "가상 사용자(VU)", shape: "램프업", peak: 800, rampUp: 5, sustain: 20, rampDown: 3, thinkTime: 3, dataset: "accounts_10k", forceOrder: false, agents: 3, sla: { p95: 1500, p99: 2500, errRate: 1.0, minRps: 600 }, endpoints: [{ method: "GET", path: "/v1/products", weight: 50, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v1/auth/login", weight: 30, headers: [{ k: "Content-Type", v: "application/json" }], body: '{ "phone": "${row.phone}", "pw": "${row.pw}" }', expect: 200, extracts: [{ var: "token", path: "$.data.token" }, { var: "userId", path: "$.data.userId" }] }, { method: "GET", path: "/v1/users/${userId}", weight: 20, headers: [{ k: "Authorization", v: "Bearer ${token}" }], body: "", expect: 200, extracts: [] }], journey: [{ method: "POST", path: "/v1/auth/login" }, { method: "GET", path: "/v1/users/${userId}" }, { method: "GET", path: "/v1/products" }] },
+  { id: 2, name: "커머스 조회 혼합 부하", sutId: 1, unit: "도착률(RPS)", shape: "스테디", peak: 1500, maxVU: 2000, rampUp: 3, sustain: 15, rampDown: 2, thinkTime: 1, dataset: "", forceOrder: false, agents: 3, sla: { p95: 800, p99: 1500, errRate: 0.5, minRps: 1200 }, endpoints: [{ method: "GET", path: "/v1/products", weight: 60, headers: [], body: "", expect: 200, extracts: [] }, { method: "GET", path: "/v1/users/me", weight: 40, headers: [{ k: "Authorization", v: "Bearer ${shop_token}" }], body: "", expect: 200, extracts: [] }], journey: [] },
+  { id: 3, name: "예약 오픈 스파이크", sutId: 2, unit: "가상 사용자(VU)", shape: "스파이크", peak: 400, baseline: 80, spikeHold: 30, rampUp: 1, sustain: 5, rampDown: 1, thinkTime: 2, dataset: "", forceOrder: false, agents: 2, sla: { p95: 1200, p99: 2000, errRate: 2.0, recoverySec: 60 }, endpoints: [{ method: "GET", path: "/v1/availability", weight: 70, headers: [], body: "", expect: 200, extracts: [] }, { method: "POST", path: "/v1/reservations", weight: 30, headers: [{ k: "Content-Type", v: "application/json" }, { k: "Authorization", v: "Bearer ${booking_token}" }], body: '{ "slotId": "S-1001", "seats": 2 }', expect: 201, extracts: [] }], journey: [] },
+  { id: 4, name: "커머스 용량 한계 측정", sutId: 1, unit: "도착률(RPS)", shape: "스트레스", peak: 3500, start: 500, step: 500, steps: 6, stepHold: 3, maxVU: 3000, thinkTime: 1, dataset: "", forceOrder: false, agents: 3, sla: { p95: 1500, p99: 2500, errRate: 2.0, capacity: 2100 }, endpoints: [{ method: "GET", path: "/v1/products", weight: 70, headers: [], body: "", expect: 200, extracts: [] }, { method: "GET", path: "/v1/users/me", weight: 30, headers: [{ k: "Authorization", v: "Bearer ${shop_token}" }], body: "", expect: 200, extracts: [] }], journey: [] },
+  { id: 5, name: "예약 내구 부하(소크)", sutId: 2, unit: "가상 사용자(VU)", shape: "소크", peak: 200, soakH: 4, rampUp: 2, sustain: 10, rampDown: 2, thinkTime: 3, dataset: "", forceOrder: false, agents: 2, sla: { p95: 1000, p99: 1800, errRate: 0.5, driftPct: 10 }, endpoints: [{ method: "GET", path: "/v1/availability", weight: 60, headers: [], body: "", expect: 200, extracts: [] }, { method: "GET", path: "/v1/reservations", weight: 40, headers: [{ k: "Authorization", v: "Bearer ${booking_token}" }], body: "", expect: 200, extracts: [] }], journey: [] },
 ];
 
 /* 측정 계획 — 측정 시나리오 참조 + SLA 판정 임계(합격/불합격). 대상(SUT)은 시나리오에서 파생. 실행 시점(즉시/예약)은 측정 실행에서, 회귀(baseline)는 성능 추이에서 판단. 판정은 워밍업(초기 램프업)을 제외하고 목표 부하 도달 이후 구간에서 집계(고정). */
@@ -129,14 +129,18 @@ export const INIT_NQA_PLANS = [
 
 /* 측정 실행 — 계획을 1회 돌린 실행 인스턴스(회차) + 결과 + SLA 판정. 이력·추이가 파생. */
 export const INIT_NQA_RUNS = [
-  { id: "RUN-0613-03", planId: 1, no: 3, startedAt: "2026-06-13 02:10", endedAt: "2026-06-13 02:38", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 720, errRate: 0.6, p50: 240, p95: 1420, p99: 2180, throughput: 718, totalReq: 1206000, verdict: "합격", breaches: [] } },
-  { id: "RUN-0606-02", planId: 1, no: 2, startedAt: "2026-06-06 02:10", endedAt: "2026-06-06 02:38", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 650, errRate: 1.3, p50: 300, p95: 1680, p99: 2620, throughput: 642, totalReq: 1078000, verdict: "불합격", breaches: ["p95 1680 > 1500ms", "에러율 1.3 > 1.0%"] } },
-  { id: "RUN-0530-01", planId: 1, no: 1, startedAt: "2026-05-30 02:10", endedAt: "2026-05-30 02:38", durationSec: 1680, status: "완료", by: "이민준", result: { rps: 700, errRate: 0.5, p50: 235, p95: 1350, p99: 2050, throughput: 699, totalReq: 1175000, verdict: "합격", breaches: [] } },
-  { id: "RUN-0612-01", planId: 2, no: 1, startedAt: "2026-06-12 22:00", endedAt: "2026-06-12 22:15", durationSec: 900, status: "완료", by: "이민준", result: { rps: 1350, errRate: 0.3, p50: 120, p95: 760, p99: 1180, throughput: 1342, totalReq: 1207800, verdict: "합격", breaches: [] } },
+  { id: "RUN-0715-21", planId: 2, no: 2, startedAt: "2026-07-15 22:00", endedAt: "2026-07-15 22:15", durationSec: 900, status: "완료", by: "이민준", result: { rps: 1460, errRate: 0.3, p50: 135, p95: 780, p99: 1210, throughput: 1455, totalReq: 1314000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0714-03", planId: 1, no: 3, startedAt: "2026-07-14 02:10", endedAt: "2026-07-14 02:38", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 650, errRate: 0.6, p50: 250, p95: 1410, p99: 2160, throughput: 648, totalReq: 1092000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0712-11", planId: 4, no: 1, startedAt: "2026-07-12 03:00", endedAt: "2026-07-12 03:18", durationSec: 1080, status: "완료", by: "노경원", result: { rps: 2600, errRate: 1.1, p50: 420, p95: 1380, p99: 2150, throughput: 2580, totalReq: 2808000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0710-07", planId: 3, no: 1, startedAt: "2026-07-10 14:30", endedAt: "2026-07-10 14:37", durationSec: 420, status: "완료", by: "이벤트(배포)", result: { rps: 350, errRate: 3.2, p50: 380, p95: 1450, p99: 2400, throughput: 344, totalReq: 147000, verdict: "불합격", breaches: ["p95 1450 > 1200ms", "에러율 3.2 > 2.0%"] } },
+  { id: "RUN-0708-15", planId: 5, no: 1, startedAt: "2026-07-08 22:00", endedAt: "2026-07-09 02:00", durationSec: 14400, status: "완료", by: "야간 배치", result: { rps: 160, errRate: 0.3, p50: 210, p95: 920, p99: 1650, throughput: 159, totalReq: 2304000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0707-02", planId: 1, no: 2, startedAt: "2026-07-07 02:10", endedAt: "2026-07-07 02:38", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 610, errRate: 1.4, p50: 320, p95: 1720, p99: 2680, throughput: 604, totalReq: 1024800, verdict: "불합격", breaches: ["p95 1720 > 1500ms", "에러율 1.4 > 1.0%"] } },
+  { id: "RUN-0705-01", planId: 2, no: 1, startedAt: "2026-07-05 22:00", endedAt: "2026-07-05 22:15", durationSec: 900, status: "완료", by: "이민준", result: { rps: 1480, errRate: 0.2, p50: 120, p95: 720, p99: 1120, throughput: 1476, totalReq: 1332000, verdict: "합격", breaches: [] } },
+  { id: "RUN-0630-01", planId: 1, no: 1, startedAt: "2026-06-30 02:10", endedAt: "2026-06-30 02:38", durationSec: 1680, status: "완료", by: "야간 배치", result: { rps: 660, errRate: 0.5, p50: 240, p95: 1340, p99: 2050, throughput: 658, totalReq: 1108800, verdict: "합격", breaches: [] } },
 ];
 
 /* 측정 대상(앱) 시드 — 앱 + 단말 인벤토리 + 측정 도구 + 측정 조건. 단말×조건 조합은 측정 계획에서. */
 export const INIT_NQA_SYSTEMS = [
-  { id: 1, name: "T월드 API 부하", subtype: "load", baseUrl: "https://api-stg.tworld.co.kr", protocol: "HTTP/HTTPS", env: "스테이징", loadgen: { tool: "JMeter", agents: 3 }, auth: { type: "없음" } },
-  { id: 2, name: "T다이렉트 API 부하", subtype: "load", baseUrl: "https://api-stg.direct.tworld.co.kr", protocol: "HTTP/HTTPS", env: "스테이징", loadgen: { tool: "JMeter", agents: 1 }, auth: { type: "Bearer 토큰", ref: "${stg_tworld_token}" } },
+  { id: 1, name: "커머스 API 부하", subtype: "load", baseUrl: "https://api-stg.shop.example.com", protocol: "HTTP/HTTPS", loadgen: { tool: "k6", agents: 3 }, auth: { type: "없음" } },
+  { id: 2, name: "예약 API 부하", subtype: "load", baseUrl: "https://api-stg.booking.example.com", protocol: "HTTP/HTTPS", loadgen: { tool: "k6", agents: 2 }, auth: { type: "없음" } },
 ];

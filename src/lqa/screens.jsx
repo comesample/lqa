@@ -251,20 +251,20 @@ export function JiraForm({ close, data }) {
   const [sev, setSev] = useState(d.sev || "Major");
   const [prio, setPrio] = useState(prioMap[d.sev] || "High");
   const [assignee, setAssignee] = useState("QA Lead");
-  const [labels, setLabels] = useState("lqa, chatbot");
+  const [labels, setLabels] = useState(d.labels || "lqa, chatbot");
   const [title, setTitle] = useState(d.title || (d.tc ? d.tc + " 평가 실패" : "챗봇 평가 실패"));
-  const [desc, setDesc] = useState(d.judge ? "[요약] " + d.judge + "\n[점수] " + (d.score != null ? d.score + "점" : "-") + "\n[안전성] 환각 " + ((d.safety && d.safety.환각) || "-") + " · PII " + ((d.safety && d.safety.PII) || "-") : "");
-  const [steps, setSteps] = useState(d.q ? "1. 사전조건: " + (d.pre || "없음") + "\n2. 발화 입력: \"" + d.q + "\"\n3. 챗봇 응답 확인" : "");
-  const [expected, setExpected] = useState(d.golden || "");
+  const [desc, setDesc] = useState(d.judge ? "[요약] " + d.judge + "\n[점수] " + (d.score != null ? d.score + "점" : "-") + "\n[안전성] 환각 " + ((d.safety && d.safety.환각) || "-") + " · PII " + ((d.safety && d.safety.PII) || "-") : (d.desc || ""));
+  const [steps, setSteps] = useState(d.q ? "1. 사전조건: " + (d.pre || "없음") + "\n2. 발화 입력: \"" + d.q + "\"\n3. 챗봇 응답 확인" : (d.steps || ""));
+  const [expected, setExpected] = useState(d.golden || d.expected || "");
   const [actual, setActual] = useState(d.actual || "");
   const [attach, setAttach] = useState({ conv: true, judge: true, safety: true });
   const [files, setFiles] = useState([]);
   const [jira, setJira] = useState(jconn);
-  const autoArtifacts = d.q ? [
+  const autoArtifacts = d.artifacts || (d.q ? [
     { k: "conv", label: "대화 로그", file: "conversation.txt", size: "2 KB" },
     { k: "judge", label: "평가 근거", file: "judge_result.json", size: "1 KB" },
     { k: "safety", label: "안전성 결과", file: "safety_check.json", size: "1 KB" },
-  ] : [];
+  ] : []);
   const onFile = (e) => { const fs = Array.from(e.target.files || []).map((x) => ({ name: x.name, size: x.size > 1024 ? Math.round(x.size / 1024) + " KB" : x.size + " B" })); if (fs.length) setFiles((p) => [...p, ...fs]); };
   const submit = () => {
     if (!title.trim()) { toast("제목을 입력하세요", "warn"); return; }
@@ -350,7 +350,7 @@ export function JiraForm({ close, data }) {
       {d.env && <Field label="환경"><div className="rounded-lg bg-slate-800 p-2 text-xs text-slate-400">{d.env}{d.tc ? " · 대상 " + d.tc : ""}</div></Field>}
         </div>
       </div>
-      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">{d.q ? "실패 케이스 데이터가 자동으로 채워졌습니다. " : ""}시크릿은 공통 변수 화면에서 관리(마스킹)되며, 등록은 audit_log에 기록됩니다.</div>
+      <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">{(d.q || d.desc || d.artifacts) ? "실패 결과 데이터가 자동으로 채워졌습니다. " : ""}시크릿은 공통 변수 화면에서 관리(마스킹)되며, 등록은 audit_log에 기록됩니다.</div>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Bug} onClick={submit}>결함 등록</Btn></div>
     </div>
   );
@@ -1414,6 +1414,7 @@ export function Run() {
   useEffect(() => {
     if (!runIntent) return;
     if (runIntent.type === "start") { const p = plans.find((x) => x.id === runIntent.planId) || plans[0]; setPlanId(p.id); setRunIntent(null); enqueue(p, "수동"); }
+    else if (runIntent.type === "select") { const p = plans.find((x) => x.id === runIntent.planId) || plans[0]; if (p) setPlanId(p.id); setRunIntent(null); }
     else if (runIntent.type === "view") { const r = runs.find((x) => x.id === runIntent.runId); if (r) { setActiveRun(r); setSel((r.results && r.results[0]) || null); setFromHistory(true); } setRunIntent(null); }
   }, [runIntent]);
 
@@ -1543,7 +1544,7 @@ export function Block({ label, children, tone }) {
 }
 
 export function Compare() {
-  const { runs, plans, toast, defects, addDefect } = useApp();
+  const { runs, plans, toast, defects, addDefect, openModal } = useApp();
   const [aiOpen, setAiOpen] = useState(false);
   const doneOf = (pid) => runs.filter((r) => r.planId === pid && r.status === "완료" && r.results && r.results.length);
   const firstPid = (runs.find((r) => r.status === "완료" && r.results && r.results.length) || {}).planId;
@@ -1587,13 +1588,25 @@ export function Compare() {
   if (sig["점수하락"].length) causes.push("판정은 유지되나 점수가 " + NOISE + "점 이상 하락한 관찰 대상 " + sig["점수하락"].length + "건 — 추세 모니터링 권장");
   if (!causes.length) causes.push("유의미한 회귀 신호가 없습니다 — 품질 유지/개선 상태");
   const recs = [];
-  if (regressed.length) recs.push("유의미 회귀 " + regressed.length + "건을 결함으로 등록하고 담당자 배정");
+  if (regressed.length) recs.push("회귀 " + regressed.length + "건 결함 등록 · 담당자 배정");
   if (snapDiff.some((r) => r[0] === "프롬프트")) recs.push("프롬프트 변경분 롤백 또는 부분 수정 검토");
   if (snapDiff.some((r) => r[0] === "케이스셋")) recs.push("변경된 케이스의 골든(기대) 답변 재검토");
   if (sig["점수하락"].length) recs.push("점수 하락 관찰 " + sig["점수하락"].length + "건은 다음 실행에서 재현 여부 확인");
   recs.push("경계 판정(WARN) 케이스는 사람 검토(HITL) 우선 배정");
   const hasDef = (id) => defects.some((d) => d.tc === id && (d.domain || "LQA") === "LQA");
-  const regAllLQA = () => { const tgt = regressed.filter((r) => !hasDef(r.id)); if (!tgt.length) { toast("등록할 신규 회귀 결함이 없습니다", "info"); return; } tgt.forEach((r, i) => addDefect({ key: "DEF-" + (1950 + defects.length + i), tc: r.id, sev: "Major", title: "회귀: " + (r.q || r.id), status: "Open", domain: "LQA", desc: "이전 실행 대비 유의미한 점수 하락(회귀)이 감지되었습니다.", steps: r.q ? "발화: \"" + r.q + "\"" : "", expected: r.golden || "", actual: r.actual || "", evidence: ["회귀 비교"] })); toast("유의미 회귀 " + tgt.length + "건 결함 등록", "ok"); };
+  const regAllLQA = () => {
+    if (!regressed.length) { toast("등록할 유의미 회귀가 없습니다", "info"); return; }
+    const list = regressed.map((r) => "□ " + r.id + (r.q ? " · " + r.q : "") + (r.aS != null && r.bS != null ? " (" + r.aS + "→" + r.bS + ")" : "")).join("\n");
+    openModal("jira", {
+      domain: "LQA", sev: "Major", labels: "lqa, regression",
+      title: "유의미 회귀 " + regressed.length + "건 (" + aId + " → " + bId + ")",
+      desc: "이전 실행 대비 유의미한 점수 하락(회귀)이 감지된 케이스 묶음입니다.\n비교: " + aId + " → " + bId + "\n\n[회귀 케이스 " + regressed.length + "건]\n" + list,
+      steps: "1. 같은 평가 계획의 두 실행(A 기준 · B 비교) 점수·판정 비교\n2. 판정 임계 하락(회귀) 케이스 확인\n3. ±" + NOISE + "점 미만 변동은 채점 노이즈로 제외",
+      expected: "기준(A) 대비 판정 유지 또는 개선",
+      actual: regressed.length + "건 판정 임계 하락(회귀)",
+      artifacts: [{ k: "reg", label: "회귀 비교 리포트", file: "regression_report.json", size: "3 KB" }],
+    });
+  };
   return (
     <div className="space-y-4">
       <PageToolbar desc="같은 평가 계획의 두 실행 비교 · 케이스 회귀 분석" />
@@ -1667,7 +1680,7 @@ export function Compare() {
   );
 }
 export function Defects() {
-  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setDefectAssignee, updateDefect, setFqaEditTc, users, jiraConfig, pendingSelect, setPendingSelect } = useApp();
+  const { defects, openModal, toast, domain, goto, setDomain, setDefectStatus, setDefectAssignee, updateDefect, users, jiraConfig, pendingSelect, setPendingSelect } = useApp();
   const jc = jiraConfig || {};
   const [edit, setEdit] = useState(false);
   const [ef, setEf] = useState({});
@@ -1691,17 +1704,10 @@ export function Defects() {
       setPendingSelect(null);
     }
   }, [pendingSelect]);
-  const TRANS = { "Open": [["진행", "In Progress"], ["해결", "Resolved"]], "In Progress": [["해결", "Resolved"], ["보류", "Open"]], "Resolved": [["Reopen", "Open"]] };
+  const TRANS = { "Open": [["진행", "In Progress"], ["해결", "Resolved"]], "In Progress": [["해결", "Resolved"], ["보류", "Open"]], "Resolved": [["재오픈", "Open"]] };
   const list = defects.filter((d) => (dom === "전체" || (d.domain || "LQA") === dom) && (stf === "전체" || (d.status || "Open") === stf));
   const openN = list.filter((d) => d.status !== "Resolved").length;
   const resN = list.filter((d) => d.status === "Resolved").length;
-  const reverify = (d) => {
-    const dm = d.domain || "LQA";
-    if (dm === "NQA") { toast("성능 QA는 준비 중입니다 (확장 예정)", "info"); return; }
-    if (dm !== domain) setDomain(dm);
-    if (dm === "FQA") { if (setFqaEditTc) setFqaEditTc(d.tc); toast(d.tc + " 재검증 — 테스트케이스 편집으로 이동", "info"); goto("fqa-cases"); }
-    else { toast(d.tc + " 재검증 — 평가 실행으로 이동", "info"); goto("run"); }
-  };
   return (
     <div className="space-y-4">
       <PageToolbar desc="GitLab / Jira 연계 · 전 도메인 공통">
@@ -1722,7 +1728,7 @@ export function Defects() {
               <td><Badge kind={st[d.status] || "info"}>{d.status || "Open"}</Badge></td>
               <td className="text-slate-400">{d.assignee || <span className="text-slate-600">미지정</span>}</td>
               <td className="pr-2 text-xs leading-tight text-slate-500"><div>{d.createdBy || "—"} · {d.createdAt || "—"}</div>{d.updatedAt && d.updatedAt !== d.createdAt && <div className="text-slate-400">수정 {d.updatedBy} · {d.updatedAt}</div>}</td>
-              <td className="pr-4" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-2"><button onClick={() => reverify(d)} className="text-slate-500 hover:text-teal-400" title="재검증 실행"><RefreshCw size={15} /></button>{jc.connected && <button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button>}</div></td>
+              <td className="pr-4" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-2">{jc.connected && <button onClick={() => toast(d.key + " 이슈 트래커로 이동 (데모)", "info")} className="text-slate-500 hover:text-teal-400" title="이슈 트래커"><ExternalLink size={15} /></button>}</div></td>
             </tr>
           ))}
           {list.length === 0 && <tr><td colSpan={10}><EmptyState icon={Bug} title="해당 조건의 결함이 없습니다" hint="평가/실행 실패 시 자동·수동으로 이슈를 등록하세요" /></td></tr>}
@@ -1770,7 +1776,7 @@ export function Defects() {
                 <div className="mb-1.5 text-xs text-slate-500">상태 변경</div>
                 <div className="flex flex-wrap gap-2">{(TRANS[sel.status || "Open"] || []).map(([label, next]) => <Btn key={label} kind={next === "Resolved" ? "primary" : "ghost"} onClick={() => { setDefectStatus(sel.key, next); setSel({ ...sel, status: next }); toast(sel.key + " → " + next, "ok"); }}>{label}</Btn>)}</div>
               </div>
-              <div className="flex gap-2 border-t border-slate-800 pt-3"><Btn icon={RefreshCw} onClick={() => reverify(sel)}>재검증</Btn>{jc.connected && <Btn icon={ExternalLink} onClick={() => toast(sel.key + " 이슈 트래커로 이동 (데모)", "info")}>이슈 트래커</Btn>}</div>
+              {jc.connected && <div className="flex gap-2 border-t border-slate-800 pt-3"><Btn icon={ExternalLink} onClick={() => toast(sel.key + " 이슈 트래커로 이동 (데모)", "info")}>이슈 트래커</Btn></div>}
             </div>
           </div>
         </div>
@@ -1956,7 +1962,7 @@ export function MembersView() {
   const MENU_GROUPS = [
     { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge · Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
     { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "실행 이력", "회귀 비교", "불안정(Flaky)"] },
-    { id: "NQA", label: "성능 QA", menus: ["대시보드", "대상·환경", "측정 시나리오", "측정 계획", "측정 실행", "실행 이력", "성능 추이"] },
+    { id: "NQA", label: "성능 QA", menus: ["대시보드", "환경", "부하 테스트", "측정 실행", "실행 이력"] },
     { id: "COM", label: "공통", menus: ["결함", "리포트·알림", "데이터셋", "변수"] },
   ];
   // QA 엔지니어 기본 조회: 설정성/민감 메뉴 + 부하 실행(위험 작업) + 변수(시크릿)

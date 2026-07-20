@@ -1692,7 +1692,7 @@ export function FqaHistoryScreen({ nav }) {
 }
 /* ═══════════ 7. 결과 상세 ═══════════ */
 export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }) {
-  const { fqaRuns, defects, addDefect, fqaPlans, fqaCases, updateFqaCase, jiraConfig, setPendingSelect } = useApp();
+  const { fqaRuns, defects, addDefect, openModal, fqaPlans, fqaCases, updateFqaCase, jiraConfig, setPendingSelect } = useApp();
   const [msg, flash] = useToast();
   const [filt, setFilt] = useState("전체");
   const [selId, setSelId] = useState(null);
@@ -1744,8 +1744,19 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const defectsOfTc = (id) => defects.filter((d) => d.tc === id && d.domain === "FQA" && (d.target || "") === runTarget);
   const openDefectOf = (id) => defectsOfTc(id).find((d) => d.status !== "Resolved");
   const isRegression = (id) => !openDefectOf(id) && defectsOfTc(id).length > 0;
-  const regDefect = (t) => { if (openDefectOf(t.id)) { flash(t.id + " 이미 열린 결함이 있습니다"); return; } const key = dkey(1900 + defects.length); addDefect({ key, tc: t.id, target: runTarget, sev: "Major", title: (isRegression(t.id) ? "[재발] " : "") + t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" }); flash(t.id + " 결함 등록 · " + key); };
-  const regAll = () => { const tgt = tcs.filter((t) => t.v === "FAIL" && !openDefectOf(t.id)); if (!tgt.length) { flash("등록할 신규 실패 결함이 없습니다 — 모두 열린 결함이 있습니다"); return; } tgt.forEach((t, i) => addDefect({ key: dkey(1900 + defects.length + i), tc: t.id, target: runTarget, sev: "Major", title: (isRegression(t.id) ? "[재발] " : "") + t.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" })); flash("실패 " + tgt.length + "건 결함 일괄 등록"); };
+  const regDefect = (t) => {
+    if (openDefectOf(t.id)) { flash(t.id + " 이미 열린 결함이 있습니다"); return; }
+    openModal("jira", {
+      domain: "FQA", sev: "Major", tc: t.id, target: runTarget, labels: "fqa, functional",
+      title: (isRegression(t.id) ? "[재발] " : "") + t.name + " 기능 실패",
+      desc: "기능 케이스: " + t.name + " (" + t.id + ")\n대상 제품: " + runTarget,
+      steps: "1. 케이스 '" + t.name + "' 실행\n2. 단언(assertion) 검증",
+      expected: t.expected || "케이스에 정의된 기대 결과 충족",
+      actual: "단언 불일치 — 케이스 실패",
+      env: runTarget,
+      artifacts: [{ k: "shot", label: "스크린샷", file: "screenshot.png", size: "220 KB" }, { k: "har", label: "네트워크 HAR", file: "session.har", size: "1.2 MB" }, { k: "trace", label: "Playwright 트레이스", file: "trace.zip", size: "3 MB" }],
+    });
+  };
   const FLAKY = fqaCases.filter((c) => histOf(fqaRuns, c.id).length >= 1).map((c) => {
     const h = histOf(fqaRuns, c.id); const fails = h.filter((v) => v === "FAIL").length; const passes = h.filter((v) => v === "PASS").length; const warns = h.filter((v) => v === "WARN").length;
     const flips = h.slice(1).reduce((n, v, i) => n + (v !== h[i] ? 1 : 0), 0);
@@ -1760,7 +1771,18 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   const flakyN = FLAKY.filter((r) => r.flaky).length;
   const persistN = FLAKY.filter((r) => r.persistent).length;
   const hasDefFQA = (id) => defects.some((d) => d.tc === id && d.domain === "FQA");
-  const regFail = (r) => { if (hasDefFQA(r.id)) { flash(r.id + " 이미 결함 등록됨"); return; } addDefect({ key: dkey(1970 + defects.length), tc: r.id, sev: "Major", title: "지속 실패: " + r.name, status: "Open", domain: "FQA", project: jr.project || "", assignee: jr.assignee || "" }); flash(r.id + " 결함 등록"); };
+  const regFail = (r) => {
+    if (hasDefFQA(r.id)) { flash(r.id + " 이미 결함 등록됨"); return; }
+    openModal("jira", {
+      domain: "FQA", sev: "Major", tc: r.id, labels: "fqa, flaky, persistent",
+      title: "지속 실패: " + r.name,
+      desc: "케이스 '" + r.name + "' (" + r.id + ")\n최근 " + r.runs + "회 중 " + r.fails + "회 실패 (" + r.rate + "%)\n" + (r.streak || ""),
+      steps: "1. 케이스 '" + r.name + "' 반복 실행\n2. 실패 재현 확인",
+      expected: "케이스 통과",
+      actual: "지속 실패 — " + (r.streak || (r.rate + "% 실패")),
+      artifacts: [{ k: "shot", label: "스크린샷", file: "screenshot.png", size: "220 KB" }, { k: "trace", label: "Playwright 트레이스", file: "trace.zip", size: "3 MB" }],
+    });
+  };
   const toggleQuar = (r) => { updateFqaCase(r.id, { quarantined: !r.quarantined }); flash(r.id + (r.quarantined ? " 격리 해제 — 차단 실행에 복귀" : " 격리(quarantine) — 차단 실행에서 제외")); };
   const vK = { PASS: "pass", FAIL: "fail", HEAL: "teal", WARN: "warn" };
   const shown = tcs.filter((t) => filt === "전체" || (filt === "실패만" && t.v === "FAIL") || (filt === "통과만" && t.v === "PASS") || (filt === "보정 제안" && t.heal));
@@ -1795,7 +1817,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
         <>
           <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
             <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-sm text-teal-400">{run.id}</span><span className="text-sm font-medium text-slate-200">{(fqaPlans.find((p) => p.id === run.planId) || {}).name || run.plan}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{!run.brow ? "API" : (run.brow || "Chrome")} · {run.suite}</span>{run.ver && run.ver !== "-" && <Badge kind="info">빌드 {run.ver}</Badge>}</div>
-            <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn><Btn icon={Download} onClick={() => flash(run.id + " 증적 번들 다운로드 — " + (!run.brow ? "요청·응답·trace·로그" : "스크린샷·영상·trace·로그"))}>증적 다운로드</Btn>{run.fail > 0 && <Btn kind="primary" icon={Bug} onClick={regAll}>결함 일괄 등록</Btn>}</div>
+            <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn><Btn icon={Download} onClick={() => flash(run.id + " 증적 번들 다운로드 — " + (!run.brow ? "요청·응답·trace·로그" : "스크린샷·영상·trace·로그"))}>증적 다운로드</Btn></div>
           </Card>
           <div className={"grid gap-3 " + (!run.brow ? "grid-cols-5" : "grid-cols-6")}>
             {SUM.map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
