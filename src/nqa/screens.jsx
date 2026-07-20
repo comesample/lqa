@@ -990,6 +990,8 @@ export function NqaHistoryScreen() {
   const { nqaRuns, nqaPlans } = useApp();
   const runs = (nqaRuns || []).filter((r) => r.status === "완료");
   const [detail, setDetail] = useState(null);
+  const [fPlan, setFPlan] = useState("all");
+  const [fVerdict, setFVerdict] = useState("all");
   const planName = (id) => ((nqaPlans || []).find((p) => p.id === id) || {}).name || "-";
   const regMap = {};
   const byPlan = {};
@@ -1004,15 +1006,20 @@ export function NqaHistoryScreen() {
       regMap[r.id] = { deltaPct, regression: base != null && deltaPct > 10 };
     });
   });
+  const shown = runs.filter((r) => (fPlan === "all" || String(r.planId) === fPlan) && (fVerdict === "all" || (r.result || {}).verdict === fVerdict)).slice().sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
   if (detail) return <NqaResultView run={detail} back={() => setDetail(null)} />;
   return (
     <div className="space-y-4">
       <PageToolbar desc="부하 실행 이력 · 행 클릭 → 실행 결과 상세" />
+      <div className="flex items-center gap-2">
+        <div style={{ width: 120 }}><Select value={fVerdict} onChange={(e) => setFVerdict(e.target.value)}><option value="all">전체 판정</option><option value="합격">합격</option><option value="불합격">불합격</option></Select></div>
+        <div style={{ width: 200 }}><Select value={fPlan} onChange={(e) => setFPlan(e.target.value)}><option value="all">전체 부하 테스트</option>{(nqaPlans || []).map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}</Select></div>
+      </div>
       <Card className="overflow-hidden p-0">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">실행 ID</th><th className="px-3 py-2 text-left">부하 테스트</th><th className="px-3 py-2 text-left">시각</th><th className="px-3 py-2 text-right">처리량</th><th className="px-3 py-2 text-right">p95</th><th className="px-3 py-2 text-right">에러율</th><th className="px-3 py-2 text-center">p95 직전합격 대비</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
           <tbody>
-            {runs.length === 0 ? <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-slate-600">실행 이력이 없습니다.</td></tr> : runs.map((r) => (
+            {shown.length === 0 ? <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-slate-600">{runs.length === 0 ? "실행 이력이 없습니다." : "조건에 맞는 실행이 없습니다."}</td></tr> : shown.map((r) => (
               <tr key={r.id} className="cursor-pointer border-b border-slate-800 last:border-0 hover:bg-slate-800/50" onClick={() => setDetail(r)}>
                 <td className="px-3 py-2 font-mono text-xs text-slate-300">{r.id}</td>
                 <td className="px-3 py-2 text-slate-300">{planName(r.planId)} <span className="text-xs text-slate-500">#{r.no}</span></td>
@@ -1081,10 +1088,12 @@ export function NqaTrendScreen() {
 export function NqaDashboardScreen({ nav }) {
   const { nqaRuns, nqaPlans, nqaScenarios, nqaSystems, defects } = useApp();
   const plans = nqaPlans || [];
-  const completed = (nqaRuns || []).filter((r) => r.status === "완료");
+  const [fPlan, setFPlan] = useState("all");
+  const allCompleted = (nqaRuns || []).filter((r) => r.status === "완료");
+  const inScope = (planId) => fPlan === "all" || String(planId) === fPlan;
   const regMap = {};
   const byPlan = {};
-  completed.forEach((r) => { (byPlan[r.planId] = byPlan[r.planId] || []).push(r); });
+  allCompleted.forEach((r) => { (byPlan[r.planId] = byPlan[r.planId] || []).push(r); });
   Object.keys(byPlan).forEach((pid) => {
     const sorted = byPlan[pid].slice().sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || ""));
     sorted.forEach((r, i) => {
@@ -1095,15 +1104,17 @@ export function NqaDashboardScreen({ nav }) {
       regMap[r.id] = { deltaPct, regression: base != null && deltaPct > 10 };
     });
   });
+  const completed = allCompleted.filter((r) => inScope(r.planId));
   const desc = completed.slice().sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
   const asc = completed.slice().sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || "")).slice(-12);
   const recent = desc.slice(0, 10);
   const passN = recent.filter((r) => (r.result || {}).verdict === "합격").length;
   const rate = recent.length ? Math.round((passN / recent.length) * 100) : 0;
-  const openDef = (defects || []).filter((d) => d.domain === "NQA" && d.status !== "Resolved" && d.status !== "Closed").length;
+  const scopedRunIds = new Set((nqaRuns || []).filter((r) => inScope(r.planId)).map((r) => r.id));
+  const openDef = (defects || []).filter((d) => d.domain === "NQA" && d.status !== "Resolved" && d.status !== "Closed" && (fPlan === "all" || scopedRunIds.has(d.tc))).length;
   const regCount = completed.filter((r) => (regMap[r.id] || {}).regression).length;
-  const running = (nqaRuns || []).filter((r) => r.status === "실행중");
-  const queuedN = (nqaRuns || []).filter((r) => r.status === "대기").length;
+  const running = (nqaRuns || []).filter((r) => r.status === "실행중" && inScope(r.planId));
+  const queuedN = (nqaRuns || []).filter((r) => r.status === "대기" && inScope(r.planId)).length;
   const usedW = running.reduce((a, r) => a + (r.agents || 1), 0);
   const last = desc[0];
   const planName = (id) => (plans.find((p) => p.id === id) || {}).name || "-";
@@ -1112,7 +1123,10 @@ export function NqaDashboardScreen({ nav }) {
   const latestOf = (pid) => desc.find((r) => r.planId === pid);
   return (
     <div className="space-y-4">
-      <PageToolbar desc="부하 KPI · SLA 판정 추이 · 부하 테스트별 요약" />
+      <div className="flex items-center justify-between gap-2">
+        <PageToolbar desc="부하 KPI · SLA 판정 추이 · 부하 테스트별 요약" />
+        <div className="w-56 shrink-0"><Select value={fPlan} onChange={(e) => setFPlan(e.target.value)}><option value="all">전체 부하 테스트</option>{plans.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}</Select></div>
+      </div>
       <div className="grid grid-cols-4 gap-3">
         <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><CheckCircle2 size={14} className="text-teal-400" />SLA 합격률</div><div className="mt-1 text-2xl font-semibold text-slate-100">{rate}<span className="text-sm text-slate-500">%</span></div><div className="text-xs text-slate-500">최근 {recent.length}회 중 {passN} 합격</div></Card>
         <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><Bug size={14} className="text-red-400" />미해결 성능 결함</div><div className={"mt-1 text-2xl font-semibold " + (openDef > 0 ? "text-red-300" : "text-slate-100")}>{openDef}</div><div className="text-xs text-slate-500">SLA 불합격 결함 (Open)</div></Card>
@@ -1137,7 +1151,7 @@ export function NqaDashboardScreen({ nav }) {
         <div className="text-sm font-semibold text-slate-200">부하 테스트별 최근 판정</div>
         <div className="overflow-hidden rounded-lg border border-slate-800">
           <table className="w-full text-sm"><thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">부하 테스트</th><th className="px-3 py-2 text-left">유형</th><th className="px-3 py-2 text-left">대상 환경</th><th className="px-3 py-2 text-left">최근 실행</th><th className="px-3 py-2 text-right">p95</th><th className="px-3 py-2 text-right">에러율</th><th className="px-3 py-2 text-center">회귀</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
-          <tbody>{plans.length === 0 ? <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-slate-600">부하 테스트가 없습니다.</td></tr> : plans.map((p) => { const r = latestOf(p.id); const su = sutOfPlan(p.id); const psc = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {}; const reg = r ? (regMap[r.id] || {}) : {}; return (
+          <tbody>{plans.length === 0 ? <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-slate-600">부하 테스트가 없습니다.</td></tr> : plans.filter((p) => fPlan === "all" || String(p.id) === fPlan).map((p) => { const r = latestOf(p.id); const su = sutOfPlan(p.id); const psc = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {}; const reg = r ? (regMap[r.id] || {}) : {}; return (
             <tr key={p.id} className="border-b border-slate-800 last:border-0">
               <td className="px-3 py-2 text-slate-300">{p.name}</td>
               <td className="px-3 py-2 text-xs text-slate-400">{psc.shape || "-"}</td>
@@ -1150,7 +1164,6 @@ export function NqaDashboardScreen({ nav }) {
             </tr>
           ); })}</tbody></table>
         </div>
-        <div className="flex justify-end gap-2"><Btn icon={Gauge} onClick={() => nav && nav("nqa-run")}>측정 실행</Btn><Btn icon={TrendingUp} onClick={() => nav && nav("nqa-history")}>실행 이력</Btn></div>
       </Card>
     </div>
   );
