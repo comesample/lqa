@@ -90,10 +90,10 @@ export function PqaTargetScreen() {
       </div>
       {modal && (
         <Modal title="대상 앱 추가" onClose={() => setModal(false)}>
-          <Field label="앱 이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="예: T월드" /></Field>
+          <Field label="앱 이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="예: 온마켓" /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="플랫폼"><Select value="Android" onChange={() => {}}>{PERF_PLATFORMS.map((p) => <option key={p.id} value={p.id} disabled={!p.ready}>{p.label}{!p.ready ? " (준비중)" : ""}</option>)}</Select></Field>
-            <Field label="패키지 id"><Input value={nf.pkg} onChange={(e) => setNf({ ...nf, pkg: e.target.value })} placeholder="com.sktelecom.tworld" /></Field>
+            <Field label="패키지 id"><Input value={nf.pkg} onChange={(e) => setNf({ ...nf, pkg: e.target.value })} placeholder="com.onmarket.app" /></Field>
           </div>
           <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(false)}>취소</Btn><Btn kind="primary" icon={Plus} onClick={add}>추가</Btn></div>
         </Modal>
@@ -156,7 +156,7 @@ export function PqaScenarioScreen() {
       </div>
       {modal && (
         <Modal title="측정 시나리오 추가" onClose={() => setModal(false)}>
-          <Field label="이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="예: 홈→요금제 스크롤" /></Field>
+          <Field label="이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="예: 홈→상품목록 스크롤" /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="대상 앱"><Select value={nf.appId} onChange={(e) => setNf({ ...nf, appId: e.target.value })}><option value="">선택</option>{perfApps.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select></Field>
             <Field label="여정 소스"><Select value={nf.journey} onChange={(e) => setNf({ ...nf, journey: e.target.value })}>{PERF_JOURNEY_SRC.map((j) => <option key={j}>{j}</option>)}</Select></Field>
@@ -250,7 +250,7 @@ export function PqaPlanScreen() {
       </div>
       {modal && (
         <Modal title="측정 계획 추가" onClose={() => setModal(false)}>
-          <Field label="이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="예: T월드 릴리스 성능 게이트" /></Field>
+          <Field label="이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="예: 온마켓 릴리스 성능 게이트" /></Field>
           <Field label="대상 앱"><Select value={nf.appId} onChange={(e) => setNf({ ...nf, appId: e.target.value })}><option value="">선택</option>{perfApps.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select></Field>
           <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(false)}>취소</Btn><Btn kind="primary" icon={Plus} onClick={add}>추가</Btn></div>
         </Modal>

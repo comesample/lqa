@@ -47,36 +47,36 @@ export const surfaceOf = (act) => (API_ACTS.includes(act) ? "api" : WEB_ACTS.inc
 
 /* ── 대상(제품) · 환경(배포본 = 멀티 접점) ───────────────── */
 export const INIT_FQA_SYSTEMS = [
-  { id: 1, name: "T월드", envs: [
+  { id: 1, name: "온마켓", envs: [
     { env: "스테이징", prod: false, status: "연결됨", ver: "v5.12.0-rc",
-      webUrl: "https://stg.tworld.co.kr",
-      apiUrl: "https://api-stg.tworld.co.kr",
+      webUrl: "https://stg.onmarket.io",
+      apiUrl: "https://api-stg.onmarket.io",
       accts: [
         { role: "일반", acct: "qa_user01", secretRef: "${stg_test_pw}" },
         { role: "VIP", acct: "qa_vip01", secretRef: "${stg_test_pw}" },
         { role: "관리자", acct: "qa_admin", secretRef: "${stg_test_pw}" },
       ],
-      apiAuth: { type: "OAuth 2.0 (Client Credentials)", tokenUrl: "https://auth-stg.tworld.co.kr/oauth2/token", clientId: "exq-qa-runner", clientSecret: "${stg_oauth_secret}", scope: "orders.read orders.write" },
+      apiAuth: { type: "OAuth 2.0 (Client Credentials)", tokenUrl: "https://auth-stg.onmarket.io/oauth2/token", clientId: "autoqa-runner", clientSecret: "${stg_oauth_secret}", scope: "orders.read orders.write" },
       access: { basicAuth: true, baUser: "stg", baPw: "${stg_basic_pw}", tlsIgnore: true },
       deploy: { mode: "배포 웹훅 알림", verUrl: "", verPath: "$.version", interval: "15분" } },
     { env: "운영", prod: true, status: "연결됨", ver: "v5.11.3",
-      webUrl: "https://www.tworld.co.kr",
-      apiUrl: "https://api.tworld.co.kr",
+      webUrl: "https://www.onmarket.io",
+      apiUrl: "https://api.onmarket.io",
       accts: [
         { role: "일반", acct: "synth_prod01", secretRef: "${prod_synth_pw}" },
       ],
-      apiAuth: { type: "OAuth 2.0 (Client Credentials)", tokenUrl: "https://auth.tworld.co.kr/oauth2/token", clientId: "exq-qa-runner", clientSecret: "${prod_oauth_secret}", scope: "orders.read" },
+      apiAuth: { type: "OAuth 2.0 (Client Credentials)", tokenUrl: "https://auth.onmarket.io/oauth2/token", clientId: "autoqa-runner", clientSecret: "${prod_oauth_secret}", scope: "orders.read" },
       access: { basicAuth: false, baUser: "", baPw: "", tlsIgnore: false },
       deploy: { mode: "배포 웹훅 알림", verUrl: "", verPath: "$.version", interval: "15분" } },
   ] },
   { id: 2, name: "고객센터", envs: [
     { env: "스테이징", prod: false, status: "연결됨", ver: "v2.3.0",
-      webUrl: "https://stg-cs.tworld.co.kr",
+      webUrl: "https://stg-cs.onmarket.io",
       accts: [
         { role: "일반", acct: "cs_qa01", secretRef: "${stg_test_pw}", status: "활성" },
       ],
       access: { basicAuth: false, baUser: "", baPw: "", tlsIgnore: true },
-      deploy: { mode: "버전 엔드포인트 폴링", verUrl: "https://stg-cs.tworld.co.kr/health", verPath: "$.version", interval: "15분" } },
+      deploy: { mode: "버전 엔드포인트 폴링", verUrl: "https://stg-cs.onmarket.io/health", verPath: "$.version", interval: "15분" } },
   ] },
 ];
 
@@ -85,7 +85,7 @@ export const INIT_FQA_SUITES = [
   { id: 1, name: "로그인 / 인증", desc: "로그인·세션·인증 흐름" },
   { id: 2, name: "회원가입", desc: "가입 폼·검증" },
   { id: 3, name: "메인 화면", desc: "메인 스모크" },
-  { id: 4, name: "결제 / 요금제", desc: "요금제 조회(웹) → 결제(API) 혼합 흐름" },
+  { id: 4, name: "결제 / 주문", desc: "상품 조회(웹) → 결제(API) 혼합 흐름" },
   { id: 5, name: "API 연동", desc: "공개 API 계약 검증" },
 ];
 
@@ -132,17 +132,17 @@ export const INIT_FQA_CASES = [
     { act: "이동", loc: "/", val: "-" },
     { act: "화면 검증", loc: "[data-testid=main-banner]", val: "visible = true" },
   ] },
-  { id: "TC-0102", origin: "레코딩", name: "추천 요금제 카드 렌더", suite: "메인 화면", tags: "smoke", status: "승인", level: "Low-Code", dataset: "-", steps: [
+  { id: "TC-0102", origin: "레코딩", name: "추천 상품 카드 렌더", suite: "메인 화면", tags: "smoke", status: "승인", level: "Low-Code", dataset: "-", steps: [
     { act: "이동", loc: "/", val: "-" },
-    { act: "화면 검증", loc: "[data-testid=plan-card]", val: "count >= 3" },
+    { act: "화면 검증", loc: "[data-testid=product-card]", val: "count >= 3" },
   ] },
 
   /* ★ 혼합 케이스 — 웹으로 담고 → 결제 API 호출 → 다시 웹으로 확인 (한 세션·한 케이스)
      결제 요청은 웹 세션 쿠키를 그대로 쓰므로 장바구니 상태가 이어진다.
      응답의 orderId를 save로 저장해 뒤의 웹 스텝에서 ${orderId}로 사용한다. */
-  { id: "TC-0301", origin: "직접 작성", name: "요금제 선택(웹) → 결제(API) → 주문 확인(웹)", suite: "결제 / 요금제", tags: "critical", status: "승인", level: "Low-Code", dataset: "-", steps: [
-    { act: "이동", loc: "/plans", val: "-" },
-    { act: "클릭", loc: "[data-testid=plan-5g-premium]", val: "-" },
+  { id: "TC-0301", origin: "직접 작성", name: "상품 선택(웹) → 결제(API) → 주문 확인(웹)", suite: "결제 / 주문", tags: "critical", status: "승인", level: "Low-Code", dataset: "-", steps: [
+    { act: "이동", loc: "/products", val: "-" },
+    { act: "클릭", loc: "[data-testid=product-featured]", val: "-" },
     { act: "클릭", loc: "role=button[장바구니 담기]", val: "-" },
     { act: "화면 검증", loc: "[data-testid=cart-count]", val: 'text = "1"' },
     { act: "요청", loc: "POST /v1/orders/checkout", val: "-", body: '{ "payment": "card" }', headers: "", save: "orderId = $.orderId" },
@@ -151,10 +151,10 @@ export const INIT_FQA_CASES = [
     { act: "이동", loc: "/orders/${orderId}", val: "-" },
     { act: "화면 검증", loc: "[data-testid=order-status]", val: 'text = "결제완료"' },
   ] },
-  { id: "TC-0156", origin: "레코딩", name: "부가서비스 상태 반영", suite: "결제 / 요금제", tags: "regression", status: "승인", level: "Low-Code", dataset: "-", quarantined: false, steps: [
-    { act: "이동", loc: "/my/addon", val: "-" },
-    { act: "클릭", loc: "#btn_subscribe", val: "-" },
-    { act: "화면 검증", loc: "[data-testid=addon_status]", val: 'text = "이용 중"' },
+  { id: "TC-0156", origin: "레코딩", name: "쿠폰 적용 상태 반영", suite: "결제 / 주문", tags: "regression", status: "승인", level: "Low-Code", dataset: "-", quarantined: false, steps: [
+    { act: "이동", loc: "/my/coupons", val: "-" },
+    { act: "클릭", loc: "#btn_apply_coupon", val: "-" },
+    { act: "화면 검증", loc: "[data-testid=coupon_status]", val: 'text = "적용됨"' },
   ] },
 
   { id: "TC-0401", origin: "API 임포트", name: "사용자 조회", suite: "API 연동", tags: "smoke", status: "승인", level: "Low-Code", dataset: "-", steps: [
@@ -174,8 +174,8 @@ export const INIT_FQA_CASES = [
     { act: "응답 검증", loc: "상태코드", val: "200" },
     { act: "응답 검증", loc: "$.token", val: "존재" },
   ] },
-  { id: "TC-0404", origin: "API 임포트", name: "요금제 목록 조회", suite: "API 연동", tags: "smoke", status: "승인", level: "Low-Code", dataset: "-", steps: [
-    { act: "요청", loc: "GET /v1/plans", val: "-", body: "", headers: "Accept: application/json", save: "" },
+  { id: "TC-0404", origin: "API 임포트", name: "상품 목록 조회", suite: "API 연동", tags: "smoke", status: "승인", level: "Low-Code", dataset: "-", steps: [
+    { act: "요청", loc: "GET /v1/products", val: "-", body: "", headers: "Accept: application/json", save: "" },
     { act: "응답 검증", loc: "상태코드", val: "200" },
     { act: "응답 검증", loc: "$.items", val: "존재" },
   ] },
@@ -189,51 +189,51 @@ export const INIT_FQA_CASES = [
 // 데모용 상대 날짜 — 시드가 항상 "오늘/어제" 기준으로 보이도록 (offsetDays: 0=오늘, -1=어제)
 const _rd = (offsetDays, hhmm) => { const t = new Date(); t.setDate(t.getDate() + offsetDays); const z = (n) => String(n).padStart(2, "0"); return t.getFullYear() + "-" + z(t.getMonth() + 1) + "-" + z(t.getDate()) + " " + hhmm; };
 export const INIT_FQA_RUNS = [
-  { id: "FRUN-503", name: "API 스모크", plan: "API 스모크 (스테이징)", planId: 4, suite: "API 연동", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "이벤트", by: "CI/CD Bot", status: "완료", prog: 100, progt: "5/5", dur: "0분 9초", at: "오늘 10:30", startedAt: _rd(0, "10:30"), endedAt: _rd(0, "10:30"), total: 5, pass: 4, fail: 1, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-503", name: "API 스모크", plan: "API 스모크 (스테이징)", planId: 4, suite: "API 연동", target: "온마켓 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "이벤트", by: "CI/CD Bot", status: "완료", prog: 100, progt: "5/5", dur: "0분 9초", at: "오늘 10:30", startedAt: _rd(0, "10:30"), endedAt: _rd(0, "10:30"), total: 5, pass: 4, fail: 1, warn: 0, heal: 0, tcs: [
     { id: "TC-0401", name: "사용자 조회", v: "PASS", dur: "0.3s" },
     { id: "TC-0402", name: "사용자 생성 후 조회", v: "PASS", dur: "0.4s" },
     { id: "TC-0403", name: "로그인 토큰 발급", v: "PASS", dur: "0.5s" },
-    { id: "TC-0404", name: "요금제 목록 조회", v: "FAIL", dur: "0.6s" },
+    { id: "TC-0404", name: "상품 목록 조회", v: "FAIL", dur: "0.6s" },
     { id: "TC-0405", name: "사용자 삭제", v: "PASS", dur: "0.2s" },
   ] },
-  { id: "FRUN-512", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 62, progt: "2/3", dur: "3분 12초", at: "방금 전", total: 3, pass: 2, fail: 0, warn: 0, heal: 1, tcs: [] },
-  { id: "FRUN-511", name: "결제 회귀", plan: "결제 회귀 (웹+API)", planId: 3, suite: "결제 / 요금제", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "이벤트", by: "CI/CD Bot", status: "실행 중", prog: 50, progt: "1/2", dur: "5분 02초", at: "방금 전", total: 2, pass: 1, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-509", name: "회원가입 검증", plan: "전체 스모크 (운영)", planId: 2, suite: "회원가입", target: "T월드 · 운영", ver: "v5.11.3", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "대기 중", prog: 0, progt: "대기 #1", dur: "-", at: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-505", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", planId: 2, suite: "메인 화면", target: "T월드 · 운영", ver: "v5.11.3", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "2/2", dur: "2분 41초", at: "어제 18:20", startedAt: _rd(-1, "18:20"), endedAt: _rd(-1, "18:22"), total: 2, pass: 2, fail: 0, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-512", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "온마켓 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "실행 중", prog: 62, progt: "2/3", dur: "3분 12초", at: "방금 전", total: 3, pass: 2, fail: 0, warn: 0, heal: 1, tcs: [] },
+  { id: "FRUN-511", name: "결제 회귀", plan: "결제 회귀 (웹+API)", planId: 3, suite: "결제 / 주문", target: "온마켓 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "이벤트", by: "CI/CD Bot", status: "실행 중", prog: 50, progt: "1/2", dur: "5분 02초", at: "방금 전", total: 2, pass: 1, fail: 0, warn: 0, heal: 0, tcs: [] },
+  { id: "FRUN-509", name: "회원가입 검증", plan: "전체 스모크 (운영)", planId: 2, suite: "회원가입", target: "온마켓 · 운영", ver: "v5.11.3", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "대기 중", prog: 0, progt: "대기 #1", dur: "-", at: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
+  { id: "FRUN-505", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", planId: 2, suite: "메인 화면", target: "온마켓 · 운영", ver: "v5.11.3", brow: "Chrome", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "2/2", dur: "2분 41초", at: "어제 18:20", startedAt: _rd(-1, "18:20"), endedAt: _rd(-1, "18:22"), total: 2, pass: 2, fail: 0, warn: 0, heal: 0, tcs: [
     { id: "TC-0101", name: "메인 배너 노출", v: "PASS", dur: "0.6s" },
-    { id: "TC-0102", name: "추천 요금제 카드 렌더", v: "PASS", dur: "0.9s" },
+    { id: "TC-0102", name: "추천 상품 카드 렌더", v: "PASS", dur: "0.9s" },
   ] },
-  { id: "FRUN-510", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", planId: 2, suite: "메인 화면", target: "T월드 · 운영", ver: "v5.11.3", brow: "Firefox", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "2/2", dur: "2분 58초", at: "어제 18:40", startedAt: _rd(-1, "18:40"), endedAt: _rd(-1, "18:43"), total: 2, pass: 2, fail: 0, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-510", name: "메인 화면 스모크", plan: "전체 스모크 (운영)", planId: 2, suite: "메인 화면", target: "온마켓 · 운영", ver: "v5.11.3", brow: "Firefox", trig: "수동", by: "QA Engineer", status: "완료", prog: 100, progt: "2/2", dur: "2분 58초", at: "어제 18:40", startedAt: _rd(-1, "18:40"), endedAt: _rd(-1, "18:43"), total: 2, pass: 2, fail: 0, warn: 0, heal: 0, tcs: [
     { id: "TC-0101", name: "메인 배너 노출", v: "PASS", dur: "0.7s" },
-    { id: "TC-0102", name: "추천 요금제 카드 렌더", v: "PASS", dur: "1.1s" },
+    { id: "TC-0102", name: "추천 상품 카드 렌더", v: "PASS", dur: "1.1s" },
   ] },
-  { id: "FRUN-502", name: "결제 회귀", plan: "결제 회귀 (웹+API)", planId: 3, suite: "결제 / 요금제", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "2/2", dur: "3분 30초", at: "오늘 11:10", startedAt: _rd(0, "11:10"), endedAt: _rd(0, "11:13"), total: 2, pass: 1, fail: 1, warn: 0, heal: 1, tcs: [
-    { id: "TC-0301", name: "요금제 선택(웹) → 결제(API) → 주문 확인(웹)", v: "PASS", dur: "8.4s", heal: { step: "장바구니 버튼", from: "[data-testid=cart]", to: "[data-testid=cart-add]", conf: 90 } },
-    { id: "TC-0156", name: "부가서비스 상태 반영", v: "FAIL", dur: "1.2s" },
+  { id: "FRUN-502", name: "결제 회귀", plan: "결제 회귀 (웹+API)", planId: 3, suite: "결제 / 주문", target: "온마켓 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "2/2", dur: "3분 30초", at: "오늘 11:10", startedAt: _rd(0, "11:10"), endedAt: _rd(0, "11:13"), total: 2, pass: 1, fail: 1, warn: 0, heal: 1, tcs: [
+    { id: "TC-0301", name: "상품 선택(웹) → 결제(API) → 주문 확인(웹)", v: "PASS", dur: "8.4s", heal: { step: "장바구니 버튼", from: "[data-testid=cart]", to: "[data-testid=cart-add]", conf: 90 } },
+    { id: "TC-0156", name: "쿠폰 적용 상태 반영", v: "FAIL", dur: "1.2s" },
   ] },
-  { id: "FRUN-499", name: "API 스모크", plan: "API 스모크 (스테이징)", planId: 4, suite: "API 연동", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "이벤트", by: "CI/CD Bot", status: "오류", prog: 0, progt: "연결 실패", dur: "-", at: "오늘 08:50", startedAt: _rd(0, "08:50"), endedAt: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
-  { id: "FRUN-487", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 22초", at: "6일 전 22:00", startedAt: _rd(-6, "22:00"), endedAt: _rd(-6, "22:03"), total: 3, pass: 2, fail: 0, warn: 1, heal: 0, tcs: [
+  { id: "FRUN-499", name: "API 스모크", plan: "API 스모크 (스테이징)", planId: 4, suite: "API 연동", target: "온마켓 · 스테이징", ver: "v5.12.0-rc", brow: "", trig: "이벤트", by: "CI/CD Bot", status: "오류", prog: 0, progt: "연결 실패", dur: "-", at: "오늘 08:50", startedAt: _rd(0, "08:50"), endedAt: "-", total: 0, pass: 0, fail: 0, warn: 0, heal: 0, tcs: [] },
+  { id: "FRUN-487", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "온마켓 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 22초", at: "6일 전 22:00", startedAt: _rd(-6, "22:00"), endedAt: _rd(-6, "22:03"), total: 3, pass: 2, fail: 0, warn: 1, heal: 0, tcs: [
     { id: "TC-0031", name: "로그인 성공", v: "PASS", dur: "1.1s" },
     { id: "TC-0203", name: "OTP 재발송", v: "WARN", dur: "1.0s" },
     { id: "TC-0055", name: "세션 만료 처리", v: "PASS", dur: "3.1s" },
   ] },
   // ── 로그인 회귀 이력 (회귀 비교 · 불안정 시연용) — TC-0203=Flaky, TC-0055=지속 실패 패턴 ──
-  { id: "FRUN-501", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 05초", at: "4일 전 22:00", startedAt: _rd(-4, "22:00"), endedAt: _rd(-4, "22:03"), total: 3, pass: 3, fail: 0, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-501", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "온마켓 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 05초", at: "4일 전 22:00", startedAt: _rd(-4, "22:00"), endedAt: _rd(-4, "22:03"), total: 3, pass: 3, fail: 0, warn: 0, heal: 0, tcs: [
     { id: "TC-0031", name: "로그인 성공", v: "PASS", dur: "1.0s" },
     { id: "TC-0203", name: "OTP 재발송", v: "PASS", dur: "1.1s" },
     { id: "TC-0055", name: "세션 만료 처리", v: "PASS", dur: "3.0s" },
   ] },
-  { id: "FRUN-504", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 18초", at: "3일 전 22:00", startedAt: _rd(-3, "22:00"), endedAt: _rd(-3, "22:04"), total: 3, pass: 1, fail: 2, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-504", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "온마켓 · 스테이징", ver: "v5.11.9-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 18초", at: "3일 전 22:00", startedAt: _rd(-3, "22:00"), endedAt: _rd(-3, "22:04"), total: 3, pass: 1, fail: 2, warn: 0, heal: 0, tcs: [
     { id: "TC-0031", name: "로그인 성공", v: "PASS", dur: "1.0s" },
     { id: "TC-0203", name: "OTP 재발송", v: "FAIL", dur: "1.3s" },
     { id: "TC-0055", name: "세션 만료 처리", v: "FAIL", dur: "3.2s" },
   ] },
-  { id: "FRUN-506", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 09초", at: "2일 전 22:00", startedAt: _rd(-2, "22:00"), endedAt: _rd(-2, "22:03"), total: 3, pass: 2, fail: 1, warn: 0, heal: 0, tcs: [
+  { id: "FRUN-506", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "온마켓 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 09초", at: "2일 전 22:00", startedAt: _rd(-2, "22:00"), endedAt: _rd(-2, "22:03"), total: 3, pass: 2, fail: 1, warn: 0, heal: 0, tcs: [
     { id: "TC-0031", name: "로그인 성공", v: "PASS", dur: "1.0s" },
     { id: "TC-0203", name: "OTP 재발송", v: "PASS", dur: "1.1s" },
     { id: "TC-0055", name: "세션 만료 처리", v: "FAIL", dur: "3.3s" },
   ] },
-  { id: "FRUN-508", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "T월드 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 12초", at: "어제 22:00", startedAt: _rd(-1, "22:00"), endedAt: _rd(-1, "22:03"), total: 3, pass: 1, fail: 1, warn: 1, heal: 0, tcs: [
+  { id: "FRUN-508", name: "로그인 회귀", plan: "로그인 회귀 (스테이징)", planId: 1, suite: "로그인 / 인증", target: "온마켓 · 스테이징", ver: "v5.12.0-rc", brow: "Chrome", trig: "스케줄", by: "스케줄", status: "완료", prog: 100, progt: "3/3", dur: "3분 12초", at: "어제 22:00", startedAt: _rd(-1, "22:00"), endedAt: _rd(-1, "22:03"), total: 3, pass: 1, fail: 1, warn: 1, heal: 0, tcs: [
     { id: "TC-0031", name: "로그인 성공", v: "PASS", dur: "1.0s" },
     { id: "TC-0203", name: "OTP 재발송", v: "WARN", dur: "1.2s" },
     { id: "TC-0055", name: "세션 만료 처리", v: "FAIL", dur: "3.1s" },
@@ -246,7 +246,7 @@ export const INIT_FQA_PLANS = [
     brow: ["Chrome"], res: "1920×1080", headless: true, video: "실패 시만", timeout: 30, workers: "4", retry: 1, onfail: "계속 진행", gate: 95 },
   { id: 2, name: "전체 스모크 (운영)", targetRef: { systemId: 1, env: "운영" }, suites: ["로그인 / 인증", "메인 화면", "회원가입"], tags: "smoke", sched: "이벤트 · 배포 시", schedule: { mode: "event", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: { deploy: true }, summary: "이벤트 · 배포 시" }, status: "활성",
     brow: ["Chrome", "Firefox"], res: "1920×1080", headless: true, video: "녹화 안 함", timeout: 30, workers: "auto", retry: 0, onfail: "계속 진행", gate: 98 },
-  { id: 3, name: "결제 회귀 (웹+API)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["결제 / 요금제"], tags: "critical", sched: "예약 없음", status: "초안",
+  { id: 3, name: "결제 회귀 (웹+API)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["결제 / 주문"], tags: "critical", sched: "예약 없음", status: "초안",
     brow: ["Chrome"], res: "1440×900", headless: false, video: "전체 녹화", timeout: 30, workers: "2", retry: 2, onfail: "첫 에러 시 중단", gate: 100 },
   { id: 4, name: "API 스모크 (스테이징)", targetRef: { systemId: 1, env: "스테이징" }, suites: ["API 연동"], tags: "smoke", sched: "이벤트 · 배포 시", schedule: { mode: "event", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: { deploy: true }, summary: "이벤트 · 배포 시" }, status: "활성",
     brow: ["Chrome"], res: "1920×1080", headless: true, video: "녹화 안 함", timeout: 30, workers: "4", retry: 1, onfail: "계속 진행", gate: 95 },

@@ -3,7 +3,7 @@ import { useApp } from "../common/context.js";
 import { VarRefInput } from "../common/VarRefInput.jsx";
 import { DatasetPicker } from "../common/DatasetPicker.jsx";
 import { Card, PageToolbar, Badge, Btn, Field, Input, Select, Toggle, Seg, Toast, useToast, RunTime, stampPlus } from "../common/ui.jsx";
-import { Gauge, Plus, X, Save, Smartphone, Cpu, Wifi, Package, Upload, Link2, CheckCircle2, Globe, Monitor, Server, Zap, Activity, AlertTriangle, TrendingUp, Bug, Pencil } from "lucide-react";
+import { Gauge, Plus, X, Save, Smartphone, Cpu, Wifi, Package, Upload, Link2, CheckCircle2, Globe, Monitor, Server, Zap, Activity, AlertTriangle, TrendingUp, Bug, Pencil, ChevronLeft, FileDown } from "lucide-react";
 import { NQA_SUBTYPES, NQA_PLATFORMS, NQA_PLAT_K, NQA_TIERS, NQA_TOOLS, NQA_TOOL_METRICS, NQA_NETWORKS, NQA_STARTS, NQA_THERMAL_LEVELS, NQA_PROVIDERS, NQA_DEV_STATUS, NQA_DEV_ST_K, NQA_CAP_LABELS, NQA_PROVIDER_CAPS, NQA_SCN_SOURCES, NQA_SCN_SRC_K, NQA_MARKERS, NQA_SCN_TEMPLATES, NQA_BROWSERS, NQA_VIEWPORTS, NQA_WEB_NET, NQA_CPU_THROTTLE, NQA_CACHE, NQA_PROTOCOLS, NQA_LOAD_ENVS, NQA_HTTP_METHODS, NQA_AUTH_TYPES, NQA_MAX_AGENTS, NQA_LOAD_UNITS, NQA_LOAD_SHAPES } from "./data.js";
 
 const NQA_META = {
@@ -96,8 +96,8 @@ export function NqaTargetScreen() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setModal(false)}>
           <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="text-base font-semibold text-slate-100">부하 대상 추가</div>
-            <Field label="대상 이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="T월드 API 부하" /></Field>
-            <Field label="Base URL / 게이트웨이"><Input value={nf.baseUrl} onChange={(e) => setNf({ ...nf, baseUrl: e.target.value })} placeholder="https://api-stg.tworld.co.kr" /></Field>
+            <Field label="대상 이름"><Input value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} placeholder="온마켓 API 부하" /></Field>
+            <Field label="Base URL / 게이트웨이"><Input value={nf.baseUrl} onChange={(e) => setNf({ ...nf, baseUrl: e.target.value })} placeholder="https://api-stg.onmarket.io" /></Field>
             <Field label="프로토콜"><div className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-2 text-sm text-slate-300">HTTP/HTTPS</div></Field>
             <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(false)}>취소</Btn><Btn kind="primary" icon={Plus} onClick={addSut}>추가</Btn></div>
           </div>
@@ -926,7 +926,11 @@ function NqaResultView({ run, back }) {
   };
   return (
     <div className="space-y-4">
-      <button onClick={back} className="text-sm text-teal-400 hover:underline">← 실행 이력</button>
+      <PageToolbar desc={<span><button onClick={back} className="text-teal-400 hover:underline">실행 이력</button> <span className="text-slate-600">›</span> <span className="text-slate-300 font-medium">{r.id} 결과</span></span>}>
+        <Btn icon={FileDown} onClick={() => flash("Excel 다운로드 — 요약·시계열·오류(증적) 포함")}>Excel</Btn>
+        <Btn icon={FileDown} onClick={() => flash("PDF 리포트 다운로드")}>PDF</Btn>
+        <Btn icon={ChevronLeft} onClick={back}>실행 이력으로</Btn>
+      </PageToolbar>
       <Card className="p-4 space-y-3">
         <div className="flex items-start justify-between">
           <div className="min-w-0">
@@ -960,7 +964,7 @@ function NqaResultView({ run, back }) {
       <Card className="p-4 space-y-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Bug size={14} className="text-red-400" />오류 <span className="text-xs font-normal text-slate-500">· {errs.length}건 (최근순)</span></div>
         {errs.length === 0 ? <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-500">집계된 오류가 없습니다.</div> : (
-          <div className="overflow-hidden rounded-lg border border-slate-800" style={{ maxHeight: 280, overflowY: "auto" }}>
+          <div className="overflow-hidden rounded-lg border border-slate-800">
             {errs.map((e) => (
               <div key={e.i} className="border-b border-slate-800 last:border-0">
                 <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
@@ -1148,19 +1152,19 @@ export function NqaDashboardScreen({ nav }) {
         </Card>
       </div>
       <Card className="p-4 space-y-2">
-        <div className="text-sm font-semibold text-slate-200">부하 테스트별 최근 판정</div>
+        <div className="text-sm font-semibold text-slate-200">최근 실행 판정 <span className="text-xs font-normal text-slate-500">· 최근 {Math.min(8, desc.length)}건</span></div>
         <div className="overflow-hidden rounded-lg border border-slate-800">
-          <table className="w-full text-sm"><thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">부하 테스트</th><th className="px-3 py-2 text-left">유형</th><th className="px-3 py-2 text-left">대상 환경</th><th className="px-3 py-2 text-left">최근 실행</th><th className="px-3 py-2 text-right">p95</th><th className="px-3 py-2 text-right">에러율</th><th className="px-3 py-2 text-center">회귀</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
-          <tbody>{plans.length === 0 ? <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-slate-600">부하 테스트가 없습니다.</td></tr> : plans.filter((p) => fPlan === "all" || String(p.id) === fPlan).map((p) => { const r = latestOf(p.id); const su = sutOfPlan(p.id); const psc = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {}; const reg = r ? (regMap[r.id] || {}) : {}; return (
-            <tr key={p.id} className="border-b border-slate-800 last:border-0">
-              <td className="px-3 py-2 text-slate-300">{p.name}</td>
+          <table className="w-full text-sm"><thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">부하 테스트</th><th className="px-3 py-2 text-left">유형</th><th className="px-3 py-2 text-left">대상 환경</th><th className="px-3 py-2 text-left">실행 시각</th><th className="px-3 py-2 text-right">p95</th><th className="px-3 py-2 text-right">에러율</th><th className="px-3 py-2 text-center">회귀</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
+          <tbody>{desc.length === 0 ? <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-slate-600">실행 이력이 없습니다.</td></tr> : desc.slice(0, 8).map((r) => { const p = plans.find((x) => x.id === r.planId) || {}; const su = sutOfPlan(r.planId); const psc = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {}; const reg = regMap[r.id] || {}; return (
+            <tr key={r.id} className="border-b border-slate-800 last:border-0">
+              <td className="px-3 py-2 text-slate-300">{p.name || "-"}</td>
               <td className="px-3 py-2 text-xs text-slate-400">{psc.shape || "-"}</td>
               <td className="px-3 py-2 text-xs text-slate-500">{su.name || "-"}</td>
-              <td className="px-3 py-2 text-xs text-slate-500">{r ? r.startedAt : "미실행"}</td>
-              <td className="px-3 py-2 text-right text-slate-300">{r ? (r.result || {}).p95 + "ms" : "—"}</td>
-              <td className="px-3 py-2 text-right text-slate-300">{r ? (r.result || {}).errRate + "%" : "—"}</td>
-              <td className="px-3 py-2 text-center">{r ? (reg.regression ? <span className="font-semibold text-amber-400">▲{reg.deltaPct}%</span> : reg.deltaPct != null ? <span className="text-slate-500">{reg.deltaPct >= 0 ? "+" : ""}{reg.deltaPct}%</span> : <span className="text-slate-600">기준</span>) : "—"}</td>
-              <td className="px-3 py-2 text-center">{r ? <Badge kind={(r.result || {}).verdict === "합격" ? "pass" : "fail"}>{(r.result || {}).verdict}</Badge> : <span className="text-xs text-slate-600">—</span>}</td>
+              <td className="px-3 py-2 text-xs text-slate-500">{r.startedAt}</td>
+              <td className="px-3 py-2 text-right text-slate-300">{(r.result || {}).p95}ms</td>
+              <td className="px-3 py-2 text-right text-slate-300">{(r.result || {}).errRate}%</td>
+              <td className="px-3 py-2 text-center">{reg.regression ? <span className="font-semibold text-amber-400">▲{reg.deltaPct}%</span> : reg.deltaPct != null ? <span className="text-slate-500">{reg.deltaPct >= 0 ? "+" : ""}{reg.deltaPct}%</span> : <span className="text-slate-600">기준</span>}</td>
+              <td className="px-3 py-2 text-center"><Badge kind={(r.result || {}).verdict === "합격" ? "pass" : "fail"}>{(r.result || {}).verdict}</Badge></td>
             </tr>
           ); })}</tbody></table>
         </div>

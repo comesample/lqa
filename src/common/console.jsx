@@ -40,8 +40,8 @@ const INIT_AUDIT = [
   { t: "2026-06-10 15:48", actor: "최서연", tenant: "t1", action: "기능 실행", target: "회원가입 스위트 (32 TC)" },
   { t: "2026-06-10 09:15", actor: "한도윤", tenant: "t3", action: "조직 정지", target: "데모 조직" },
   { t: "2026-06-09 16:40", actor: "박지영", tenant: "t2", action: "멤버 초대", target: "newuser@skt.com" },
-  { t: "2026-06-09 13:30", actor: "이민준", tenant: "t1", action: "측정 시나리오 생성", target: "T월드 조회 혼합 부하" },
-  { t: "2026-06-09 10:05", actor: "최서연", tenant: "t1", action: "평가 계획 생성", target: "개통/부가서비스 안내" },
+  { t: "2026-06-09 13:30", actor: "이민준", tenant: "t1", action: "측정 시나리오 생성", target: "커머스 조회 혼합 부하" },
+  { t: "2026-06-09 10:05", actor: "최서연", tenant: "t1", action: "평가 계획 생성", target: "주문/멤버십 안내" },
   { t: "2026-06-08 18:22", actor: "한도윤", tenant: "-", action: "계정 정지", target: "오현태 (demo.com)" },
 ];
 
@@ -123,7 +123,7 @@ export function NewOperatorForm({ close }) {
   return (
     <div className="space-y-4">
       <Field label="이름"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" /></Field>
-      <Field label="사내 이메일"><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="예: ops@xq.skt" /></Field>
+      <Field label="사내 이메일"><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="예: ops@autoqa.io" /></Field>
       <div className="flex justify-end gap-2 pt-1"><Btn onClick={close}>취소</Btn><Btn kind="primary" icon={Plus} onClick={submit}>추가</Btn></div>
     </div>
   );

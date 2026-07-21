@@ -48,14 +48,14 @@ export const PERF_DEVICES = [
   { id: "d5", model: "Galaxy S24 · 전력리그", os: "Android 14", tier: "고사양", farm: "사내 랩", status: "온라인", caps: { trace: true, fps: true, power: true } },
 ];
 export const INIT_PERF_APPS = [
-  { id: 1, name: "T월드", platform: "Android", pkg: "com.sktelecom.tworld", version: "9.12.0", versionCode: "91200", variant: "release·profileable", source: "CI 아티팩트", build: "tworld-9.12.0-stg.aab", signed: true },
-  { id: 2, name: "T다이렉트", platform: "Android", pkg: "com.sktelecom.tdirect", version: "5.4.1", versionCode: "5041", variant: "release·profileable", source: "스토어(Play)", build: "-", signed: true },
+  { id: 1, name: "온마켓", platform: "Android", pkg: "com.onmarket.app", version: "9.12.0", versionCode: "91200", variant: "release·profileable", source: "CI 아티팩트", build: "onmarket-9.12.0-stg.aab", signed: true },
+  { id: 2, name: "온마켓 셀러", platform: "Android", pkg: "com.onmarket.seller", version: "5.4.1", versionCode: "5041", variant: "release·profileable", source: "스토어(Play)", build: "-", signed: true },
 ];
 export const INIT_PERF_SCENARIOS = [
   { id: 1, name: "앱 콜드 스타트", appId: 1, journey: "앱 시작(무여정)", steps: [], metrics: ["e2e", "mem", "cpu", "crash"], marker: { start: "프로세스 시작", end: "첫 프레임(TTID)" }, status: "활성" },
-  { id: 2, name: "홈→요금제 진입·스크롤", appId: 1, journey: "스크립트(Macrobenchmark)", steps: ["로그인", "홈 진입", "요금제 탭", "리스트 스크롤 x10"], metrics: ["e2e", "fps", "mem", "cpu", "net", "batt"], marker: { start: "요금제 탭 클릭", end: "리스트 렌더 완료" }, status: "활성" },
+  { id: 2, name: "홈→상품목록 진입·스크롤", appId: 1, journey: "스크립트(Macrobenchmark)", steps: ["로그인", "홈 진입", "상품 탭", "리스트 스크롤 x10"], metrics: ["e2e", "fps", "mem", "cpu", "net", "batt"], marker: { start: "상품 탭 클릭", end: "리스트 렌더 완료" }, status: "활성" },
 ];
 export const INIT_PERF_PLANS = [
-  { id: 1, name: "T월드 릴리스 성능 게이트", appId: 1, scenarioIds: [1, 2], matrix: { tiers: ["고사양", "중사양", "저사양"], farm: "Firebase Test Lab" }, cond: { start: "Cold", net: "LTE", power: false }, repeat: 10, budget: { e2e: 2000, fps: 55, mem: 400, crash: 0 }, trigger: "이벤트(배포)", status: "활성" },
+  { id: 1, name: "온마켓 릴리스 성능 게이트", appId: 1, scenarioIds: [1, 2], matrix: { tiers: ["고사양", "중사양", "저사양"], farm: "Firebase Test Lab" }, cond: { start: "Cold", net: "LTE", power: false }, repeat: 10, budget: { e2e: 2000, fps: 55, mem: 400, crash: 0 }, trigger: "이벤트(배포)", status: "활성" },
   { id: 2, name: "저사양 스크롤 성능", appId: 1, scenarioIds: [2], matrix: { tiers: ["저사양"], farm: "BrowserStack" }, cond: { start: "Warm", net: "Wi-Fi", power: false }, repeat: 8, budget: { fps: 50, e2e: 2500 }, trigger: "수동", status: "초안" },
 ];

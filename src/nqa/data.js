@@ -99,9 +99,9 @@ export const NQA_SCN_SRC_K = { "템플릿": "info", "기능 재사용": "active"
 export const NQA_MARKERS = ["LCP", "CLS", "TBT", "INP", "성능점수", "네트워크 페이로드"];
 export const NQA_SCN_TEMPLATES = [
   { name: "홈 페이지 로드 (LCP)", steps: [{ type: "flow", act: "페이지 이동", detail: "홈 URL" }, { type: "measure", metric: "LCP" }, { type: "measure", metric: "성능점수" }] },
-  { name: "요금제 페이지 진입", steps: [{ type: "flow", act: "페이지 이동", detail: "홈" }, { type: "flow", act: "클릭", detail: "요금제 링크" }, { type: "measure", metric: "LCP" }, { type: "measure", metric: "CLS" }] },
+  { name: "상품 페이지 진입", steps: [{ type: "flow", act: "페이지 이동", detail: "홈" }, { type: "flow", act: "클릭", detail: "상품 링크" }, { type: "measure", metric: "LCP" }, { type: "measure", metric: "CLS" }] },
   { name: "검색 상호작용 (INP)", steps: [{ type: "flow", act: "페이지 이동", detail: "검색" }, { type: "flow", act: "입력", detail: "질의어" }, { type: "measure", metric: "INP" }, { type: "measure", metric: "TBT" }] },
-  { name: "리스트 스크롤 (CLS)", steps: [{ type: "flow", act: "페이지 이동", detail: "요금제 리스트" }, { type: "flow", act: "스크롤", detail: "하단까지" }, { type: "measure", metric: "CLS" }] },
+  { name: "리스트 스크롤 (CLS)", steps: [{ type: "flow", act: "페이지 이동", detail: "상품 리스트" }, { type: "flow", act: "스크롤", detail: "하단까지" }, { type: "measure", metric: "CLS" }] },
 ];
 /* 부하 시나리오 — 대상(SUT) 선택 + 워크로드(비율 혼합/순차 진행) + 부하 형상. SLA 판정은 측정 계획. */
 export const NQA_LOAD_UNITS = ["가상 사용자(VU)", "도착률(RPS)"];

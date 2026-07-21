@@ -51,7 +51,7 @@ export function VariablesScreen() {
   };
 
   const tmpl = () => {
-    const csv = "키,값,시크릿,설명\nstg_api_key,sk_live_xxx,Y,스테이징 API 키\nbase_url,https://stg.tworld.co.kr,N,공통 URL\n";
+    const csv = "키,값,시크릿,설명\nstg_api_key,sk_live_xxx,Y,스테이징 API 키\nbase_url,https://stg.onmarket.io,N,공통 URL\n";
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" })); a.download = "변수_양식.csv"; a.click();
   };
   const openXl = () => { setXlRows([]); setXlName(""); setXlModal(true); };
@@ -139,7 +139,7 @@ export function VariablesScreen() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setModal(false)}>
           <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="text-base font-semibold text-slate-100">{editId ? "변수 편집" : "새 변수"}</div>
-            <Field label="키" hint="영문/숫자/밑줄 · 환경별은 stg_/dev_/prd_ 접두어 관례"><Input value={vf.key} onChange={(e) => setVf({ ...vf, key: e.target.value })} placeholder="stg_tworld_token" /></Field>
+            <Field label="키" hint="영문/숫자/밑줄 · 환경별은 stg_/dev_/prd_ 접두어 관례"><Input value={vf.key} onChange={(e) => setVf({ ...vf, key: e.target.value })} placeholder="stg_onmarket_token" /></Field>
             <div className="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2 text-sm text-slate-300"><span className="flex items-center gap-1.5"><KeyRound size={13} className={vf.secret ? "text-amber-400" : "text-slate-500"} />시크릿 (마스킹 저장)</span><Toggle on={vf.secret} onClick={() => setVf({ ...vf, secret: !vf.secret })} /></div>
             <Field label="값"><Input type={vf.secret ? "password" : "text"} value={vf.value} onChange={(e) => setVf({ ...vf, value: e.target.value })} placeholder={vf.secret ? "••••••" : "값 입력"} /></Field>
             <Field label="설명 (선택)"><Input value={vf.desc} onChange={(e) => setVf({ ...vf, desc: e.target.value })} placeholder="용도 메모" /></Field>

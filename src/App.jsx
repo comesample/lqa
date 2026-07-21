@@ -53,7 +53,7 @@ export default function App() {
   const [bellOpen, setBellOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [cases, setCases] = useState(stampSeeds(INIT_CASES));
-  const [categories, setCategories] = useState(["요금제", "부가서비스", "결제/청구", "개통", "안전성"]);
+  const [categories, setCategories] = useState(["주문/배송", "멤버십/구독", "결제/환불", "회원/계정", "안전성"]);
   const [plans, setPlans] = useState(stampSeeds(INIT_PLANS));
   const [runs, setRuns] = useState(INIT_RUNS);
   const [runIntent, setRunIntent] = useState(null);
@@ -79,7 +79,7 @@ export default function App() {
   const [fqaEditTc, setFqaEditTc] = useState(null);
   const [nqaScnFocus, setNqaScnFocus] = useState(null);
   const [fqaSuiteFocus, setFqaSuiteFocus] = useState(null); // 스위트 → 케이스 화면으로 필터 걸고 이동
-  const [jiraConfig, setJiraConfig] = useState({ connected: true, deploy: "Cloud", url: "skt.atlassian.net", email: "qa@skt.com", token: "${jira_token}", project: "TWORLD", issueType: "Bug", assignee: "QA Lead", labels: "lqa, chatbot", titleTpl: "[챗봇] {{tcId}} 평가 실패 ({{score}}점)", dedup: true, sevMap: { Critical: "Highest", Major: "High", Minor: "Medium" } });
+  const [jiraConfig, setJiraConfig] = useState({ connected: true, deploy: "Cloud", url: "onmarket.atlassian.net", email: "qa@onmarket.io", token: "${jira_token}", project: "SHOP", issueType: "Bug", assignee: "QA Lead", labels: "lqa, chatbot", titleTpl: "[챗봇] {{tcId}} 평가 실패 ({{score}}점)", dedup: true, sevMap: { Critical: "Highest", Major: "High", Minor: "Medium" } });
   const [fqaResultFrom, setFqaResultFrom] = useState("fqa-history");
   const [judges, setJudges] = useState(INIT_JUDGES);
   const [prompts, setPrompts] = useState(INIT_PROMPTS);

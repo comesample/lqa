@@ -613,12 +613,12 @@ function maskBody(body) {
 }
 // 데모용 번들 샘플 — URL 임포트 시뮬용. 실제 제품은 서버/러너가 스펙 URL을 가져옴.
 const SAMPLE_OPENAPI = {
-  openapi: "3.0.1", info: { title: "T월드 API", version: "1.2.0" },
+  openapi: "3.0.1", info: { title: "온마켓 API", version: "1.2.0" },
   paths: {
     "/v1/users/{id}": { get: { summary: "사용자 조회", responses: { "200": {}, "404": {} } }, put: { summary: "사용자 수정", requestBody: rb({ name: "string", phone: "string" }), responses: { "200": {}, "400": {} } }, delete: { summary: "사용자 삭제", responses: { "204": {} } } },
     "/v1/users": { post: { summary: "사용자 생성", requestBody: rb({ name: "string", phone: "string", planId: "integer" }), responses: { "201": {}, "409": {} } } },
-    "/v1/plans": { get: { summary: "요금제 목록", responses: { "200": {} } } },
-    "/v1/plans/{id}/subscribe": { post: { summary: "요금제 가입", requestBody: rb({ payment: "string", coupon: "string" }), responses: { "200": {}, "402": {} } } },
+    "/v1/products": { get: { summary: "상품 목록", responses: { "200": {} } } },
+    "/v1/products/{id}/subscribe": { post: { summary: "상품 구매", requestBody: rb({ payment: "string", coupon: "string" }), responses: { "200": {}, "402": {} } } },
     "/v1/auth/login": { post: { summary: "로그인 토큰 발급", requestBody: rb({ id: "string", pw: "string" }), responses: { "200": {}, "401": {} } } },
     "/v1/auth/refresh": { post: { summary: "토큰 갱신", requestBody: rb({ refreshToken: "string" }), responses: { "200": {}, "401": {} } } },
   },
@@ -717,13 +717,13 @@ const apiSteps = (ep) => {
   ];
   return steps;
 };
-const SAMPLE_CURL = "curl 'https://api-stg.tworld.co.kr/v1/orders/checkout' \\\n  -X POST \\\n  -H 'Content-Type: application/json' \\\n  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc' \\\n  -d '{\"plan\":\"5G-premium\",\"payment\":\"card\",\"password\":\"P@ss1234\"}'";
+const SAMPLE_CURL = "curl 'https://api-stg.onmarket.io/v1/orders/checkout' \\\n  -X POST \\\n  -H 'Content-Type: application/json' \\\n  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc' \\\n  -d '{\"productId\":\"P-1001\",\"payment\":\"card\",\"password\":\"P@ss1234\"}'";
 const SAMPLE_HAR = { log: { entries: [
-  { _resourceType: "fetch", request: { method: "POST", url: "https://api-stg.tworld.co.kr/v1/auth/login", headers: [{ name: "Content-Type", value: "application/json" }], postData: { text: '{"id":"qa_user01","pw":"P@ss1234"}' } }, response: { status: 200 } },
-  { _resourceType: "xhr", request: { method: "GET", url: "https://api-stg.tworld.co.kr/v1/plans", headers: [{ name: "Authorization", value: "Bearer eyJ...tok" }, { name: "Accept", value: "application/json" }] }, response: { status: 200 } },
-  { _resourceType: "xhr", request: { method: "POST", url: "https://api-stg.tworld.co.kr/v1/orders/checkout", headers: [{ name: "Authorization", value: "Bearer eyJ...tok" }, { name: "Content-Type", value: "application/json" }], postData: { text: '{"plan":"5G-premium","payment":"card"}' } }, response: { status: 201 } },
-  { _resourceType: "image", request: { method: "GET", url: "https://cdn.tworld.co.kr/logo.png", headers: [] }, response: { status: 200 } },
-  { _resourceType: "script", request: { method: "GET", url: "https://cdn.tworld.co.kr/app.js", headers: [] }, response: { status: 200 } },
+  { _resourceType: "fetch", request: { method: "POST", url: "https://api-stg.onmarket.io/v1/auth/login", headers: [{ name: "Content-Type", value: "application/json" }], postData: { text: '{"id":"qa_user01","pw":"P@ss1234"}' } }, response: { status: 200 } },
+  { _resourceType: "xhr", request: { method: "GET", url: "https://api-stg.onmarket.io/v1/products", headers: [{ name: "Authorization", value: "Bearer eyJ...tok" }, { name: "Accept", value: "application/json" }] }, response: { status: 200 } },
+  { _resourceType: "xhr", request: { method: "POST", url: "https://api-stg.onmarket.io/v1/orders/checkout", headers: [{ name: "Authorization", value: "Bearer eyJ...tok" }, { name: "Content-Type", value: "application/json" }], postData: { text: '{"productId":"P-1001","payment":"card"}' } }, response: { status: 201 } },
+  { _resourceType: "image", request: { method: "GET", url: "https://cdn.onmarket.io/logo.png", headers: [] }, response: { status: 200 } },
+  { _resourceType: "script", request: { method: "GET", url: "https://cdn.onmarket.io/app.js", headers: [] }, response: { status: 200 } },
 ] } };
 
 export function FqaApiImportScreen({ onDone }) {
@@ -1456,7 +1456,7 @@ export function FqaSuiteScreen() {
           <div className="w-full max-w-lg rounded-xl border border-slate-800 bg-slate-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5"><h3 className="font-semibold text-slate-100">스위트 추가</h3><button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button></div>
             <div className="space-y-3.5 p-5">
-              <Field label="이름"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 결제 / 요금제" /></Field>
+              <Field label="이름"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 결제 / 주문" /></Field>
               <Field label="설명 (선택)"><Input value={form.desc || ""} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="이 스위트가 검증하는 업무 흐름" /></Field>
               <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setOpen(false)}>취소</Btn><Btn kind="primary" icon={Save} onClick={save}>추가</Btn></div>
             </div>
@@ -1478,7 +1478,7 @@ const RUN_LOG = [
   { lv: "TC", t: "TC-203 OTP 재발송" },
   { lv: "RETRY", t: "TC-203 1차 실패 → 재시도 (1/2)" },
   { lv: "PASS", t: "TC-203 PASS (재시도 후, 2.1s)" },
-  { lv: "TC", t: "TC-156 부가서비스 신청" },
+  { lv: "TC", t: "TC-156 쿠폰 적용" },
   { lv: "FAIL", t: "TC-156 상태 미반영 (8.4s)" },
   { lv: "ERROR", t: "TC-401 대상 응답 없음 · ECONNREFUSED (러너 오류)" },
 ];
@@ -1740,7 +1740,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
   /* 중복 결함 판정 키 = (도메인, 대상 제품, TC).
      같은 TC라도 대상 제품이 다르면 다른 결함이다. 환경(스테이징/운영)은 발견 위치일 뿐 결함의 축이 아니다.
      '열린' 결함이 있으면 재등록 금지. Resolved만 있으면 재발이므로 재등록 허용. */
-  const runTarget = String(run.target || "").split(" · ")[0]; // "T월드 · 스테이징" → "T월드"
+  const runTarget = String(run.target || "").split(" · ")[0]; // "온마켓 · 스테이징" → "온마켓"
   const defectsOfTc = (id) => defects.filter((d) => d.tc === id && d.domain === "FQA" && (d.target || "") === runTarget);
   const openDefectOf = (id) => defectsOfTc(id).find((d) => d.status !== "Resolved");
   const isRegression = (id) => !openDefectOf(id) && defectsOfTc(id).length > 0;
@@ -1817,7 +1817,7 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
         <>
           <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
             <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-sm text-teal-400">{run.id}</span><span className="text-sm font-medium text-slate-200">{(fqaPlans.find((p) => p.id === run.planId) || {}).name || run.plan}</span>{run.fail > 0 ? <Badge kind="fail">실패 {run.fail}건</Badge> : <Badge kind="pass">전체 통과</Badge>}<span className="text-xs text-slate-500">{!run.brow ? "API" : (run.brow || "Chrome")} · {run.suite}</span>{run.ver && run.ver !== "-" && <Badge kind="info">빌드 {run.ver}</Badge>}</div>
-            <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn><Btn icon={Download} onClick={() => flash(run.id + " 증적 번들 다운로드 — " + (!run.brow ? "요청·응답·trace·로그" : "스크린샷·영상·trace·로그"))}>증적 다운로드</Btn></div>
+            <div className="flex gap-2"><Btn icon={Download} onClick={() => flash("Excel")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF")}>PDF</Btn></div>
           </Card>
           <div className={"grid gap-3 " + (!run.brow ? "grid-cols-5" : "grid-cols-6")}>
             {SUM.map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
@@ -1867,8 +1867,11 @@ export function FqaResultScreen({ runId, mode = "상세", back, nav, backLabel }
                 ))}
               </div>
               <div className="mt-3">
-                <div className="flex gap-1.5 border-b border-slate-800">
-                  {evTabs.map((t) => (<button key={t} onClick={() => setEtab(t)} className={"px-2.5 py-1.5 text-xs " + (evTab === t ? "border-b-2 border-teal-500 text-teal-300" : "text-slate-500 hover:text-slate-300")}>{t}</button>))}
+                <div className="flex items-center justify-between border-b border-slate-800">
+                  <div className="flex gap-1.5">
+                    {evTabs.map((t) => (<button key={t} onClick={() => setEtab(t)} className={"px-2.5 py-1.5 text-xs " + (evTab === t ? "border-b-2 border-teal-500 text-teal-300" : "text-slate-500 hover:text-slate-300")}>{t}</button>))}
+                  </div>
+                  <button onClick={() => flash(cur.id + " · " + evTab + " 다운로드")} className="flex shrink-0 items-center gap-1 px-2 py-1 text-xs text-teal-400 hover:text-teal-300"><Download size={12} />{evTab} 다운로드</button>
                 </div>
                 <div className="flex h-24 items-center justify-center text-xs text-slate-500">{!run.brow ? (evTab === "응답" ? cur.id + " · 응답 " + (cur.v === "FAIL" ? "4xx · 불일치" : "200 OK") + " · body.json" : evTab === "로그" ? cur.id + " · HTTP trace · 헤더 · 타이밍" : cur.id + " · 요청 원문 · 메서드·URL·헤더·바디") : (evTab === "스크린샷" ? cur.id + (cur.v === "FAIL" ? "_fail" : "_pass") + ".png · 1.4MB" : evTab === "영상" ? run.id.toLowerCase().replace("-", "_") + "_" + cur.id.toLowerCase() + ".webm · 12MB" : cur.id + " · console/network 로그")}</div>
               </div>
@@ -2262,8 +2265,8 @@ const EndpointGroup = ({ webUrl, apiUrl, set }) => {
         {both && <Badge kind="teal">혼합 케이스 가능</Badge>}
       </div>
       <div className="space-y-2.5">
-        <Field label="웹"><Input value={webUrl} onChange={(e) => set({ webUrl: e.target.value })} placeholder="https://stg.tworld.co.kr" className="font-mono text-xs" /></Field>
-        <Field label="API"><Input value={apiUrl} onChange={(e) => set({ apiUrl: e.target.value })} placeholder="https://api-stg.tworld.co.kr" className="font-mono text-xs" /></Field>
+        <Field label="웹"><Input value={webUrl} onChange={(e) => set({ webUrl: e.target.value })} placeholder="https://stg.onmarket.io" className="font-mono text-xs" /></Field>
+        <Field label="API"><Input value={apiUrl} onChange={(e) => set({ apiUrl: e.target.value })} placeholder="https://api-stg.onmarket.io" className="font-mono text-xs" /></Field>
       </div>
     </div>
   );
@@ -2307,7 +2310,7 @@ export function FqaTargetScreen() {
   const guardSwitch = (fn) => { if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 이동하시겠습니까?")) return; setDraft({}); setNameDraft(null); fn(); };
   useEffect(() => { setDraft({}); setNameDraft(null); }, [sys.id]);
   const envSlug = { "스테이징": "stg", "운영": "prod", "개발": "dev" }[env.env] || "env";
-  const hookUrl = "https://xq.skt/api/hooks/t" + sys.id + "-" + envSlug + "-3f9a2c";
+  const hookUrl = "https://autoqa.io/api/hooks/t" + sys.id + "-" + envSlug + "-3f9a2c";
   const choose = (i) => guardSwitch(() => { setSel(i); setEnvIdx(0); setTest(null); });
   // 참조 중이면 삭제 불가 — 계획의 targetRef가 조용히 끊어지는 것을 막는다
   const delTarget = (i, sy) => {
@@ -2420,8 +2423,8 @@ export function FqaTargetScreen() {
           <div className="space-y-3">
           <Card className="p-4 space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Globe size={15} className="text-teal-400" />접점 (Endpoints) <span className="text-xs font-normal text-slate-500">· 케이스의 상대경로에 주입되는 base URL</span></div>
-            <Field label="웹 Base URL"><Input value={cfg.webUrl || ""} onChange={(e) => setEnvCfg({ webUrl: e.target.value })} placeholder="https://stg.tworld.co.kr" className="font-mono text-xs" /></Field>
-            <Field label="API Base URL"><Input value={cfg.apiUrl || ""} onChange={(e) => setEnvCfg({ apiUrl: e.target.value })} placeholder="https://api-stg.tworld.co.kr" className="font-mono text-xs" /></Field>
+            <Field label="웹 Base URL"><Input value={cfg.webUrl || ""} onChange={(e) => setEnvCfg({ webUrl: e.target.value })} placeholder="https://stg.onmarket.io" className="font-mono text-xs" /></Field>
+            <Field label="API Base URL"><Input value={cfg.apiUrl || ""} onChange={(e) => setEnvCfg({ apiUrl: e.target.value })} placeholder="https://api-stg.onmarket.io" className="font-mono text-xs" /></Field>
           </Card>
 
           {/* 계정 풀 — 웹 로그인은 '흐름'이므로 케이스가 수행한다. 환경은 '누구로' 만 제공한다. */}
@@ -2464,11 +2467,11 @@ export function FqaTargetScreen() {
               )}
 
               {apiT === "Bearer 토큰 (정적)" && (
-                <Field label="토큰 (변수 참조)" hint="만료되지 않는 장기 토큰만 — 만료 토큰이면 OAuth 2.0">{secretRef((cfg.apiAuth || {}).secretRef, (val) => setSub("apiAuth", { secretRef: val }), "${stg_tworld_token}")}</Field>
+                <Field label="토큰 (변수 참조)" hint="만료되지 않는 장기 토큰만 — 만료 토큰이면 OAuth 2.0">{secretRef((cfg.apiAuth || {}).secretRef, (val) => setSub("apiAuth", { secretRef: val }), "${stg_onmarket_token}")}</Field>
               )}
 
               {apiT === "OAuth 2.0 (Client Credentials)" && (<>
-                <Field label="토큰 엔드포인트"><Input value={(cfg.apiAuth || {}).tokenUrl || ""} onChange={(e) => setSub("apiAuth", { tokenUrl: e.target.value })} placeholder="https://auth-stg.tworld.co.kr/oauth2/token" className="font-mono text-xs" /></Field>
+                <Field label="토큰 엔드포인트"><Input value={(cfg.apiAuth || {}).tokenUrl || ""} onChange={(e) => setSub("apiAuth", { tokenUrl: e.target.value })} placeholder="https://auth-stg.onmarket.io/oauth2/token" className="font-mono text-xs" /></Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="client_id"><Input value={(cfg.apiAuth || {}).clientId || ""} onChange={(e) => setSub("apiAuth", { clientId: e.target.value })} placeholder="exq-qa-runner" className="font-mono text-xs" /></Field>
                   <Field label="client_secret (변수 참조)">{secretRef((cfg.apiAuth || {}).clientSecret, (val) => setSub("apiAuth", { clientSecret: val }), "${stg_oauth_secret}")}</Field>
@@ -2524,7 +2527,7 @@ export function FqaTargetScreen() {
               <div className="space-y-2.5 rounded-lg border border-slate-800 p-3">
                 <div className="grid grid-cols-3 gap-2">
                   {/* 버전 엔드포인트는 base URL과 다른 호스트일 수 있다 — 상대경로를 허용하면 기준이 모호해진다 */}
-                  <div className="col-span-2"><Field label="폴링 대상 URL"><Input value={(cfg.deploy || {}).verUrl || ""} onChange={(e) => setSub("deploy", { verUrl: e.target.value })} placeholder="https://stg-cs.tworld.co.kr/health" className="font-mono text-xs" /></Field></div>
+                  <div className="col-span-2"><Field label="폴링 대상 URL"><Input value={(cfg.deploy || {}).verUrl || ""} onChange={(e) => setSub("deploy", { verUrl: e.target.value })} placeholder="https://stg-cs.onmarket.io/health" className="font-mono text-xs" /></Field></div>
                   <Field label="폴링 주기"><Select value={(cfg.deploy || {}).interval || "15분"} onChange={(e) => setSub("deploy", { interval: e.target.value })}><option>5분</option><option>15분</option><option>1시간</option><option>6시간</option><option>24시간</option></Select></Field>
                 </div>
                 <div className="flex items-end gap-2">
@@ -2545,7 +2548,7 @@ export function FqaTargetScreen() {
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5"><h3 className="font-semibold text-slate-100">{modal === "target" ? "대상 추가" : "환경 추가"}</h3><button onClick={() => setModal(null)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button></div>
             <div className="space-y-3.5 p-5">
               {modal === "target" && (<>
-                <Field label="대상 이름"><Input value={tf.name} onChange={(e) => setTf({ ...tf, name: e.target.value })} placeholder="예: T월드" /></Field>
+                <Field label="대상 이름"><Input value={tf.name} onChange={(e) => setTf({ ...tf, name: e.target.value })} placeholder="예: 온마켓" /></Field>
                 <Field label="첫 환경"><Select value={tf.env} onChange={(e) => setTf({ ...tf, env: e.target.value })}>{ENV_NAMES.map((n) => <option key={n}>{n}</option>)}</Select></Field>
                 <EndpointGroup webUrl={tf.webUrl} apiUrl={tf.apiUrl} set={(p) => setTf({ ...tf, ...p })} />
                 <div className="flex justify-end gap-2 pt-1"><Btn onClick={() => setModal(null)}>취소</Btn><Btn kind="primary" icon={Save} onClick={addTarget}>추가</Btn></div>
