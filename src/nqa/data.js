@@ -17,8 +17,9 @@ export const NQA_SECTIONS = [
 
 /* 성능 QA 하위 워크스페이스 — 앱 성능(주력·준비중, 전면)·부하(현재 v1, 별도). 접근성·보안은 향후 별도 도메인. */
 export const NQA_SUBTYPES = [
-  { id: "perf", label: "앱 성능", ready: false },
+  { id: "perf", label: "앱 성능", ready: true },
   { id: "load", label: "부하", ready: true },
+  { id: "field", label: "필드(RUM)", ready: false },
 ];
 
 /* 부하(v1) — 서버 엔드포인트 자극(HTTP). 기능 QA와 완전 독립. */

@@ -589,11 +589,12 @@ function ChatbotDetail({ cb, onDirty }) {
   const deploySecret = "whsec_" + deployHook.slice(-4) + "e1b7d4f60a2c";
   const setH = (i, key, val) => setHeaders(headers.map((h, j) => (j === i ? { ...h, [key]: val } : h)));
   const secretRef = (val, setVal, ph) => <VarRefInput value={val} onChange={setVal} placeholder={ph} />;
+  const [syncedId, setSyncedId] = useState(cb.id);
   useEffect(() => {
     setEndpoint(cb.endpoint || ""); setAuthType(cb.auth || "Bearer Token"); setNeedLogin(cb.auth === "로그인 세션"); setName(cb.name || "");
     setMethod(cb.method || "POST"); setHeaders(cb.headers || DEF_HEADERS); setTokenVal(cb.tokenVal || ""); setApiKeyName(cb.apiKeyName || "X-API-Key"); setOauth(cb.oauth || DEF_OAUTH);
     setBody(cb.body || DEF_BODY); setAnswerPath(cb.answerPath || "$.data.answer"); setRespMode(cb.respMode || "동기"); setPollUrl(cb.pollUrl || ""); setDoneField(cb.doneField || "$.status"); setJobIdPath(cb.jobIdPath || "$.jobId"); setDoneValue(cb.doneValue || "completed"); setSseDelta(cb.sseDelta || "$.choices[0].delta.content"); setSseDone(cb.sseDone || "[DONE]"); setTimeoutS(cb.timeoutS || 30);
-    setSel2({ ...DEF_SEL2, ...(cb.sel2 || {}) }); setIframe(cb.iframe || ""); setWebCfg({ ...DEF_WEB, ...(cb.webCfg || {}) }); setModelSrc(cb.modelSrc || "수동"); setVerPath(cb.verPath || "$.model.version"); setVerUrl(cb.verUrl || ""); setVerInterval(cb.verInterval || "15분"); setTest(null);
+    setSel2({ ...DEF_SEL2, ...(cb.sel2 || {}) }); setIframe(cb.iframe || ""); setWebCfg({ ...DEF_WEB, ...(cb.webCfg || {}) }); setModelSrc(cb.modelSrc || "수동"); setVerPath(cb.verPath || "$.model.version"); setVerUrl(cb.verUrl || ""); setVerInterval(cb.verInterval || "15분"); setTest(null); setSyncedId(cb.id);
   }, [cb.id]);
   const baseAuth = isRest ? (cb.auth || "Bearer Token") : (cb.auth === "로그인 세션" ? "로그인 세션" : "없음");
   const effAuth = isRest ? authType : (needLogin ? "로그인 세션" : "없음");
@@ -601,7 +602,7 @@ function ChatbotDetail({ cb, onDirty }) {
   const cfgArr = (o) => JSON.stringify([o.endpoint, o.auth, o.name, o.method, o.headers, o.body, o.answerPath, o.respMode, o.pollUrl, o.doneField, o.jobIdPath, o.doneValue, o.sseDelta, o.sseDone, o.timeoutS, o.modelSrc, o.verPath, o.verUrl, o.verInterval, o.apiKeyName, o.tokenVal, o.oauth, o.sel2, o.iframe, o.webCfg]);
   const curCfg = { endpoint, auth: effAuth, name, method, headers, body, answerPath, respMode, pollUrl, doneField, jobIdPath, doneValue, sseDelta, sseDone, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe, webCfg };
   const savedCfg = { endpoint: cb.endpoint || "", auth: baseAuth, name: cb.name || "", method: cb.method || "POST", headers: cb.headers || DEF_HEADERS, body: cb.body || DEF_BODY, answerPath: cb.answerPath || "$.data.answer", respMode: cb.respMode || "동기", pollUrl: cb.pollUrl || "", doneField: cb.doneField || "$.status", jobIdPath: cb.jobIdPath || "$.jobId", doneValue: cb.doneValue || "completed", sseDelta: cb.sseDelta || "$.choices[0].delta.content", sseDone: cb.sseDone || "[DONE]", timeoutS: cb.timeoutS || 30, modelSrc: cb.modelSrc || "수동", verPath: cb.verPath || "$.model.version", verUrl: cb.verUrl || "", verInterval: cb.verInterval || "15분", apiKeyName: cb.apiKeyName || "X-API-Key", tokenVal: cb.tokenVal || "", oauth: cb.oauth || DEF_OAUTH, sel2: { ...DEF_SEL2, ...(cb.sel2 || {}) }, iframe: cb.iframe || "", webCfg: { ...DEF_WEB, ...(cb.webCfg || {}) } };
-  const dirty = cfgArr(curCfg) !== cfgArr(savedCfg);
+  const dirty = syncedId === cb.id && cfgArr(curCfg) !== cfgArr(savedCfg);
   useEffect(() => { if (onDirty) onDirty(dirty); }, [dirty]);
   const save = () => { updateChatbot(cb.id, { name, endpoint, auth: effAuth, method, headers, body, answerPath, respMode, pollUrl, doneField, jobIdPath, doneValue, sseDelta, sseDone, timeoutS, modelSrc, verPath, verUrl, verInterval, apiKeyName, tokenVal, oauth, sel2, iframe, webCfg }); toast((name || cb.name) + " 설정 저장됨", "ok"); };
   const runTest = () => {

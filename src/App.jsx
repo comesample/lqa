@@ -213,8 +213,10 @@ export default function App() {
                     <button onClick={() => setNqaMenu((v) => !v)} className={"rounded-lg px-3 py-1.5 text-sm font-semibold " + (domain === "NQA" ? "bg-teal-600 text-white" : nqaMenu ? "bg-slate-800 text-slate-100" : "text-slate-300 hover:bg-slate-800")}>{d.label}</button>
                     {nqaMenu && (
                       <div className="absolute left-0 top-full z-30 mt-1 w-32 rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-lg">
-                        {NQA_SUBTYPES.map((s) => { const on = domain === "NQA" && nqaWs === s.id; return (
+                        {NQA_SUBTYPES.map((s) => { const on = domain === "NQA" && nqaWs === s.id; return s.ready ? (
                           <button key={s.id} onClick={() => { setDomain("NQA"); setNqaWs(s.id); setView(s.id === "load" ? "nqa-dashboard" : "perf-targets"); setNqaMenu(false); }} className={"flex w-full items-center px-3 py-1.5 text-sm " + (on ? "bg-slate-800 text-teal-300 font-semibold" : "text-slate-300 hover:bg-slate-800")}>{s.label}</button>
+                        ) : (
+                          <button key={s.id} disabled title="향후 확장 예정" className="flex w-full cursor-not-allowed items-center px-3 py-1.5 text-sm text-slate-600">{s.label}</button>
                         ); })}
                       </div>
                     )}
@@ -281,7 +283,7 @@ export default function App() {
                 <div className="flex items-center gap-2"><cur.icon size={18} className="text-teal-400" /><h1 className="text-lg font-bold text-slate-100">{cur.label}</h1></div>
               </div>
             </header>
-            <div className="flex-1 overflow-y-auto p-6">{screens[view]}</div>
+            <div className="flex-1 overflow-y-auto p-6" style={{ scrollbarGutter: "stable" }}>{screens[view]}</div>
           </main>
         </div>
       </div>

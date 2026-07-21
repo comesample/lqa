@@ -15,7 +15,7 @@ const DEFAULT_EVENTS = [
     fields: [{ k: "detect", type: "readonly", label: "감지 방식", value: "대상 설정에서 정의 (상속)" }] },
 ];
 
-export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그라운드 자동 실행", manualHint = "자동 실행 없음 — 수동으로만 수행합니다.", events = DEFAULT_EVENTS, singleSelect = false, value, onChange, onSave, toast }) {
+export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그라운드 자동 실행", manualHint = "자동 실행 없음 — 수동으로만 수행합니다.", events = DEFAULT_EVENTS, singleSelect = false, allowEvent = true, value, onChange, onSave, toast }) {
   const controlled = !!onChange;
   const v = value || {};
   const [mode, setMode] = useState(v.mode || "schedule");
@@ -48,6 +48,8 @@ export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그�
   };
   const presets = [["매일 02:00", "daily", "02:00"], ["평일 09:00", "weekdays", "09:00"], ["1시간마다", "hourly", "09:00"]];
   const modeLabel = (MODES.find((m) => m[0] === mode) || MODES[0])[1];
+  const modes = allowEvent ? MODES : MODES.filter((m) => m[0] !== "event");
+  useEffect(() => { if (!allowEvent && mode === "event") setMode("manual"); }, [allowEvent, mode]);
   const saveSchedule = () => { if (onSave) onSave(nextRun()); notify("스케줄 저장됨 · " + nextRun(), "ok"); };
   const saveEvent = () => {
     const picked = events.filter((e) => ev[e.key]).map((e) => e.short).join("·");
@@ -73,7 +75,7 @@ export function ScheduleConfig({ title = "실행 스케줄", subtitle = "백그�
         <div className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Calendar size={15} className="text-teal-400" />{title} <span className="text-xs font-normal text-slate-500">· {subtitle}</span></div>
         {mode === "schedule" && <div className="flex items-center gap-2 text-xs text-slate-400">스케줄 사용 <Toggle on={active} onClick={() => setActive(!active)} /></div>}
       </div>
-      <div className="mb-4"><Seg options={MODES.map((m) => m[1])} value={modeLabel} onChange={(lbl) => setMode((MODES.find((m) => m[1] === lbl) || MODES[0])[0])} /></div>
+      <div className="mb-4"><Seg options={modes.map((m) => m[1])} value={modeLabel} onChange={(lbl) => setMode((MODES.find((m) => m[1] === lbl) || MODES[0])[0])} /></div>
       {mode === "manual" && <div className="rounded-lg bg-slate-800 p-3 text-sm text-slate-400">{manualHint}</div>}
       {mode === "schedule" && (
         <div className="space-y-3">
