@@ -900,6 +900,7 @@ function NqaResultView({ run, back }) {
   const s = (nqaScenarios || []).find((x) => x.id === p.scenarioId) || {};
   const su = (nqaSystems || []).find((x) => x.id === s.sutId) || {};
   const res = r.result || {};
+  const dExists = (defects || []).some((d) => d.tc === r.id);
   const fmtD = (m) => (m >= 60 ? Math.round((m / 60) * 10) / 10 + "시간" : Math.round(m) + "분");
   const series = nqaSeries(r, s, 48, 1);
   const errs = nqaErrors(r, s, 1);
@@ -950,7 +951,7 @@ function NqaResultView({ run, back }) {
           <div className="rounded bg-slate-800 px-2.5 py-1.5"><span className="text-slate-500">p95 직전합격 대비 </span>{deltaPct == null ? <span className="text-slate-400">기준</span> : deltaPct > 10 ? <span className="font-semibold text-amber-300">▲{deltaPct}%</span> : <span className="text-slate-300">{deltaPct >= 0 ? "+" : ""}{deltaPct}%</span>}</div>
         </div>
         {(res.breaches || []).length > 0 ? <div className="rounded-lg border border-red-900 bg-red-950 px-2.5 py-2 text-xs text-red-300">SLA 위반: {res.breaches.join(" · ")}</div> : <div className="rounded-lg border border-emerald-900 bg-emerald-950 px-2.5 py-2 text-xs text-emerald-300">모든 SLA 임계 충족</div>}
-        {res.verdict === "불합격" && <div className="flex justify-end"><Btn icon={Bug} onClick={regDefect}>결함 등록</Btn></div>}
+        {res.verdict === "불합격" && <div className="flex items-center justify-end">{dExists ? <span className="text-xs text-slate-500">결함 등록됨</span> : <Btn icon={Bug} onClick={regDefect}>결함 등록</Btn>}</div>}
       </Card>
       <Card className="p-4 space-y-3">
         <div className="text-sm font-semibold text-slate-200">시계열 관측 <span className="text-xs font-normal text-slate-500">· 실행 전 구간</span></div>

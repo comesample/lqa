@@ -22,7 +22,7 @@ export const KIND = {
   runStatus:    { "진행중": "warn", "완료": "pass", "오류": "fail" },
   severity:     { Critical: "crit", Major: "major", Minor: "minor" },
   issueStatus:  { Open: "fail", "In Progress": "warn", Resolved: "pass" },
-  domain:       { LQA: "active", FQA: "info", NQA: "warn" },
+  domain:       { LQA: "active", FQA: "info", PQA: "pass", NQA: "warn" },
   userStatus:   { "활성": "pass", "대기": "warn", "차단": "fail" },
   modelStatus:  { "활성": "pass", "비활성": "draft" },
   tenantStatus: { "활성": "pass", "정지": "fail" },

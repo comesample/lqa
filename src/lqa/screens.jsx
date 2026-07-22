@@ -284,7 +284,7 @@ export function JiraForm({ close, data }) {
         <Toggle on={jira} onClick={() => { if (!jconn) { toast("Jira 미연동 — 결함 화면의 ‘Jira 연동’에서 먼저 연결하세요", "warn"); return; } setJira(!jira); }} />
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">성능 QA</option></Select></Field>
+        <Field label="영역"><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="PQA">앱 성능</option><option value="NQA">부하</option></Select></Field>
         <Field label="심각도"><Select value={sev} onChange={(e) => { setSev(e.target.value); setPrio(prioMap[e.target.value] || "High"); }}><option>Critical</option><option>Major</option><option>Minor</option></Select></Field>
         <Field label="담당자"><Select value={assignee} onChange={(e) => setAssignee(e.target.value)}><option>QA Lead</option><option>챗봇 PO</option><option>미지정</option></Select></Field>
       </div>
@@ -1695,8 +1695,8 @@ export function Defects() {
   const sev = KIND.severity;
   const st = KIND.issueStatus;
   const domKind = KIND.domain;
-  const domLabel = { LQA: "AI 품질", FQA: "기능 QA", NQA: "성능 QA" };
-  const [dom, setDom] = useState(domain || "전체");
+  const domLabel = { LQA: "AI 품질", FQA: "기능 QA", PQA: "앱 성능", NQA: "부하" };
+  const [dom, setDom] = useState("전체");
   const [stf, setStf] = useState("전체");
   const [sel, setSel] = useState(null);
   // 결과 상세의 "결함 보기"에서 넘어온 경우 해당 결함을 바로 연다 (목록만 보여주면 찾을 수 없다)
@@ -1714,7 +1714,7 @@ export function Defects() {
   return (
     <div className="space-y-4">
       <PageToolbar desc="GitLab / Jira 연계 · 전 도메인 공통">
-        <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="NQA">성능 QA</option></Select></div>
+        <div style={{ width: 140 }}><Select value={dom} onChange={(e) => setDom(e.target.value)}><option value="전체">전체</option><option value="LQA">AI 품질</option><option value="FQA">기능 QA</option><option value="PQA">앱 성능</option><option value="NQA">부하</option></Select></div>
         <div style={{ width: 130 }}><Select value={stf} onChange={(e) => setStf(e.target.value)}><option value="전체">전체 상태</option><option value="Open">Open</option><option value="In Progress">In Progress</option><option value="Resolved">Resolved</option></Select></div>
         <Btn icon={SlidersHorizontal} onClick={() => openModal("jiraConfig")}>Jira 연동</Btn>
         <Btn kind="primary" icon={Bug} onClick={() => openModal("jira", { tc: "수동", sev: "Major", title: "" })}>이슈 등록</Btn>
@@ -1965,7 +1965,8 @@ export function MembersView() {
   const MENU_GROUPS = [
     { id: "LQA", label: "AI 품질", menus: ["대시보드", "챗봇 연결", "테스트케이스", "Judge · Prompt", "평가 계획", "평가 실행", "실행 이력", "회귀 비교"] },
     { id: "FQA", label: "기능 QA", menus: ["대시보드", "대상·환경", "테스트 스위트", "테스트케이스", "실행 계획", "실행", "실행 이력", "회귀 비교", "불안정(Flaky)"] },
-    { id: "NQA", label: "성능 QA", menus: ["대시보드", "환경", "부하 테스트", "측정 실행", "실행 이력"] },
+    { id: "PQA", label: "앱 성능", menus: ["대시보드", "대상 앱", "측정 시나리오", "측정 계획", "측정 실행", "실행 이력", "성능 추이"] },
+    { id: "NQA", label: "부하", menus: ["대시보드", "환경", "부하 테스트", "측정 실행", "실행 이력"] },
     { id: "COM", label: "공통", menus: ["결함", "리포트·알림", "데이터셋", "변수"] },
   ];
   // QA 엔지니어 기본 조회: 설정성/민감 메뉴 + 부하 실행(위험 작업) + 변수(시크릿)

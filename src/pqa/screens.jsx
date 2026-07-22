@@ -7,8 +7,9 @@ import { useState, useEffect } from "react";
 import { useApp } from "../common/context.js";
 import { VarRefInput } from "../common/VarRefInput.jsx";
 import { ScheduleConfig } from "../common/ScheduleConfig.jsx";
-import { Card, PageToolbar, Badge, Btn, Field, Input, Select, Toggle } from "../common/ui.jsx";
-import { Plus, X, Smartphone, Cpu, Zap, Package, Save, RefreshCw, Copy } from "lucide-react";
+import { Card, PageToolbar, Badge, Btn, Field, Input, Select, Toggle, Toast, useToast, nowStamp, RunTime } from "../common/ui.jsx";
+import { Plus, X, Smartphone, Cpu, Zap, Package, Save, RefreshCw, Copy, Play, Activity, Code2, Gauge, ChevronLeft, Download, Bug, CheckCircle2, TrendingUp } from "lucide-react";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine } from "recharts";
 import { PERF_PLATFORMS, PERF_BUILD_SOURCES, PERF_VARIANTS, PERF_METRICS, PERF_DEVICES } from "./data.js";
 
 const PQA_EVENTS = [{ key: "deploy", label: "배포 시", desc: "대상 앱에 새 빌드가 배포되면 자동 측정합니다", short: "배포", fields: [{ k: "detect", type: "readonly", label: "감지 방식", value: "대상 앱의 CI 배포 웹훅 (상속)" }] }];
@@ -155,7 +156,7 @@ export function PqaTargetScreen() {
 
 /* ═══════════ 측정 시나리오 (여정 + 지표 + 마커) ═══════════ */
 export function PqaScenarioScreen() {
-  const { perfScenarios, perfApps, addPerfScenario, updatePerfScenario, removePerfScenario, toast } = useApp();
+  const { perfScenarios, perfApps, perfPlans, addPerfScenario, updatePerfScenario, removePerfScenario, toast } = useApp();
   const [sel, setSel] = useState(0);
   const [modal, setModal] = useState(false);
   const [nf, setNf] = useState({ name: "", appId: "", scriptRef: "" });
@@ -179,7 +180,7 @@ export function PqaScenarioScreen() {
     const startup = /startup|cold|warm|hot|launch/i.test(ref);
     const patch = startup
       ? { journey: "앱 시작(Startup)", startMode: "Cold", iterations: 10, steps: [], metrics: ["e2e", "mem"], traceSection: "", scriptRef: ref, benchSource: "@Test\nfun " + method + "() = rule.measureRepeated(\n  packageName = \"" + pkg + "\",\n  metrics = listOf(StartupTimingMetric(), MemoryUsageMetric(Mode.Last)),\n  iterations = 10, startupMode = StartupMode.COLD,\n) { pressHome(); startActivityAndWait() }" }
-      : { journey: "사용 흐름(Flow)", startMode: "", iterations: 10, steps: ["앱 진입", "대상 화면 이동", "스크롤·조작"], metrics: ["e2e", "frame", "mem"], traceSection: section, scriptRef: ref, benchSource: "@Test\nfun " + method + "() = rule.measureRepeated(\n  packageName = \"" + pkg + "\",\n  metrics = listOf(TraceSectionMetric(\"" + section + "\"), FrameTimingMetric(), MemoryUsageMetric(Mode.Last)),\n  iterations = 10, startupMode = StartupMode.WARM,\n) {\n  startActivityAndWait()\n  trace(\"" + section + "\") { onView(res(\"target\")).fling(DOWN) }\n}" };
+      : { journey: "사용 흐름(Flow)", startMode: "", iterations: 10, steps: ["앱 진입", "대상 화면 이동", "스크롤·조작"], metrics: ["e2e", "frame", "jank", "mem"], traceSection: section, scriptRef: ref, benchSource: "@Test\nfun " + method + "() = rule.measureRepeated(\n  packageName = \"" + pkg + "\",\n  metrics = listOf(TraceSectionMetric(\"" + section + "\"), FrameTimingMetric(), MemoryUsageMetric(Mode.Last)),\n  iterations = 10, startupMode = StartupMode.WARM,\n) {\n  startActivityAndWait()\n  trace(\"" + section + "\") { onView(res(\"target\")).fling(DOWN) }\n}" };
     updatePerfScenario(scn.id, patch);
     toast("벤치마크에서 유형·지표·흐름·E2E·소스를 인식했습니다", "ok");
   };
@@ -198,7 +199,7 @@ export function PqaScenarioScreen() {
           {perfScenarios.map((s, i) => (
             <Card key={s.id} className={cardCls(sel === i)}>
               <div onClick={() => selectScn(i)}>
-                <div className="flex items-center justify-between gap-1.5"><span className="truncate text-sm font-semibold text-slate-100">{s.name}</span><button onClick={(e) => { e.stopPropagation(); removePerfScenario(s.id); setSel(0); toast("삭제됨", "warn"); }} className="shrink-0 text-slate-500 hover:text-red-400"><X size={12} /></button></div>
+                <div className="flex items-center justify-between gap-1.5"><span className="truncate text-sm font-semibold text-slate-100">{s.name}</span><button onClick={(e) => { e.stopPropagation(); const used = (perfPlans || []).filter((p) => (p.scenarioIds || []).includes(s.id)).length; const warn = used ? "\n\n측정 계획 " + used + "건이 이 시나리오를 참조합니다. 삭제하면 해당 계획에서 제외됩니다." : ""; if (!window.confirm(s.name + " 시나리오를 삭제할까요?" + warn)) return; removePerfScenario(s.id); setSel(0); toast(s.name + " 삭제됨", "warn"); }} className="shrink-0 text-slate-500 hover:text-red-400"><X size={12} /></button></div>
                 <div className="mt-1 flex items-center gap-1.5"><Badge kind="info">{appName(s.appId)}</Badge><span className="text-xs text-slate-500">지표 {(s.metrics || []).length}</span></div>
               </div>
             </Card>
@@ -275,7 +276,7 @@ export function PqaPlanScreen() {
   const [nf, setNf] = useState({ name: "", appId: "" });
   const plan = perfPlans[sel] || perfPlans[0];
   const appName = (id) => (perfApps.find((a) => a.id === id) || {}).name || "-";
-  const mkDraft = (p) => ({ name: p.name, status: p.status, scenarioIds: [...(p.scenarioIds || [])], deviceIds: [...((p.matrix && p.matrix.deviceIds) || [])], power: !!(p.cond && p.cond.power), budget: JSON.parse(JSON.stringify(p.budget || {})), schedule: p.schedule });
+  const mkDraft = (p) => ({ name: p.name, status: p.status, scenarioIds: [...(p.scenarioIds || [])], deviceIds: [...((p.matrix && p.matrix.deviceIds) || [])], budget: JSON.parse(JSON.stringify(p.budget || {})), schedule: p.schedule });
   const [draft, setDraft] = useState(() => (plan ? mkDraft(plan) : {}));
   const [syncedId, setSyncedId] = useState(plan ? plan.id : null);
   // 계획 전환 시 렌더 시점에 draft 동기 재초기화 — useEffect 지연으로 ScheduleConfig(key=plan.id)가 이전 계획 스케줄로 마운트되는 문제 방지
@@ -283,7 +284,7 @@ export function PqaPlanScreen() {
   const setD = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const add = () => {
     if (!nf.name.trim() || !nf.appId) { toast("이름과 대상 앱을 선택하세요", "warn"); return; }
-    addPerfPlan({ id: Date.now(), name: nf.name.trim(), appId: Number(nf.appId), scenarioIds: [], matrix: { deviceIds: [] }, cond: { power: false }, budget: {}, schedule: { mode: "manual", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: {}, summary: "예약 없음" }, status: "초안" });
+    addPerfPlan({ id: Date.now(), name: nf.name.trim(), appId: Number(nf.appId), scenarioIds: [], matrix: { deviceIds: [] }, budget: {}, schedule: { mode: "manual", freq: "weekly", time: "09:00", dow: 1, dom: 1, cron: "0 9 * * 1", tz: "Asia/Seoul", active: true, ev: {}, summary: "예약 없음" }, status: "초안" });
     setSel(0); setModal(false); toast("측정 계획이 추가되었습니다", "ok");
   };
   const arrEq = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
@@ -294,13 +295,12 @@ export function PqaPlanScreen() {
     draft.status !== plan.status ||
     !arrEq(draft.scenarioIds || [], plan.scenarioIds || []) ||
     !arrEq(draft.deviceIds || [], (plan.matrix && plan.matrix.deviceIds) || []) ||
-    !!draft.power !== !!(plan.cond && plan.cond.power) ||
     JSON.stringify(draft.budget || {}) !== JSON.stringify(plan.budget || {}) ||
     schedKey(draft.schedule) !== schedKey(plan.schedule)
   );
   const saveCfg = () => {
     if (!(draft.name || "").trim()) { toast("계획 이름을 비울 수 없습니다", "warn"); return; }
-    updatePerfPlan(plan.id, { name: draft.name.trim(), status: draft.status, scenarioIds: draft.scenarioIds, matrix: { ...plan.matrix, deviceIds: draft.deviceIds }, cond: { ...plan.cond, power: draft.power }, budget: draft.budget, schedule: draft.schedule });
+    updatePerfPlan(plan.id, { name: draft.name.trim(), status: draft.status, scenarioIds: draft.scenarioIds, matrix: { ...plan.matrix, deviceIds: draft.deviceIds }, budget: draft.budget, schedule: draft.schedule });
     toast("저장되었습니다", "ok");
   };
   const selectPlan = (i) => { if (i === sel) return; if (dirty && !window.confirm("저장하지 않은 변경이 있습니다. 저장하지 않고 다른 계획으로 이동할까요?")) return; setSel(i); };
@@ -312,8 +312,8 @@ export function PqaPlanScreen() {
   const toggleScn = (sid) => { const has = (draft.scenarioIds || []).includes(sid); setD({ scenarioIds: has ? draft.scenarioIds.filter((x) => x !== sid) : [...(draft.scenarioIds || []), sid] }); };
   const toggleDevice = (did) => { const ids = draft.deviceIds || []; const has = ids.includes(did); setD({ deviceIds: has ? ids.filter((x) => x !== did) : [...ids, did] }); };
   const selDevices = PERF_DEVICES.filter((d) => (draft.deviceIds || []).includes(d.id));
-  const selTiers = [...new Set(selDevices.map((d) => d.tier))];
   const hasPowerDevice = selDevices.some((d) => d.caps.power);
+  const needsPower = selScns.some((s) => (s.metrics || []).includes("batt"));
   return (
     <div className="space-y-4">
       <PageToolbar desc="대상 앱 + 시나리오 + 기기 매트릭스 + 지표별 SLA + 트리거" />
@@ -323,7 +323,7 @@ export function PqaPlanScreen() {
           {perfPlans.map((p, i) => (
             <Card key={p.id} className={cardCls(sel === i)}>
               <div onClick={() => selectPlan(i)}>
-                <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-100">{p.name}</span><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "pass" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); removePerfPlan(p.id); setSel(0); toast("삭제됨", "warn"); }} className="text-slate-500 hover:text-red-400"><X size={12} /></button></div></div>
+                <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-100">{p.name}</span><div className="flex items-center gap-1.5"><Badge kind={p.status === "활성" ? "pass" : "draft"}>{p.status}</Badge><button onClick={(e) => { e.stopPropagation(); if (!window.confirm(p.name + " 측정 계획을 삭제할까요?")) return; removePerfPlan(p.id); setSel(0); toast(p.name + " 삭제됨", "warn"); }} className="text-slate-500 hover:text-red-400"><X size={12} /></button></div></div>
                 <div className="mt-1 text-xs text-slate-500">{appName(p.appId)} · 기기 {(p.matrix && p.matrix.deviceIds || []).length} · {(p.schedule && p.schedule.summary) || "예약 없음"}</div>
               </div>
             </Card>
@@ -340,7 +340,7 @@ export function PqaPlanScreen() {
             </div>
           </div>
           <div>
-            <div className="mb-1.5 text-xs font-semibold text-slate-400">측정 시나리오 (셀 클릭 토글)</div>
+            <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-400"><Code2 size={13} className="text-teal-400" />측정 시나리오</div>
             <div className="flex flex-wrap gap-1.5">
               {scnsOf(plan.appId).map((s) => { const on = (draft.scenarioIds || []).includes(s.id); return (
                 <button key={s.id} onClick={() => toggleScn(s.id)} className={"rounded-lg border px-2.5 py-1.5 text-xs " + (on ? "border-teal-500 bg-teal-900 text-teal-200" : "border-slate-700 bg-slate-800 text-slate-400")}>{s.name}</button>
@@ -349,31 +349,27 @@ export function PqaPlanScreen() {
             </div>
           </div>
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400"><Cpu size={13} className="text-teal-400" />단말 선택 <span className="font-normal text-slate-500">· 측정할 기기를 직접 선택 (팜별 실기기)</span></div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">전력 계측 <Toggle on={!!draft.power} onClick={() => setD({ power: !draft.power })} /></div>
-            </div>
-            {draft.power && !hasPowerDevice && <div className="mb-1.5 rounded-lg border border-amber-800 bg-amber-950 px-2.5 py-1.5 text-xs text-amber-300">전력 계측은 전력 리그 기기(사내 랩)를 선택해야 합니다 — 아래에서 선택하세요.</div>}
+            <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-400"><Cpu size={13} className="text-teal-400" />단말 선택 <span className="font-normal text-slate-500">· 선택 {selDevices.length}대</span></div>
+            {needsPower && !hasPowerDevice && <div className="mb-1.5 rounded-lg border border-amber-800 bg-amber-950 px-2.5 py-1.5 text-xs text-amber-300">선택 시나리오가 전력(batt)을 수집하나 전력 리그 단말(Pixel)이 없습니다 — 전력 지표가 측정되지 않습니다.</div>}
             <div className="overflow-hidden rounded-lg border border-slate-800">
               <table className="w-full text-sm">
-                <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="w-9 px-3 py-2"></th><th className="font-medium">기기</th><th className="font-medium">OS</th><th className="font-medium">티어</th><th className="font-medium">팜</th><th className="font-medium">역량</th></tr></thead>
+                <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="w-9 px-3 py-2"></th><th className="font-medium">기기</th><th className="font-medium">OS</th><th className="font-medium">티어</th><th className="font-medium">슬롯</th><th className="font-medium">역량</th></tr></thead>
                 <tbody className="text-slate-300">
                   {PERF_DEVICES.map((d) => { const on = (draft.deviceIds || []).includes(d.id); return (
                     <tr key={d.id} onClick={() => toggleDevice(d.id)} className={"cursor-pointer border-b border-slate-800 last:border-0 hover:bg-slate-800/50 " + (on ? "bg-teal-950/40" : "")}>
                       <td className="px-3 py-2"><input type="checkbox" checked={on} readOnly className="accent-teal-500" /></td>
                       <td className="text-slate-200">{d.model}</td><td className="text-xs text-slate-400">{d.os}</td>
                       <td><Badge kind={d.tier === "저사양" ? "warn" : "info"}>{d.tier}</Badge></td>
-                      <td className="text-xs text-slate-400">{d.farm}</td>
+                      <td className="font-mono text-xs text-slate-400">{d.slot}</td>
                       <td className="text-xs"><span className="text-slate-400">{[d.caps.trace && "trace", d.caps.fps && "frame"].filter(Boolean).join("·") || "—"}</span>{d.caps.power ? <span className="ml-1 text-teal-300">· 전력<Zap size={10} className="inline" /></span> : <span className="ml-1 text-slate-600">· 전력 X</span>}</td>
                     </tr>
                   ); })}
                 </tbody>
               </table>
             </div>
-            <div className="mt-1 text-xs text-slate-500">선택 {selDevices.length}대{selTiers.length ? " · 티어 " + selTiers.join("·") : ""} · 실시간 가용성은 실행 시 팜에서 확정.</div>
           </div>
           <div>
-            <div className="mb-1.5 text-xs font-semibold text-slate-400">지표별 SLA <span className="font-normal text-slate-500">· 시나리오별 지표 임계 · 비우면 게이트 제외</span></div>
+            <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-400"><Gauge size={13} className="text-teal-400" />지표별 SLA <span className="font-normal text-slate-500">· 시나리오별 지표 임계 · 비우면 게이트 제외</span></div>
             {selScns.length === 0 ? (
               <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs text-slate-500">시나리오를 선택하면 시나리오별 지표 SLA를 설정할 수 있습니다.</div>
             ) : (
@@ -417,6 +413,509 @@ export function PqaPlanScreen() {
 }
 
 /* ═══════════ 실행·분석 / 대시보드 — 준비 중(다음 단계) ═══════════ */
+/* ═══════════ 측정 실행 (단일 러너 FIFO 큐 · 시나리오×단말 매트릭스) ═══════════ */
+const PRUN_MBASE = { e2e: 1500, frame: 20, jank: 6, mem: 380, batt: 300 };
+export function PqaRunScreen() {
+  const { perfPlans, perfScenarios, perfApps, perfRuns, addPerfRun, updatePerfRun, removePerfRun, currentUser } = useApp();
+  const [msg, flash] = useToast();
+  const appNm = (id) => (perfApps.find((a) => a.id === id) || {}).name || "-";
+  const runnable = (perfPlans || []).filter((p) => p.status === "활성");
+  const [runPlanId, setRunPlanId] = useState((runnable[0] || {}).id || 0);
+  const [selId, setSelId] = useState(null);
+  const runPlan = (perfPlans || []).find((p) => p.id === runPlanId) || runnable[0] || {};
+  const rpDevs = PERF_DEVICES.filter((d) => ((runPlan.matrix && runPlan.matrix.deviceIds) || []).includes(d.id));
+  const rpScns = (perfScenarios || []).filter((s) => (runPlan.scenarioIds || []).includes(s.id));
+  const rpApp = perfApps.find((a) => a.id === runPlan.appId) || {};
+  const rpBuildOk = !!rpApp.signed && rpApp.build && rpApp.build !== "-";
+  const rpNeedsPower = rpScns.some((s) => (s.metrics || []).includes("batt"));
+  const rpHasPowerDev = rpDevs.some((d) => d.caps.power);
+  const rpSlaN = Object.values(runPlan.budget || {}).reduce((a, o) => a + Object.values(o || {}).filter((v) => v != null).length, 0);
+
+  const simSub = (scn, bdg, dev) => {
+    const metrics = {}; let fail = false, gated = false;
+    (scn.metrics || []).forEach((mid) => {
+      if (mid === "batt" && !(dev && dev.caps && dev.caps.power)) return; // 전력은 전력 단말에서만 수집
+      const b = bdg ? bdg[mid] : undefined;
+      const base = b != null ? b : (PRUN_MBASE[mid] || 100);
+      const v = Math.round(base * (0.82 + Math.random() * 0.32) * 100) / 100;
+      metrics[mid] = v;
+      if (b != null) { gated = true; if (v > b) fail = true; }
+    });
+    return { metrics, verdict: gated ? (fail ? "FAIL" : "PASS") : "—" };
+  };
+  const buildSubjobs = (plan) => {
+    const devs = PERF_DEVICES.filter((d) => ((plan.matrix && plan.matrix.deviceIds) || []).includes(d.id));
+    const scns = (perfScenarios || []).filter((s) => (plan.scenarioIds || []).includes(s.id));
+    const bud = plan.budget || {};
+    const subs = [];
+    devs.forEach((d) => scns.forEach((s) => { const r = simSub(s, bud[String(s.id)], d); subs.push({ did: d.id, model: d.model, slot: d.slot, sid: s.id, scn: s.name, journey: s.journey, iters: s.iterations || 10, iter: 0, status: "대기", metrics: r.metrics, verdict: r.verdict }); }));
+    return subs;
+  };
+  const gate = (plan) => {
+    if (!plan || !plan.id) { flash("실행할 측정 계획을 선택하세요"); return false; }
+    if (plan.status !== "활성") { flash(plan.name + " — 초안 계획은 실행할 수 없습니다 (계획을 활성화)"); return false; }
+    if (!(plan.scenarioIds || []).length) { flash(plan.name + " — 선택된 시나리오가 없습니다"); return false; }
+    if (!((plan.matrix && plan.matrix.deviceIds) || []).length) { flash(plan.name + " — 선택된 단말이 없습니다"); return false; }
+    const app = perfApps.find((a) => a.id === plan.appId) || {};
+    if (!(app.signed && app.build && app.build !== "-")) { flash(plan.name + " — 대상 앱 빌드가 확보되지 않았습니다 (대상 앱에서 빌드 연결·파싱)"); return false; }
+    return true;
+  };
+  const nextId = () => "PRUN-" + ((perfRuns || []).reduce((m, r) => Math.max(m, parseInt((r.id.split("-")[1] || "0"), 10)), 1000) + 1);
+  const runNow = () => {
+    const plan = runPlan;
+    if (!gate(plan)) return;
+    const id = nextId();
+    addPerfRun({ id, planId: plan.id, plan: plan.name, app: appNm(plan.appId), ver: rpApp.version || "-", verCode: rpApp.versionCode || "-", no: (perfRuns || []).filter((r) => r.planId === plan.id).length + 1, status: "대기", by: currentUser || "이민준", trig: "수동", at: nowStamp(), queuedAt: Date.now(), devices: ((plan.matrix && plan.matrix.deviceIds) || []).length, scns: (plan.scenarioIds || []).length, power: rpNeedsPower && rpHasPowerDev, subjobs: buildSubjobs(plan) });
+    setSelId(id);
+    flash(plan.name + " 실행 요청 · " + id + " — 큐 맨끝에 적재");
+  };
+  // 큐 프로세서 — 단일 러너 FIFO(측정 격리). 실행중 계획은 단말 병렬·시나리오 순차로 진행.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const running = (perfRuns || []).find((r) => r.status === "실행중");
+      if (running) {
+        const subs = (running.subjobs || []).map((s) => ({ ...s }));
+        [...new Set(subs.map((s) => s.did))].forEach((did) => {
+          const cur = subs.find((s) => s.did === did && s.status !== "완료" && s.status !== "실패");
+          if (!cur) return;
+          if (cur.status === "대기") cur.status = "실행중";
+          cur.iter = Math.min(cur.iters, cur.iter + 1);
+          if (cur.iter >= cur.iters) cur.status = cur.verdict === "FAIL" ? "실패" : "완료";
+        });
+        const done = subs.every((s) => s.status === "완료" || s.status === "실패");
+        if (done) { const verdict = subs.some((s) => s.verdict === "FAIL") ? "불합격" : (subs.some((s) => s.verdict === "PASS") ? "합격" : "미판정"); updatePerfRun(running.id, { subjobs: subs, status: "완료", endedAt: nowStamp(), verdict }); }
+        else updatePerfRun(running.id, { subjobs: subs });
+        return;
+      }
+      const waiting = (perfRuns || []).filter((r) => r.status === "대기").slice().sort((a, b) => (a.queuedAt || 0) - (b.queuedAt || 0));
+      if (waiting.length) updatePerfRun(waiting[0].id, { status: "실행중", startedAt: nowStamp() });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [perfRuns]);
+
+  const today = nowStamp().slice(0, 10);
+  const dateOf = (r) => String(r.endedAt || r.startedAt || "").slice(0, 10);
+  const _now = new Date(); const _dow = _now.getDay(), _dom = _now.getDate(); const _isWk = _dow >= 1 && _dow <= 5; const _nowMin = _now.getHours() * 60 + _now.getMinutes();
+  const _tMin = (t) => { const p = String(t || "00:00").split(":"); return (+p[0] || 0) * 60 + (+p[1] || 0); };
+  const firesToday = (p) => { if (p.status !== "활성") return false; const s = p.schedule; if (!s || s.mode !== "schedule" || !s.active) return false; if (s.freq === "hourly") return _now.getHours() < 23; const up = _tMin(s.time) > _nowMin; if (s.freq === "daily") return up; if (s.freq === "weekdays") return _isWk && up; if (s.freq === "weekly") return s.dow === _dow && up; if (s.freq === "monthly") return s.dom === _dom && up; return false; };
+  const cnt = (fn) => (perfRuns || []).filter(fn).length;
+  const scheduledToday = (perfPlans || []).filter(firesToday).length;
+  const KPI = [["실행 중", cnt((r) => r.status === "실행중"), "text-amber-400"], ["대기", cnt((r) => r.status === "대기"), "text-slate-100"], ["예약(오늘)", scheduledToday, "text-teal-400"], ["완료(오늘)", cnt((r) => r.status === "완료" && dateOf(r) === today), "text-emerald-400"], ["불합격(오늘)", cnt((r) => r.status === "완료" && r.verdict === "불합격" && dateOf(r) === today), "text-red-400"]];
+
+  const queue = (perfRuns || []).filter((r) => r.status === "실행중" || r.status === "대기").slice().sort((a, b) => { const rk = (s) => (s === "실행중" ? 0 : 1); if (rk(a.status) !== rk(b.status)) return rk(a.status) - rk(b.status); return (a.queuedAt || 0) - (b.queuedAt || 0); });
+  const liveRun = (perfRuns || []).find((r) => r.status === "실행중");
+  const selRun = queue.find((r) => r.id === selId) || liveRun || queue[0] || null;
+  const cancel = (r) => { if (!window.confirm(r.id + " 실행을 큐에서 취소할까요?")) return; removePerfRun(r.id); if (selId === r.id) setSelId(null); flash(r.id + " 취소됨"); };
+  const stop = (r) => { if (!window.confirm(r.id + " 실행을 중지할까요? — 러너에 취소 신호를 보내고 큐에서 제거합니다")) return; removePerfRun(r.id); if (selId === r.id) setSelId(null); flash(r.id + " 중지됨"); };
+  const progOf = (r) => { const t = (r.subjobs || []).length || 1; const d = (r.subjobs || []).filter((s) => s.status === "완료" || s.status === "실패").length; return { d, t, pct: Math.round(d / t * 100) }; };
+  const fmtDur = (sec) => (sec >= 60 ? Math.floor(sec / 60) + "분 " + (sec % 60) + "초" : sec + "초");
+  // 예상 소요 = 단말 병렬·시나리오 순차 기준, 가장 오래 걸리는 단말 경로(iters × 회당 소요). Startup ~4s/회, Flow ~8s/회.
+  const estSec = (r) => { const per = (j) => (String(j).includes("Startup") ? 4 : 8); const byDev = {}; (r.subjobs || []).forEach((s) => { byDev[s.did] = (byDev[s.did] || 0) + (s.iters || 10) * per(s.journey); }); const v = Object.values(byDev); return v.length ? Math.max(...v) : 0; };
+  const mstr = (s) => Object.entries(s.metrics || {}).map(([k, v]) => { const m = PERF_METRICS.find((x) => x.id === k) || { label: k, unit: "" }; return m.label + " " + v + (m.unit || ""); }).join(" · ");
+  const sK = { "대기": "info", "실행중": "warn", "완료": "pass" };
+  const vK = { "합격": "pass", "불합격": "fail", "미판정": "info" };
+  const mtxDevs = selRun ? [...new Map((selRun.subjobs || []).map((s) => [s.did, { did: s.did, model: s.model, slot: s.slot }])).values()] : [];
+  const mtxScns = selRun ? [...new Map((selRun.subjobs || []).map((s) => [s.sid, { sid: s.sid, scn: s.scn, journey: s.journey }])).values()] : [];
+  const cellOf = (did, sid) => (selRun.subjobs || []).find((s) => s.did === did && s.sid === sid);
+
+  return (
+    <div className="space-y-4">
+      <PageToolbar desc="단일 러너 큐(측정 격리) · 시나리오×단말 매트릭스 · 실시간 진행" />
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-5 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            {KPI.slice(0, 2).map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1"><Select value={runPlanId} onChange={(e) => setRunPlanId(Number(e.target.value))} disabled={!runnable.length}>{runnable.length ? runnable.map((p) => <option key={p.id} value={p.id}>{p.name}</option>) : <option value="">활성 계획 없음</option>}</Select></div>
+            <Btn kind="primary" icon={Play} disabled={!runnable.length} onClick={runNow}>실행</Btn>
+          </div>
+          {!runnable.length && <div className="text-xs text-amber-400">활성 상태의 측정 계획이 없습니다 — 계획을 활성화해야 실행할 수 있습니다.</div>}
+          {runnable.length > 0 && (
+            <Card className="space-y-2 p-3 text-xs">
+              <div className="flex items-center justify-between"><span className="text-slate-500">대상 앱</span><span className="text-slate-200">{appNm(runPlan.appId)}</span></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">빌드</span><span className="text-slate-300">{rpApp.version || "-"}{rpApp.versionCode && rpApp.versionCode !== "-" ? " (" + rpApp.versionCode + ")" : ""}</span></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">실행 규모</span><span className="text-slate-300">시나리오 {rpScns.length} × 단말 {rpDevs.length} = 서브잡 {rpScns.length * rpDevs.length}</span></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">측정 환경</span><span className="text-slate-300">사내 랩 (단일)</span></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">전력 계측</span><span className="text-slate-300">{rpNeedsPower ? (rpHasPowerDev ? "Pixel 리그로 측정" : "단말 없음 · 미측정") : "해당 없음"}</span></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">지표 SLA</span><span className="text-emerald-300">{rpSlaN}개 게이트</span></div>
+              {!rpBuildOk && <div className="rounded border border-amber-800 bg-amber-950 px-2 py-1 text-amber-300">대상 앱 빌드 미확보 — 대상 앱에서 빌드 연결·파싱 필요</div>}
+            </Card>
+          )}
+          <Card className="overflow-hidden">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-800 text-left text-slate-500"><th className="px-3 py-2.5 font-medium">실행</th><th className="font-medium">상태</th><th className="font-medium">진행</th><th></th></tr></thead>
+              <tbody>
+                {queue.length === 0 && (<tr><td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-500">진행 중이거나 대기 중인 실행이 없습니다 — 계획을 골라 &quot;실행&quot;하세요.</td></tr>)}
+                {queue.map((r) => { const pg = progOf(r); return (
+                  <tr key={r.id} onClick={() => setSelId(r.id)} className={"cursor-pointer border-b border-slate-800 text-slate-300 hover:bg-slate-800 " + ((selRun && selRun.id === r.id) ? "bg-slate-800" : "")}>
+                    <td className="px-3 py-2.5"><div className="font-mono text-xs text-teal-400">{r.id}</div><div className="text-slate-200">{r.plan}</div><div className="text-xs text-slate-500">{r.app} · 단말 {r.devices} · 시나리오 {r.scns}</div></td>
+                    <td><Badge kind={sK[r.status] || "info"}>{r.status}</Badge></td>
+                    <td style={{ minWidth: 96 }}>{r.status === "대기" ? <span className="text-xs text-slate-500">대기</span> : (<div><div className="mb-0.5 text-xs text-slate-400">{pg.d}/{pg.t}</div><div className="h-1.5 rounded bg-slate-800"><div className="h-1.5 rounded bg-teal-500" style={{ width: pg.pct + "%" }} /></div></div>)}</td>
+                    <td className="pr-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>{r.status === "실행중" ? <button onClick={() => stop(r)} className="text-xs text-slate-400 hover:text-red-400">중지</button> : <button onClick={() => cancel(r)} className="text-xs text-slate-400 hover:text-red-400">취소</button>}</td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+        <div className="col-span-7 space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            {KPI.slice(2).map((k) => (<Card key={k[0]} className="p-3 text-center"><div className={"text-2xl font-bold " + k[2]}>{k[1]}</div><div className="mt-0.5 text-xs text-slate-500">{k[0]}</div></Card>))}
+          </div>
+          <Card className="overflow-hidden">
+            {!selRun ? (
+              <div className="flex items-center justify-center p-10 text-xs text-slate-500" style={{ minHeight: 200 }}>계획을 골라 &quot;실행&quot;하면 시나리오×단말 매트릭스가 여기에 표시됩니다.</div>
+            ) : selRun.status === "대기" ? (
+              <div className="space-y-3 p-5">
+                <div className="flex items-center justify-between"><div><div className="text-sm font-semibold text-slate-200">{selRun.plan}</div><div className="font-mono text-xs text-teal-400">{selRun.id}</div></div><Badge kind="info">대기</Badge></div>
+                <div className="rounded-lg bg-slate-800 p-3 text-xs text-slate-400">러너 배정 대기 · 앞선 {queue.filter((r) => r.status === "대기").findIndex((r) => r.id === selRun.id)}건 · 단일 러너라 앞 실행이 끝나면 자동 시작됩니다.</div>
+              </div>
+            ) : (() => {
+              const pg = progOf(selRun); const running = selRun.status === "실행중"; const eDur = estSec(selRun); const elapsed = Math.round(eDur * pg.pct / 100); const remain = Math.max(0, eDur - elapsed);
+              return (
+                <>
+                  <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2.5">
+                    <div className="min-w-0"><div className="truncate text-sm font-semibold text-slate-200">{selRun.plan}</div><div className="font-mono text-xs text-teal-400">{selRun.id} · {selRun.app}{selRun.ver && selRun.ver !== "-" ? " · v" + selRun.ver + (selRun.verCode && selRun.verCode !== "-" ? " (" + selRun.verCode + ")" : "") : ""}</div></div>
+                    {running ? <span className="flex shrink-0 items-center gap-1 text-xs text-red-300"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />LIVE</span> : <Badge kind={vK[selRun.verdict] || "info"}>{selRun.verdict || "완료"}</Badge>}
+                  </div>
+                  <div className="flex items-center gap-3 border-b border-slate-800 px-3 py-2 text-xs text-slate-400"><span>서브잡 <span className="text-slate-200">{pg.d}/{pg.t}</span></span><div className="h-1.5 flex-1 rounded bg-slate-800"><div className="h-1.5 rounded bg-teal-500" style={{ width: pg.pct + "%" }} /></div><span>{running ? "경과 " + fmtDur(elapsed) + " / 예상 " + fmtDur(eDur) : "완료"}</span></div>
+                  <div className="overflow-x-auto p-3">
+                    <table className="w-full text-xs">
+                      <thead><tr className="text-left text-slate-500"><th className="px-2 py-1.5 font-medium">단말 \ 시나리오</th>{mtxScns.map((c) => <th key={c.sid} className="px-2 py-1.5 font-medium">{c.scn}<div className="font-normal text-slate-600">{c.journey}</div></th>)}</tr></thead>
+                      <tbody>
+                        {mtxDevs.map((d) => (
+                          <tr key={d.did} className="border-t border-slate-800">
+                            <td className="px-2 py-2 text-slate-300">{d.model}<div className="font-mono text-slate-600">{d.slot}</div></td>
+                            {mtxScns.map((c) => { const s = cellOf(d.did, c.sid); if (!s) return <td key={c.sid} className="px-2 py-2 text-slate-700">·</td>; const cls = s.status === "대기" ? "bg-slate-800 text-slate-500" : s.status === "실행중" ? "bg-amber-950 text-amber-300" : s.status === "실패" ? "bg-red-950 text-red-300" : "bg-emerald-950 text-emerald-300"; const txt = s.status === "대기" ? "대기" : s.status === "실행중" ? (s.iter + "/" + s.iters) : s.status === "실패" ? "✗ 불합격" : (s.verdict === "—" ? "✓" : "✓ 합격"); return <td key={c.sid} className="px-2 py-2"><span title={mstr(s)} className={"inline-block rounded px-2 py-1 " + cls}>{txt}</span></td>; })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="border-t border-slate-800 px-3 py-2 text-xs text-slate-500">셀: 대기 → iter 진행 → ✓합격 / ✗불합격 · 셀에 마우스를 올리면 지표값 표시{running && <> · <button onClick={() => stop(selRun)} className="text-slate-400 hover:text-red-400">중지</button></>}</div>
+                </>
+              );
+            })()}
+          </Card>
+        </div>
+      </div>
+      <Toast msg={msg} />
+    </div>
+  );
+}
+
+/* ═══════════ 실행 이력 · 결과 상세 ═══════════ */
+export function PqaHistoryScreen() {
+  const { perfRuns, perfPlans } = useApp();
+  const runs = (perfRuns || []).filter((r) => r.status === "완료");
+  const [detail, setDetail] = useState(null);
+  const [fPlan, setFPlan] = useState("all");
+  const [fVerdict, setFVerdict] = useState("all");
+  const planName = (id) => ((perfPlans || []).find((p) => p.id === id) || {}).name || "-";
+  const tK = { "수동": "info", "스케줄": "pass", "이벤트": "warn" };
+  const vK = { "합격": "pass", "불합격": "fail", "미판정": "info" };
+  const shown = runs.filter((r) => (fPlan === "all" || String(r.planId) === fPlan) && (fVerdict === "all" || r.verdict === fVerdict)).slice().sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
+  if (detail) return <PqaResultView run={detail} back={() => setDetail(null)} />;
+  return (
+    <div className="space-y-4">
+      <PageToolbar desc="측정 실행 이력 · 행 클릭 → 실행 결과 상세" />
+      <div className="flex items-center gap-2">
+        <div style={{ width: 120 }}><Select value={fVerdict} onChange={(e) => setFVerdict(e.target.value)}><option value="all">전체 판정</option><option value="합격">합격</option><option value="불합격">불합격</option><option value="미판정">미판정</option></Select></div>
+        <div style={{ width: 220 }}><Select value={fPlan} onChange={(e) => setFPlan(e.target.value)}><option value="all">전체 계획</option>{(perfPlans || []).map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}</Select></div>
+      </div>
+      <Card className="overflow-hidden p-0">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b border-slate-800 text-left text-xs text-slate-500"><th className="px-3 py-2 font-medium">실행</th><th className="font-medium">계획</th><th className="font-medium">빌드</th><th className="font-medium">트리거</th><th className="font-medium">규모</th><th className="font-medium">시각</th><th className="font-medium">판정</th><th className="pr-3 font-medium">결과</th></tr></thead>
+          <tbody>
+            {shown.length === 0 ? <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-slate-600">{runs.length === 0 ? "실행 이력이 없습니다." : "조건에 맞는 실행이 없습니다."}</td></tr> : shown.map((r) => { const failN = (r.subjobs || []).filter((s) => s.verdict === "FAIL").length; return (
+              <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer border-b border-slate-800 last:border-0 text-slate-300 hover:bg-slate-800/50">
+                <td className="px-3 py-2 font-mono text-xs text-teal-400">{r.id}</td>
+                <td className="text-slate-200">{planName(r.planId)} <span className="text-xs text-slate-500">#{r.no}</span></td>
+                <td className="font-mono text-xs text-slate-400">{r.ver && r.ver !== "-" ? r.ver : "-"}{r.verCode && r.verCode !== "-" ? <span className="text-slate-600"> ({r.verCode})</span> : ""}</td>
+                <td><Badge kind={tK[r.trig] || "info"}>{r.trig}</Badge></td>
+                <td className="text-xs text-slate-400">단말 {r.devices} · 시나리오 {r.scns}</td>
+                <td className="text-xs"><RunTime start={r.startedAt} end={r.endedAt} /></td>
+                <td><Badge kind={vK[r.verdict] || "info"}>{r.verdict}</Badge></td>
+                <td className="pr-3 text-xs text-slate-400">{failN > 0 ? <span className="text-red-300">{failN}건 불합격</span> : "전체 합격"}</td>
+              </tr>
+            ); })}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function PqaResultView({ run, back, backLabel = "실행 이력" }) {
+  const { perfPlans, defects, openModal } = useApp();
+  const [msg, flash] = useToast();
+  const plan = (perfPlans || []).find((p) => p.id === run.planId) || {};
+  const subs = run.subjobs || [];
+  const devs = [...new Map(subs.map((s) => [s.did, { did: s.did, model: s.model, slot: s.slot }])).values()];
+  const scns = [...new Map(subs.map((s) => [s.sid, { sid: s.sid, scn: s.scn, journey: s.journey }])).values()];
+  const failN = subs.filter((s) => s.verdict === "FAIL").length;
+  const passN = subs.length - failN;
+  const dExists = (defects || []).some((d) => d.tc === run.id);
+  const regDefect = () => {
+    if (run.verdict !== "불합격") return;
+    if (dExists) { flash("이미 결함이 등록된 실행입니다"); return; }
+    const failSubs = subs.filter((s) => s.verdict === "FAIL");
+    const lines = failSubs.map((s) => { const bud = (plan.budget || {})[String(s.sid)] || {}; const over = Object.entries(s.metrics || {}).filter(([mid, v]) => bud[mid] != null && v > bud[mid]).map(([mid, v]) => { const m = PERF_METRICS.find((x) => x.id === mid) || { label: mid, unit: "" }; return m.label + " " + v + (m.unit || "") + " > " + bud[mid]; }); return "· " + s.model + " (" + s.scn + "): " + (over.join(", ") || "임계 초과"); });
+    openModal("jira", {
+      domain: "PQA", sev: "Major", tc: run.id, target: run.app || "", labels: "pqa, perf",
+      title: "성능 SLA 불합격 · " + (run.plan || "측정 계획") + " (" + (run.ver || "-") + ")",
+      desc: "측정 계획: " + (run.plan || "-") + "\n빌드: " + (run.ver || "-") + (run.verCode && run.verCode !== "-" ? " (" + run.verCode + ")" : "") + "\n불합격 " + failSubs.length + "/" + subs.length + " 셀:\n" + lines.join("\n"),
+      steps: "1. 측정 계획 '" + (run.plan || "-") + "' 실행 (단말 " + run.devices + " × 시나리오 " + run.scns + ")\n2. 각 단말·시나리오 Macrobenchmark 측정 (iterations)\n3. 지표별 SLA 임계 대비 판정",
+      expected: "모든 단말·시나리오가 지표별 SLA 충족",
+      actual: "SLA 초과 — " + failSubs.map((s) => s.model + "/" + s.scn).join(" · "),
+      env: "사내 랩 · " + [...new Set(failSubs.map((s) => s.model))].join(", "),
+      artifacts: [{ k: "bench", label: "benchmarkData", file: "benchmarkData.json", size: "24 KB" }, { k: "trace", label: "Perfetto 트레이스", file: "trace.perfetto-trace", size: "8 MB" }, { k: "summary", label: "판정 요약", file: "verdict_summary.csv", size: "4 KB" }],
+    });
+  };
+  const vK = { "합격": "pass", "불합격": "fail", "미판정": "info" };
+  const thr = (sid, mid) => { const b = (plan.budget || {})[String(sid)]; return b ? b[mid] : undefined; };
+  const metricsOf = (sid) => PERF_METRICS.filter((m) => subs.some((s) => s.sid === sid && s.metrics && s.metrics[m.id] != null));
+  const cell = (did, sid) => subs.find((s) => s.did === did && s.sid === sid);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-slate-400"><button onClick={back} className="hover:text-teal-300">{backLabel}</button><span className="text-slate-600">/</span><span className="font-mono text-teal-400">{run.id}</span></div>
+        <div className="flex items-center gap-2"><Btn icon={Download} onClick={() => flash("Excel 리포트 생성됨")}>Excel</Btn><Btn icon={Download} onClick={() => flash("PDF 리포트 생성됨")}>PDF</Btn><Btn icon={ChevronLeft} onClick={back}>{backLabel}</Btn></div>
+      </div>
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div><div className="text-base font-semibold text-slate-100">{run.plan}</div><div className="mt-0.5 text-xs text-slate-500">{run.app}{run.ver && run.ver !== "-" ? " · v" + run.ver + (run.verCode && run.verCode !== "-" ? " (" + run.verCode + ")" : "") : ""} · {run.trig} · <RunTime start={run.startedAt} end={run.endedAt} /></div></div>
+          <Badge kind={vK[run.verdict] || "info"}>{run.verdict}</Badge>
+        </div>
+        <div className="mt-3 grid grid-cols-4 gap-3 text-center">
+          <div className="rounded-lg bg-slate-800 p-2.5"><div className="text-lg font-semibold text-slate-100">{subs.length}</div><div className="text-xs text-slate-500">서브잡</div></div>
+          <div className="rounded-lg bg-slate-800 p-2.5"><div className="text-lg font-semibold text-emerald-300">{passN}</div><div className="text-xs text-slate-500">합격</div></div>
+          <div className="rounded-lg bg-slate-800 p-2.5"><div className="text-lg font-semibold text-red-300">{failN}</div><div className="text-xs text-slate-500">불합격</div></div>
+          <div className="rounded-lg bg-slate-800 p-2.5"><div className="text-lg font-semibold text-slate-100">{devs.length}×{scns.length}</div><div className="text-xs text-slate-500">단말×시나리오</div></div>
+        </div>
+        {run.verdict === "불합격"
+          ? <div className="mt-3 rounded-lg border border-red-900 bg-red-950 px-2.5 py-2 text-xs text-red-300">지표 SLA 불합격: {failN}/{subs.length} 셀 · {[...new Set(subs.filter((s) => s.verdict === "FAIL").map((s) => s.model))].join(", ")}</div>
+          : run.verdict === "합격"
+          ? <div className="mt-3 rounded-lg border border-emerald-900 bg-emerald-950 px-2.5 py-2 text-xs text-emerald-300">모든 지표 SLA 충족</div>
+          : <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-400">게이트 지표가 없어 판정하지 않았습니다</div>}
+        {run.verdict === "불합격" && <div className="mt-2 flex items-center justify-end">{dExists ? <span className="text-xs text-slate-500">결함 등록됨</span> : <Btn icon={Bug} onClick={regDefect}>결함 등록</Btn>}</div>}
+      </Card>
+      {scns.map((sc) => { const ms = metricsOf(sc.sid); return (
+        <Card key={sc.sid} className="overflow-hidden p-0">
+          <div className="border-b border-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-200">{sc.scn} <span className="text-xs font-normal text-slate-500">· {sc.journey}</span></div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="text-left text-slate-500"><th className="px-3 py-2 font-medium">단말</th>{ms.map((m) => <th key={m.id} className="px-3 py-2 font-medium">{m.label}<div className="font-normal text-slate-600">{m.agg} {m.dir === "up" ? "≥" : "≤"} {m.unit}</div></th>)}<th className="px-3 py-2 font-medium">판정</th></tr></thead>
+              <tbody>
+                {devs.map((d) => { const s = cell(d.did, sc.sid); if (!s) return null; return (
+                  <tr key={d.did} className="border-t border-slate-800">
+                    <td className="px-3 py-2 text-slate-300">{d.model}<div className="font-mono text-slate-600">{d.slot}</div></td>
+                    {ms.map((m) => { const v = (s.metrics || {})[m.id]; const t = thr(sc.sid, m.id); const bad = t != null && v != null && v > t; return <td key={m.id} className={"px-3 py-2 " + (bad ? "font-semibold text-red-300" : "text-slate-300")}>{v != null ? v : "-"}{t != null ? <span className="text-slate-600"> / {t}</span> : ""}</td>; })}
+                    <td className="px-3 py-2"><Badge kind={s.verdict === "FAIL" ? "fail" : s.verdict === "PASS" ? "pass" : "info"}>{s.verdict === "FAIL" ? "불합격" : s.verdict === "PASS" ? "합격" : "미판정"}</Badge></td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ); })}
+      <Toast msg={msg} />
+    </div>
+  );
+}
+
+/* ═══════════ 대시보드 (회귀 triage + KPI) ═══════════ */
+export function PqaDashboardScreen() {
+  const { perfPlans, perfRuns, defects } = useApp();
+  const plans = perfPlans || [];
+  const [fPlan, setFPlan] = useState("all");
+  const [detail, setDetail] = useState(null);
+  const REG_PCT = 10;
+  const inScope = (pid) => fPlan === "all" || String(pid) === fPlan;
+  const completed = (perfRuns || []).filter((r) => r.status === "완료" && inScope(r.planId));
+  const desc = completed.slice().sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
+  const recent = desc.slice(0, 10);
+  const passN = recent.filter((r) => r.verdict === "합격").length;
+  const rate = recent.length ? Math.round(passN / recent.length * 100) : 0;
+  const openDef = (defects || []).filter((d) => d.domain === "PQA" && d.status !== "Resolved" && d.status !== "Closed").length;
+  const running = (perfRuns || []).filter((r) => r.status === "실행중" && inScope(r.planId));
+  const queuedN = (perfRuns || []).filter((r) => r.status === "대기" && inScope(r.planId)).length;
+  // 회귀·초과 랭킹 — 최근 WIN_N빌드/계획에서, 마지막 합격 대비 ±10% 악화하거나 현재 SLA 초과한 (단말×시나리오×지표) 셀
+  const WIN_N = 8;
+  const dAway = (m, v, b) => (b == null || b === 0 || v == null) ? null : Math.round((m.dir === "up" ? (b - v) / b : (v - b) / b) * 1000) / 10; // 양수=악화
+  const regItems = [];
+  [...new Set(completed.map((r) => r.planId))].forEach((pid) => {
+    const plan = plans.find((p) => p.id === pid) || {};
+    const rs = completed.filter((r) => r.planId === pid).slice().sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || ""));
+    const win = rs.slice(-WIN_N);
+    const latest = rs[rs.length - 1]; if (!latest) return;
+    const baseOf = (idx) => rs.slice(0, idx).reverse().find((r) => r.verdict === "합격");
+    const latestBase = baseOf(rs.length - 1);
+    (latest.subjobs || []).forEach((s) => {
+      Object.entries(s.metrics || {}).forEach(([mid, cur]) => {
+        const m = PERF_METRICS.find((x) => x.id === mid) || { dir: "down", label: mid, unit: "" };
+        const thr = ((plan.budget || {})[String(s.sid)] || {})[mid];
+        const base = latestBase ? ((latestBase.subjobs || []).find((x) => x.did === s.did && x.sid === s.sid) || { metrics: {} }).metrics[mid] : null;
+        const reg = dAway(m, cur, base);
+        const breachNow = thr != null && cur != null && (m.dir === "up" ? cur < thr : cur > thr);
+        const regNow = reg != null && reg >= REG_PCT;
+        let recentWorst = null, recentBreach = false;
+        win.forEach((run) => {
+          const cs = (run.subjobs || []).find((x) => x.did === s.did && x.sid === s.sid); if (!cs) return;
+          const v = (cs.metrics || {})[mid]; if (v == null) return;
+          const rb = baseOf(rs.indexOf(run));
+          const bv = rb ? ((rb.subjobs || []).find((x) => x.did === s.did && x.sid === s.sid) || { metrics: {} }).metrics[mid] : null;
+          const rr = dAway(m, v, bv);
+          if (rr != null && (recentWorst == null || rr > recentWorst)) recentWorst = rr;
+          if (thr != null && (m.dir === "up" ? v < thr : v > thr)) recentBreach = true;
+        });
+        if (!(breachNow || regNow || (recentWorst != null && recentWorst >= REG_PCT) || recentBreach)) return;
+        const slaOver = thr != null && cur != null ? Math.round((m.dir === "up" ? (thr - cur) / thr : (cur - thr) / thr) * 1000) / 10 : null;
+        const status = breachNow ? "현재 초과" : regNow ? "회귀" : "해소";
+        regItems.push({ planId: pid, plan: latest.plan, ver: latest.ver, run: latest, model: s.model, scn: s.scn, metric: m.label, unit: m.unit || "", cur, base, thr, reg, slaOver, recentWorst, status });
+      });
+    });
+  });
+  const stRank = { "현재 초과": 0, "회귀": 1, "해소": 2 };
+  regItems.sort((a, b) => { if (stRank[a.status] !== stRank[b.status]) return stRank[a.status] - stRank[b.status]; if (a.status === "현재 초과") return (b.slaOver || 0) - (a.slaOver || 0); if (a.status === "회귀") return (b.reg || 0) - (a.reg || 0); return (b.recentWorst || 0) - (a.recentWorst || 0); });
+  const regNowCount = regItems.filter((x) => x.status !== "해소").length;
+  const planName = (id) => (plans.find((p) => p.id === id) || {}).name || "-";
+  const vK = { "합격": "pass", "불합격": "fail", "미판정": "info" };
+  if (detail) return <PqaResultView run={detail} back={() => setDetail(null)} backLabel="대시보드" />;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <PageToolbar desc="앱 성능 KPI · 회귀 랭킹 · 판정 추이 · 최근 실행" />
+        <div className="w-56 shrink-0"><Select value={fPlan} onChange={(e) => setFPlan(e.target.value)}><option value="all">전체 계획</option>{plans.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}</Select></div>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><CheckCircle2 size={14} className="text-teal-400" />SLA 합격률</div><div className="mt-1 text-2xl font-semibold text-slate-100">{rate}<span className="text-sm text-slate-500">%</span></div><div className="text-xs text-slate-500">최근 {recent.length}회 중 {passN} 합격</div></Card>
+        <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><Bug size={14} className="text-red-400" />미해결 성능 결함</div><div className={"mt-1 text-2xl font-semibold " + (openDef > 0 ? "text-red-300" : "text-slate-100")}>{openDef}</div><div className="text-xs text-slate-500">앱 성능 결함 (Open)</div></Card>
+        <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><TrendingUp size={14} className="text-amber-400" />회귀·초과</div><div className={"mt-1 text-2xl font-semibold " + (regNowCount > 0 ? "text-amber-300" : "text-slate-100")}>{regNowCount}</div><div className="text-xs text-slate-500">현재 SLA 초과·회귀 지표</div></Card>
+        <Card className="p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><Activity size={14} className="text-teal-400" />진행 중 실행</div><div className={"mt-1 text-2xl font-semibold " + (running.length > 0 ? "text-teal-300" : "text-slate-100")}>{running.length}</div><div className="text-xs text-slate-500">대기 {queuedN}건</div></Card>
+      </div>
+      <Card className="space-y-2 p-4">
+        <div className="text-sm font-semibold text-slate-200">회귀·초과 랭킹 <span className="text-xs font-normal text-slate-500">· 최근 {WIN_N}빌드 · SLA 초과폭 우선 · 행 클릭 → 실행 상세</span></div>
+        {regItems.length === 0 ? <div className="rounded-lg bg-slate-800 p-4 text-center text-xs text-slate-500">최근 {WIN_N}빌드에 회귀·SLA 초과가 없습니다.</div> : (
+          <div className="space-y-1.5">{regItems.slice(0, 8).map((it, i) => { const vc = it.status === "현재 초과" ? "text-red-300" : it.status === "회귀" ? "text-amber-300" : "text-slate-300"; return (
+            <div key={i} onClick={() => setDetail(it.run)} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 hover:bg-slate-800/50">
+              <span className="w-[72px] shrink-0"><Badge kind={it.status === "현재 초과" ? "fail" : it.status === "회귀" ? "warn" : "draft"}>{it.status}</Badge></span>
+              <div className="min-w-0 flex-1"><div className="truncate text-sm text-slate-200">{it.model} · {it.metric}</div><div className="truncate text-xs text-slate-500">{it.plan} · {it.scn} · {it.ver}</div></div>
+              <div className="shrink-0 text-right text-xs">
+                <div><span className={vc}>{it.cur}{it.unit}</span>{it.thr != null && <span className="text-slate-600"> / {it.thr}{it.unit}</span>}</div>
+                <div className="text-slate-500">{it.status === "현재 초과" && it.slaOver != null ? "SLA +" + it.slaOver + "%" : it.status === "회귀" ? "▲" + it.reg + "% vs 기준" : "최근 ▲" + (it.recentWorst != null ? it.recentWorst : 0) + "% · 해소"}</div>
+              </div>
+            </div>
+          ); })}</div>
+        )}
+      </Card>
+      <Card className="space-y-2 p-4">
+          <div className="text-sm font-semibold text-slate-200">최근 실행 <span className="text-xs font-normal text-slate-500">· 최근 {Math.min(8, desc.length)}건 (행 클릭 → 실행 상세)</span></div>
+          <div className="overflow-hidden rounded-lg border border-slate-800">
+            <table className="w-full text-sm"><thead><tr className="border-b border-slate-800 text-xs text-slate-500"><th className="px-3 py-2 text-left">계획</th><th className="px-3 py-2 text-left">빌드</th><th className="px-3 py-2 text-left">시각</th><th className="px-3 py-2 text-left">규모</th><th className="px-3 py-2 text-left">결과</th><th className="px-3 py-2 text-center">판정</th></tr></thead>
+            <tbody>{desc.length === 0 ? <tr><td colSpan={6} className="px-3 py-6 text-center text-xs text-slate-600">실행 이력이 없습니다.</td></tr> : desc.slice(0, 8).map((r) => { const failN = (r.subjobs || []).filter((s) => s.verdict === "FAIL").length; return (
+              <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer border-b border-slate-800 last:border-0 hover:bg-slate-800/50">
+                <td className="px-3 py-2 text-slate-300">{planName(r.planId)}</td>
+                <td className="px-3 py-2 font-mono text-xs text-slate-400">{r.ver && r.ver !== "-" ? r.ver : "-"}</td>
+                <td className="px-3 py-2 text-xs"><RunTime start={r.startedAt} end={r.endedAt} /></td>
+                <td className="px-3 py-2 text-xs text-slate-400">단말 {r.devices} · 시나리오 {r.scns}</td>
+                <td className="px-3 py-2 text-xs">{failN > 0 ? <span className="text-red-300">{failN}건 불합격</span> : <span className="text-slate-500">전체 합격</span>}</td>
+                <td className="px-3 py-2 text-center"><Badge kind={vK[r.verdict] || "info"}>{r.verdict}</Badge></td>
+              </tr>
+            ); })}</tbody></table>
+          </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════ 성능 추이 (빌드별 지표 회귀) ═══════════ */
+const TREND_COLORS = ["#2dd4bf", "#fbbf24", "#f87171", "#38bdf8", "#a78bfa", "#34d399"];
+export function PqaTrendScreen() {
+  const { perfPlans, perfRuns } = useApp();
+  const plans = perfPlans || [];
+  const [planId, setPlanId] = useState((plans[0] || {}).id || 0);
+  const [detail, setDetail] = useState(null);
+  const plan = plans.find((p) => p.id === planId) || plans[0] || {};
+  const runs = (perfRuns || []).filter((r) => r.status === "완료" && r.planId === plan.id).slice().sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || ""));
+  const scnList = [...new Map(runs.flatMap((r) => r.subjobs || []).map((s) => [s.sid, { sid: s.sid, scn: s.scn, journey: s.journey }])).values()];
+  const [sid, setSid] = useState(scnList[0] ? scnList[0].sid : 0);
+  const curScn = scnList.find((s) => s.sid === sid) || scnList[0] || {};
+  const realSid = curScn.sid;
+  const metricList = PERF_METRICS.filter((m) => runs.some((r) => (r.subjobs || []).some((s) => s.sid === realSid && s.metrics && s.metrics[m.id] != null)));
+  const [mid, setMid] = useState(metricList[0] ? metricList[0].id : "e2e");
+  const curM = PERF_METRICS.find((m) => m.id === mid) || metricList[0] || { id: mid, label: mid, unit: "", agg: "", dir: "down" };
+  const realMid = metricList.some((m) => m.id === curM.id) ? curM.id : (metricList[0] || {}).id;
+  const metricDef = PERF_METRICS.find((m) => m.id === realMid) || { label: realMid, unit: "", agg: "", dir: "down" };
+  const devs = [...new Map(runs.flatMap((r) => (r.subjobs || []).filter((s) => s.sid === realSid)).map((s) => [s.did, { did: s.did, model: s.model, slot: s.slot }])).values()];
+  const thr = ((plan.budget || {})[String(realSid)] || {})[realMid];
+  const data = runs.map((r) => { const pt = { build: r.ver, date: (r.startedAt || "").slice(5, 10), verdict: r.verdict, runId: r.id }; devs.forEach((d) => { const s = (r.subjobs || []).find((x) => x.did === d.did && x.sid === realSid); pt[d.did] = s && s.metrics && s.metrics[realMid] != null ? s.metrics[realMid] : null; }); return pt; });
+  const REG_PCT = 10; // 마지막 합격 빌드 대비 ±10% 초과 시 회귀
+  const baseIdx = data.map((pt, i) => { for (let j = i - 1; j >= 0; j--) { if (data[j].verdict === "합격") return j; } return -1; });
+  const vals = data.flatMap((pt) => devs.map((d) => pt[d.did]).filter((v) => v != null));
+  const lo = Math.min(...vals, thr != null ? thr : Infinity), hi = Math.max(...vals, thr != null ? thr : -Infinity);
+  const pad = (hi - lo) * 0.15 || 1;
+  const yDomain = vals.length ? [Math.max(0, Math.floor(lo - pad)), Math.ceil(hi + pad)] : [0, 1];
+  const dlt = (cur, prv) => (prv == null || cur == null || prv === 0) ? null : Math.round((cur - prv) / prv * 1000) / 10;
+  const rows = [...data].reverse();
+  const vK = { "합격": "pass", "불합격": "fail", "미판정": "info" };
+  if (detail) return <PqaResultView run={detail} back={() => setDetail(null)} backLabel="성능 추이" />;
+  return (
+    <div className="space-y-4">
+      <PageToolbar desc="빌드별 지표 회귀 추이 · 계획·시나리오·지표별 · SLA 임계 대비" />
+      <div className="flex flex-wrap items-center gap-2">
+        <div style={{ width: 220 }}><Select value={plan.id} onChange={(e) => setPlanId(Number(e.target.value))}>{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></div>
+        <div style={{ width: 200 }}><Select value={realSid} onChange={(e) => setSid(Number(e.target.value))}>{scnList.length ? scnList.map((s) => <option key={s.sid} value={s.sid}>{s.scn}</option>) : <option value="">시나리오 없음</option>}</Select></div>
+        <div style={{ width: 170 }}><Select value={realMid} onChange={(e) => setMid(e.target.value)}>{metricList.length ? metricList.map((m) => <option key={m.id} value={m.id}>{m.label}</option>) : <option value="">지표 없음</option>}</Select></div>
+      </div>
+      {runs.length === 0 ? (
+        <Card className="p-10 text-center text-sm text-slate-500">이 계획의 완료된 실행 이력이 없습니다.</Card>
+      ) : (<>
+        <Card className="p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-200">{metricDef.label} <span className="text-xs font-normal text-slate-500">· {metricDef.agg} {metricDef.unit} · {curScn.scn}</span></div>
+            {thr != null && <span className="text-xs text-red-300">SLA {metricDef.dir === "up" ? "≥" : "≤"} {thr}{metricDef.unit}</span>}
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={data} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke="#1e293b" vertical={false} />
+              <XAxis dataKey="build" stroke="#475569" fontSize={11} />
+              <YAxis stroke="#475569" fontSize={11} width={46} domain={yDomain} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0", fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {thr != null && <ReferenceLine y={thr} stroke="#f87171" strokeDasharray="5 4" ifOverflow="extendDomain" label={{ value: "SLA", fill: "#f87171", fontSize: 10, position: "insideTopRight" }} />}
+              {devs.map((d, i) => <Line key={d.did} type="monotone" dataKey={d.did} name={d.model} stroke={TREND_COLORS[i % TREND_COLORS.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card className="overflow-hidden p-0">
+          <div className="border-b border-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-200">빌드별 {metricDef.label} <span className="text-xs font-normal text-slate-500">· 값 / 마지막 합격 빌드 대비(±{REG_PCT}% 회귀) · 임계 초과 빨강 · 행 클릭 → 실행 상세</span></div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="text-left text-slate-500"><th className="px-3 py-2 font-medium">빌드</th><th className="px-3 py-2 font-medium">계획 판정</th>{devs.map((d) => <th key={d.did} className="px-3 py-2 font-medium">{d.model}<div className="font-mono font-normal text-slate-600">{d.slot}</div></th>)}</tr></thead>
+              <tbody>
+                {rows.map((pt, ri) => { const ai = data.length - 1 - ri; const base = baseIdx[ai] >= 0 ? data[baseIdx[ai]] : null; const run = runs.find((r) => r.id === pt.runId); return (
+                  <tr key={pt.build} onClick={() => run && setDetail(run)} className="cursor-pointer border-t border-slate-800 hover:bg-slate-800/50">
+                    <td className="px-3 py-2 text-slate-300">{pt.build}<div className="text-slate-600">{pt.date}</div></td>
+                    <td className="px-3 py-2"><Badge kind={vK[pt.verdict] || "info"}>{pt.verdict}</Badge></td>
+                    {devs.map((d) => { const v = pt[d.did]; const bad = thr != null && v != null && (metricDef.dir === "up" ? v < thr : v > thr); const dv = base ? dlt(v, base[d.did]) : null; const reg = dv != null && (metricDef.dir === "up" ? dv <= -REG_PCT : dv >= REG_PCT); const imp = dv != null && (metricDef.dir === "up" ? dv >= REG_PCT : dv <= -REG_PCT); return (
+                      <td key={d.did} className="px-3 py-2">
+                        <span className={bad ? "font-semibold text-red-300" : "text-slate-300"}>{v != null ? v : "-"}</span>
+                        {dv != null && dv !== 0 && <span title="마지막 합격 빌드 대비" className={"ml-1.5 " + (reg ? "font-semibold text-red-400" : imp ? "text-emerald-400" : "text-slate-500")}>{dv > 0 ? "▲" : "▼"}{Math.abs(dv)}%</span>}
+                      </td>
+                    ); })}
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </>)}
+    </div>
+  );
+}
+
 export function PqaSoon({ label }) {
   return (
     <div className="flex h-full items-center justify-center p-10 text-center">
