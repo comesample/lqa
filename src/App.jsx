@@ -4,7 +4,7 @@ import {
   SlidersHorizontal, ShieldCheck, CheckCircle2, XCircle, AlertTriangle,
   ChevronRight, Plus, Search, Bell, Server, TrendingUp, TrendingDown,
   Sparkles, FileDown, Ghost, Lock, Send, X, Megaphone, Slack, Mail,
-  FileText, Calendar, RefreshCw, Trash2, ExternalLink, Plug, Link2, Filter,
+  FileText, Calendar, RefreshCw, Trash2, ExternalLink, Plug, Link2,
   Building2, Users, Cpu, CreditCard, ScrollText, Shield, ArrowLeft, UserCog, Tag, Upload, History, Brain, Code2, Video, Layers
 } from "lucide-react";
 import { FqaRecordScreen, FqaEditorScreen, FqaSuiteScreen, FqaRunScreen, FqaHistoryScreen, FqaResultScreen, FqaDashboardScreen, FqaCasesScreen, FqaTargetScreen, FqaPlanScreen } from "./fqa/screens.jsx";
@@ -230,7 +230,6 @@ export default function App() {
                 ))}
               </div>
               <div className="flex items-center gap-1.5" title="테넌트(조직)"><Building2 size={13} className="text-slate-500" />{role === "admin" ? <select value={tenantId} onChange={(e) => { setTenantId(e.target.value); toast("테넌트 전환: " + ((tenants.find((t) => t.id === e.target.value) || {}).name), "info"); }} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-300 text-xs">{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select> : <span className="rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-slate-300 text-xs">{tenantName}</span>}</div>
-              <div className="flex items-center gap-1.5" title="보기 환경 필터"><Filter size={13} className="text-slate-500" /><select value={env} onChange={(e) => { setEnv(e.target.value); toast("환경 필터: " + e.target.value, "info"); }} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-300 text-xs"><option>전체</option><option>운영</option><option>스테이징</option><option>개발</option></select></div>
               <div className="relative">
                 <button onClick={() => setBellOpen(!bellOpen)} className="relative text-slate-400 hover:text-slate-200"><Bell size={18} />{notifs.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center" style={{ fontSize: 9 }}>{notifs.length}</span>}</button>
                 {bellOpen && (
